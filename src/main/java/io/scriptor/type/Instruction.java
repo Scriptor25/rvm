@@ -1,6 +1,13 @@
 package io.scriptor.type;
 
+import io.scriptor.InstructionDefinition;
+import org.jetbrains.annotations.NotNull;
+
 public class Instruction {
+
+    public static int decode(final int data) {
+        return data & 0b1111111;
+    }
 
     protected final int data;
 
@@ -42,5 +49,14 @@ public class Instruction {
 
     public int imm() {
         throw new UnsupportedOperationException();
+    }
+
+    public @NotNull InstructionDefinition def() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String toString() {
+        return "?(opcode=%02x)".formatted(opcode());
     }
 }

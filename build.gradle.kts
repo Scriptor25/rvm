@@ -27,3 +27,7 @@ application {
     applicationName = "rvm"
     mainClass = "io.scriptor.Main"
 }
+
+tasks.withType<JavaExec>().configureEach {
+    args = listOf("riscv-os/kernel.elf", "elf")
+}
