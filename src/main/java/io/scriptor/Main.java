@@ -73,13 +73,13 @@ public final class Main {
             default -> throw new NoSuchElementException("format '%s'".formatted(args[1]));
         };
 
-        final var     layout  = new MachineLayout(32, 0x1000, 0x80000000L, MiB(256));
+        final var     layout  = new MachineLayout(32, 0x1000, 0x80000000L, MiB(4));
         final Machine machine = new Machine64(layout);
 
         try (final var stream = new FileStream(filename, false)) {
             switch (format) {
                 case BIN -> {
-                    machine.setEntry(0);
+                    machine.setEntry(0x80000000L);
                     machine.loadDirect(stream);
                 }
                 case ELF -> {
