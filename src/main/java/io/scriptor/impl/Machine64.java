@@ -6,10 +6,7 @@ import io.scriptor.io.IOStream;
 import io.scriptor.io.LongByteBuffer;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.FileDescriptor;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 
@@ -17,14 +14,13 @@ import static io.scriptor.Bytes.signExtend;
 
 public final class Machine64 implements Machine {
 
-    private static final InputStream stdin = new FileInputStream(FileDescriptor.in);
-
     private final long[] gprs;
     private final long[] csrs;
     private final LongByteBuffer memory;
     private long entry;
     private long pc;
     private long next;
+    private boolean wfi;
 
     public Machine64(final @NotNull MachineLayout layout, final long memory, final @NotNull ByteOrder byteOrder) {
         this.gprs = new long[layout.gprs()];
@@ -37,10 +33,16 @@ public final class Machine64 implements Machine {
         Arrays.fill(gprs, 0);
         pc = entry;
         next = entry;
+        wfi = false;
     }
 
     @Override
-    public void step() {
+    public boolean step() {
+        if (wfi) {
+            // TODO: wait for interrupts; until then just end the simulation
+            return false;
+        }
+
         pc = next;
         next = (pc + 4) % memory.capacity();
 
@@ -52,46 +54,105 @@ public final class Machine64 implements Machine {
                 // (rd) = (rs1) + {imm}
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = signExtend(instruction.imm(), 12);
-                gpr(instruction.rd(), lhs + rhs);
+                final var res = lhs + rhs;
+                gpr(instruction.rd(), res);
             }
 
             case SLTI -> {
                 // if (rs1) < {imm} then (rd) = 1 else (rd) = 0
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = signExtend(instruction.imm(), 12);
-                gpr(instruction.rd(), lhs < rhs ? 1 : 0);
+                final var res = lhs < rhs ? 1 : 0;
+                gpr(instruction.rd(), res);
             }
             case SLTIU -> {
                 // if (rs1) < imm then (rd) = 1 else (rd) = 0
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = instruction.imm();
-                gpr(instruction.rd(), Long.compareUnsigned(lhs, rhs) < 0 ? 1 : 0);
+                final var res = Long.compareUnsigned(lhs, rhs) < 0 ? 1 : 0;
+                gpr(instruction.rd(), res);
+            }
+
+            case SLLI -> {
+                final var lhs = gpr(instruction.rs1());
+                final var rhs = instruction.imm() & 0b111111;
+                final var res = lhs << rhs;
+                gpr(instruction.rd(), res);
+            }
+            case SRLI -> {
+                final var lhs = gpr(instruction.rs1());
+                final var rhs = instruction.imm() & 0b111111;
+                final var res = lhs >>> rhs;
+                gpr(instruction.rd(), res);
+            }
+            case SRAI -> {
+                final var lhs = gpr(instruction.rs1());
+                final var rhs = instruction.imm() & 0b111111;
+                final var res = lhs >> rhs;
+                gpr(instruction.rd(), res);
             }
 
             case ANDI -> {
                 // (rd) = (rs1) & {imm}
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = signExtend(instruction.imm(), 12);
-                gpr(instruction.rd(), lhs & rhs);
+                final var res = lhs & rhs;
+                gpr(instruction.rd(), res);
             }
             case ORI -> {
                 // (rd) = (rs1) | {imm}
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = signExtend(instruction.imm(), 12);
-                gpr(instruction.rd(), lhs | rhs);
+                final var res = lhs | rhs;
+                gpr(instruction.rd(), res);
             }
             case XORI -> {
                 // (rd) = (rs1) ^ {imm}
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = signExtend(instruction.imm(), 12);
-                gpr(instruction.rd(), lhs ^ rhs);
+                final var res = lhs ^ rhs;
+                gpr(instruction.rd(), res);
+            }
+
+            case ADDIW -> {
+                final var lhs = gpr(instruction.rs1());
+                final var rhs = signExtend(instruction.imm(), 12);
+                final var res = lhs + rhs;
+                gpr(instruction.rd(), res);
+            }
+
+            case SLLIW -> {
+                final var lhs = (int) gpr(instruction.rs1());
+                final var rhs = instruction.imm() & 0b11111;
+                final var res = lhs << rhs;
+                gpr(instruction.rd(), res);
+            }
+            case SRLIW -> {
+                final var lhs = (int) gpr(instruction.rs1());
+                final var rhs = instruction.imm() & 0b11111;
+                final var res = lhs >>> rhs;
+                gpr(instruction.rd(), res);
+            }
+            case SRAIW -> {
+                final var lhs = (int) gpr(instruction.rs1());
+                final var rhs = instruction.imm() & 0b11111;
+                final var res = lhs >> rhs;
+                gpr(instruction.rd(), res);
             }
 
             case ADD -> {
                 // (rd) = (rs1) + (rs2)
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = gpr(instruction.rs2());
-                gpr(instruction.rd(), lhs + rhs);
+                final var res = lhs + rhs;
+                gpr(instruction.rd(), res);
+            }
+
+            case SUBW -> {
+                final var lhs = (int) gpr(instruction.rs1());
+                final var rhs = (int) gpr(instruction.rs2());
+                final var res = lhs - rhs;
+                gpr(instruction.rd(), res);
             }
 
             case JAL -> {
@@ -180,6 +241,11 @@ public final class Machine64 implements Machine {
                 // TODO: trigger side effect for csr
             }
 
+            case WFI -> {
+                // wait for interrupts
+                wfi = true;
+            }
+
             case SB -> {
                 // [(rs1) + {imm}] = (rs2)
                 final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
@@ -250,6 +316,8 @@ public final class Machine64 implements Machine {
 
             default -> throw new UnsupportedOperationException(instruction.toString());
         }
+
+        return true;
     }
 
     @Override
@@ -296,10 +364,17 @@ public final class Machine64 implements Machine {
 
         if (address == 0x10000000L) {
             try {
-                return stdin.read();
+                return System.in.read();
             } catch (final IOException e) {
-                e.printStackTrace(System.err);
-                return 0x00;
+                return 0xff;
+            }
+        } else if (address == 0x10000005L) {
+            try {
+                if (System.in.available() > 0)
+                    return 1;
+                return 0;
+            } catch (final IOException e) {
+                return 0;
             }
         }
 
@@ -380,8 +455,7 @@ public final class Machine64 implements Machine {
         // TODO: ports
 
         if (address == 0x10000000L) {
-            if (value >= 0x20)
-                System.out.printf("%c", value);
+            System.out.print((char) value);
             return;
         }
 

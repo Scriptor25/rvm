@@ -1,6 +1,6 @@
-package io.scriptor.type;
+package io.scriptor.instruction;
 
-import io.scriptor.InstructionDefinition;
+import io.scriptor.Definition;
 import org.jetbrains.annotations.NotNull;
 
 public class Instruction {
@@ -51,7 +51,7 @@ public class Instruction {
         throw new UnsupportedOperationException();
     }
 
-    public @NotNull InstructionDefinition def() {
+    public @NotNull Definition def() {
         throw new UnsupportedOperationException();
     }
 

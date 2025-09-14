@@ -1,6 +1,6 @@
 ENTRY(start);
 
-. = 0x00000000;
+. = 0x80000000;
 
 SECTIONS {
 	/* Include entry point at start of binary */

@@ -1,7 +1,7 @@
 package io.scriptor;
 
 import io.scriptor.io.IOStream;
-import io.scriptor.type.*;
+import io.scriptor.instruction.*;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -13,7 +13,7 @@ public interface Machine {
 
     void reset();
 
-    void step();
+    boolean step();
 
     void setEntry(final long address);
 

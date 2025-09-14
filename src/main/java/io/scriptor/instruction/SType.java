@@ -1,23 +1,26 @@
-package io.scriptor.type;
+package io.scriptor.instruction;
 
-import io.scriptor.InstructionDefinition;
+import io.scriptor.Definition;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 
 public final class SType extends Instruction {
 
-    private final InstructionDefinition definition;
+    private final Definition definition;
 
     public SType(final int data) {
         super(data);
 
-        definition = Arrays.stream(InstructionDefinition.values())
-                           .filter(definition -> definition.getType() == SType.class)
-                           .filter(definition -> definition.getOpcode() == opcode())
-                           .filter(definition -> definition.getFunc3() == func3())
-                           .findAny()
-                           .orElseThrow();
+        final var definitions = Arrays.stream(Definition.values())
+                                      .filter(definition -> definition.filter(this))
+                                      .toList();
+
+        if (definitions.size() != 1) {
+            throw new IllegalStateException();
+        }
+
+        definition = definitions.getFirst();
     }
 
     @Override
@@ -27,7 +30,7 @@ public final class SType extends Instruction {
     }
 
     @Override
-    public @NotNull InstructionDefinition def() {
+    public @NotNull Definition def() {
         return definition;
     }
 

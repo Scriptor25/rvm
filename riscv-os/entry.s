@@ -30,7 +30,11 @@ bss_clear:
 	csrw mepc, t0
 
 	/* Jump to kernel! */
-	tail kmain
+	call kmain
+
+    /* infinite loop */
+1:  wfi
+    j 1b
 
 	.cfi_endproc
 

@@ -55,8 +55,10 @@ public final class Main {
     }
 
     public static void main(final @NotNull String[] args) {
-        if (args.length != 2)
+        if (args.length != 2) {
+            System.err.println("2 arguments required");
             return;
+        }
 
         final String filename;
         try {
@@ -73,7 +75,7 @@ public final class Main {
         };
 
         final var     layout  = new MachineLayout(32, 0x1000);
-        final Machine machine = new Machine64(layout, MiB(20), ByteOrder.LITTLE_ENDIAN);
+        final Machine machine = new Machine64(layout, MiB(256), ByteOrder.LITTLE_ENDIAN);
 
         try (final var stream = new FileStream(filename, false)) {
             switch (format) {
@@ -84,7 +86,7 @@ public final class Main {
                 case ELF -> {
                     final var header = new ELF_Header(stream);
 
-                    machine.setEntry(header.entry);
+                    machine.setEntry(header.entry - 0x80000000L);
 
                     final var programHeaderTable = new ELF_ProgramHeader[header.phnum];
                     final var sectionHeaderTable = new ELF_SectionHeader[header.shnum];
@@ -111,7 +113,7 @@ public final class Main {
                         if (programHeader.type == 0x01) {
                             stream.seek(programHeader.offset);
                             machine.loadSegment(stream,
-                                                programHeader.paddr,
+                                                programHeader.paddr - 0x80000000L,
                                                 programHeader.filesz);
                         }
                     }
@@ -131,9 +133,8 @@ public final class Main {
         }
 
         machine.reset();
-        while (true) {
-            machine.step();
-        }
+        while (machine.step())
+            ;
     }
 
     private Main() {

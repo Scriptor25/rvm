@@ -24,10 +24,17 @@ java {
 }
 
 application {
-    applicationName = "rvm"
     mainClass = "io.scriptor.Main"
+
+    applicationName = "rvm"
+    applicationDefaultJvmArgs = listOf("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED")
 }
 
-tasks.withType<JavaExec>().configureEach {
-    args = listOf("riscv-os/kernel.elf", "elf")
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED"))
+}
+
+tasks.withType<JavaExec> {
+    args("riscv-os/kernel.elf", "elf")
+    jvmArgs("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED")
 }
