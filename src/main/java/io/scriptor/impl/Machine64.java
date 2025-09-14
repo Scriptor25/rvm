@@ -7,25 +7,26 @@ import io.scriptor.io.LongByteBuffer;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
-import java.nio.ByteOrder;
 import java.util.Arrays;
 
-import static io.scriptor.Bytes.signExtend;
+import static io.scriptor.Bytes.*;
 
 public final class Machine64 implements Machine {
 
     private final long[] gprs;
     private final long[] csrs;
+    private final long pdram;
     private final LongByteBuffer memory;
     private long entry;
     private long pc;
     private long next;
     private boolean wfi;
 
-    public Machine64(final @NotNull MachineLayout layout, final long memory, final @NotNull ByteOrder byteOrder) {
+    public Machine64(final @NotNull MachineLayout layout) {
         this.gprs = new long[layout.gprs()];
         this.csrs = new long[layout.csrs()];
-        this.memory = new LongByteBuffer(0x1000, memory, byteOrder);
+        this.pdram = layout.pdram();
+        this.memory = new LongByteBuffer(0x1000, layout.memsz());
     }
 
     @Override
@@ -44,7 +45,7 @@ public final class Machine64 implements Machine {
         }
 
         pc = next;
-        next = (pc + 4) % memory.capacity();
+        next = pc + 4;
 
         final var instruction = decode();
         final var definition  = instruction.def();
@@ -337,161 +338,83 @@ public final class Machine64 implements Machine {
             final long address,
             final long size
     ) throws IOException {
-        stream.read(memory.range(address, address + size));
+        final var dst = address - pdram;
+        stream.read(memory.range(dst, dst + size));
         memory.reset();
     }
 
     @Override
     public int peek() {
-        return (((int) memory.get(pc + 3) & 0xff) << 24)
-               | (((int) memory.get(pc + 2) & 0xff) << 16)
-               | (((int) memory.get(pc + 1) & 0xff) << 8)
-               | ((int) memory.get(pc) & 0xff);
+        return lwu(pc);
     }
 
     @Override
     public int lb(final long address) {
-        // TODO: ports
-
-        final var byte0 = memory.get(address);
-
-        return signExtend(byte0 & 0xff, 8);
+        final var bytes = load(address, 1);
+        return signExtend(bytes[0] & 0xff, 8);
     }
 
     @Override
     public int lbu(final long address) {
-        // TODO: ports
-
-        if (address == 0x10000000L) {
-            try {
-                return System.in.read();
-            } catch (final IOException e) {
-                return 0xff;
-            }
-        } else if (address == 0x10000005L) {
-            try {
-                if (System.in.available() > 0)
-                    return 1;
-                return 0;
-            } catch (final IOException e) {
-                return 0;
-            }
-        }
-
-        final var byte0 = memory.get(address);
-
-        return byte0 & 0xff;
+        final var bytes = load(address, 1);
+        return bytes[0] & 0xff;
     }
 
     @Override
     public int lh(final long address) {
-        // TODO: ports
-
-        final var byte0 = memory.get(address);
-        final var byte1 = memory.get(address + 1);
-
-        return signExtend((byte1 & 0xff) << 8 | (byte0 & 0xff), 16);
+        return signExtend(parseShortLE(load(address, 2)), 16);
     }
 
     @Override
     public int lhu(final long address) {
-        // TODO: ports
-
-        final var byte0 = memory.get(address);
-        final var byte1 = memory.get(address + 1);
-
-        return (byte1 & 0xff) << 8 | (byte0 & 0xff);
+        return parseShortLE(load(address, 2));
     }
 
     @Override
     public int lw(final long address) {
-        // TODO: ports
-
-        final var byte0 = memory.get(address);
-        final var byte1 = memory.get(address + 1);
-        final var byte2 = memory.get(address + 2);
-        final var byte3 = memory.get(address + 3);
-
-        return signExtend((byte3 & 0xff) << 24 | (byte2 & 0xff) << 16 | (byte1 & 0xff) << 8 | (byte0 & 0xff), 32);
+        return signExtend(parseIntLE(load(address, 4)), 32);
     }
 
     @Override
     public int lwu(final long address) {
-        // TODO: ports
-
-        final var byte0 = memory.get(address);
-        final var byte1 = memory.get(address + 1);
-        final var byte2 = memory.get(address + 2);
-        final var byte3 = memory.get(address + 3);
-
-        return (byte3 & 0xff) << 24 | (byte2 & 0xff) << 16 | (byte1 & 0xff) << 8 | (byte0 & 0xff);
+        return parseIntLE(load(address, 4));
     }
 
     @Override
     public long ld(final long address) {
-        // TODO: ports
-
-        final var byte0 = memory.get(address);
-        final var byte1 = memory.get(address + 1);
-        final var byte2 = memory.get(address + 2);
-        final var byte3 = memory.get(address + 3);
-        final var byte4 = memory.get(address + 4);
-        final var byte5 = memory.get(address + 5);
-        final var byte6 = memory.get(address + 6);
-        final var byte7 = memory.get(address + 7);
-
-        return (byte7 & 0xffL) << 56L
-               | (byte6 & 0xffL) << 48L
-               | (byte5 & 0xffL) << 40L
-               | (byte4 & 0xffL) << 32L
-               | (byte3 & 0xffL) << 24L
-               | (byte2 & 0xffL) << 16L
-               | (byte1 & 0xffL) << 8L
-               | (byte0 & 0xffL);
+        return parseLongLE(load(address, 8));
     }
 
     @Override
     public void sb(final long address, final byte value) {
-        // TODO: ports
-
-        if (address == 0x10000000L) {
-            System.out.print((char) value);
-            return;
-        }
-
-        memory.put(address, value);
+        store(address, 1, value);
     }
 
     @Override
     public void sh(final long address, final short value) {
-        // TODO: ports
-
-        memory.put(address, (byte) (value & 0xff));
-        memory.put(address + 1, (byte) ((value >> 8) & 0xff));
+        store(address, 2, (byte) (value & 0xff), (byte) ((value >> 8) & 0xff));
     }
 
     @Override
     public void sw(final long address, final int value) {
-        // TODO: ports
-
-        memory.put(address, (byte) (value & 0xff));
-        memory.put(address + 1, (byte) ((value >> 8) & 0xff));
-        memory.put(address + 2, (byte) ((value >> 16) & 0xff));
-        memory.put(address + 3, (byte) ((value >> 24) & 0xff));
+        store(address, 4,
+              (byte) (value & 0xff),
+              (byte) ((value >> 8) & 0xff),
+              (byte) ((value >> 16) & 0xff),
+              (byte) ((value >> 24) & 0xff));
     }
 
     @Override
     public void sd(final long address, final long value) {
-        // TODO: ports
-
-        memory.put(address, (byte) (value & 0xff));
-        memory.put(address + 1, (byte) ((value >> 8) & 0xff));
-        memory.put(address + 2, (byte) ((value >> 16) & 0xff));
-        memory.put(address + 3, (byte) ((value >> 24) & 0xff));
-        memory.put(address + 4, (byte) ((value >> 32) & 0xff));
-        memory.put(address + 5, (byte) ((value >> 40) & 0xff));
-        memory.put(address + 6, (byte) ((value >> 48) & 0xff));
-        memory.put(address + 7, (byte) ((value >> 56) & 0xff));
+        store(address, 8,
+              (byte) (value & 0xff),
+              (byte) ((value >> 8) & 0xff),
+              (byte) ((value >> 16) & 0xff),
+              (byte) ((value >> 24) & 0xff),
+              (byte) ((value >> 32) & 0xff),
+              (byte) ((value >> 40) & 0xff),
+              (byte) ((value >> 48) & 0xff),
+              (byte) ((value >> 56) & 0xff));
     }
 
     private long gpr(final int index) {
@@ -514,15 +437,65 @@ public final class Machine64 implements Machine {
         csrs[index] = value;
     }
 
+    private byte @NotNull [] load(final long address, final int n) {
+        final var bytes = new byte[n];
+
+        if (address < pdram) {
+            // TODO: mmio
+
+            // uart rx
+            if (address == 0x10000000L && n == 1) {
+                try {
+                    final var data = System.in.read();
+                    bytes[0] = (byte) data;
+                } catch (final IOException e) {
+                    e.printStackTrace(System.err);
+                }
+                return bytes;
+            }
+            // uart lsr
+            if (address == 0x10000005L && n == 1) {
+                try {
+                    final var data = System.in.available() > 0 ? 1 : 0;
+                    bytes[0] = (byte) data;
+                } catch (final IOException e) {
+                    e.printStackTrace(System.err);
+                }
+                return bytes;
+            }
+
+            throw new UnsupportedOperationException();
+        }
+
+        memory.get(address - pdram, bytes, 0, n);
+        return bytes;
+    }
+
+    private void store(final long address, final int n, final byte @NotNull ... bytes) {
+        if (address < pdram) {
+            // TODO: mmio
+
+            // uart rx
+            if (address == 0x10000000L && n == 1) {
+                System.out.print((char) bytes[0]);
+                return;
+            }
+
+            throw new UnsupportedOperationException();
+        }
+
+        memory.put(address - pdram, bytes, 0, bytes.length);
+    }
+
     private long getPC() {
         return pc;
     }
 
     private void setPC(final long address) {
-        next = address % memory.capacity();
+        next = address;
     }
 
     private void offsetPC(final long offset) {
-        next = (pc + offset) % memory.capacity();
+        next = pc + offset;
     }
 }

@@ -10,7 +10,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteOrder;
 import java.util.NoSuchElementException;
 
 import static io.scriptor.Bytes.readString;
@@ -74,8 +73,8 @@ public final class Main {
             default -> throw new NoSuchElementException("format '%s'".formatted(args[1]));
         };
 
-        final var     layout  = new MachineLayout(32, 0x1000);
-        final Machine machine = new Machine64(layout, MiB(256), ByteOrder.LITTLE_ENDIAN);
+        final var     layout  = new MachineLayout(32, 0x1000, 0x80000000L, MiB(256));
+        final Machine machine = new Machine64(layout);
 
         try (final var stream = new FileStream(filename, false)) {
             switch (format) {
@@ -86,7 +85,7 @@ public final class Main {
                 case ELF -> {
                     final var header = new ELF_Header(stream);
 
-                    machine.setEntry(header.entry - 0x80000000L);
+                    machine.setEntry(header.entry);
 
                     final var programHeaderTable = new ELF_ProgramHeader[header.phnum];
                     final var sectionHeaderTable = new ELF_SectionHeader[header.shnum];
@@ -113,7 +112,7 @@ public final class Main {
                         if (programHeader.type == 0x01) {
                             stream.seek(programHeader.offset);
                             machine.loadSegment(stream,
-                                                programHeader.paddr - 0x80000000L,
+                                                programHeader.paddr,
                                                 programHeader.filesz);
                         }
                     }

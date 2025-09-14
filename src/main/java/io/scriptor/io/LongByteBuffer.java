@@ -10,7 +10,7 @@ public final class LongByteBuffer {
     private final int chunkSize;
     private final ByteBuffer[] chunks;
 
-    public LongByteBuffer(final int chunkSize, final long capacity, final @NotNull ByteOrder byteOrder) {
+    public LongByteBuffer(final int chunkSize, final long capacity) {
         final var chunkCount = (int) ((capacity + (long) chunkSize - 1L) / (long) chunkSize);
 
         this.chunkSize = chunkSize;
@@ -18,7 +18,7 @@ public final class LongByteBuffer {
 
         for (int i = 0; i < chunkCount; ++i) {
             chunks[i] = ByteBuffer.allocateDirect(chunkSize)
-                                  .order(byteOrder);
+                                  .order(ByteOrder.nativeOrder());
         }
     }
 
@@ -92,10 +92,20 @@ public final class LongByteBuffer {
         return chunks[chunk].get(offset);
     }
 
+    public void get(final long index, final byte @NotNull [] bytes, final int offset, final int length) {
+        for (int i = 0; i < length; ++i)
+            bytes[offset + i] = get(index + i);
+    }
+
     public void put(final long index, final byte value) {
         final var chunk  = (int) (index / (long) chunkSize);
         final var offset = (int) (index % (long) chunkSize);
         chunks[chunk].put(offset, value);
+    }
+
+    public void put(final long index, final byte @NotNull [] bytes, final int offset, final int length) {
+        for (int i = 0; i < length; ++i)
+            put(index + i, bytes[offset + i]);
     }
 
     public long capacity() {
