@@ -55,31 +55,5 @@ public interface Machine {
         }
 
         return definitions.getFirst().instance(data);
-
-        //        final var opcode = Instruction.decode(data);
-        //
-        //        return switch (opcode) {
-        //            case OPCODE_LOAD,
-        //                 OPCODE_LOAD_FP,
-        //                 OPCODE_OP_IMM,
-        //                 OPCODE_OP_IMM_32,
-        //                 OPCODE_JALR,
-        //                 OPCODE_SYSTEM -> new IType(data);
-        //            case OPCODE_AUIPC,
-        //                 OPCODE_LUI -> new UType(data);
-        //            case OPCODE_STORE,
-        //                 OPCODE_STORE_FP -> new SType(data);
-        //            case OPCODE_AMO,
-        //                 OPCODE_OP,
-        //                 OPCODE_OP_32,
-        //                 OPCODE_OP_FP -> new RType(data);
-        //            case OPCODE_MADD,
-        //                 OPCODE_MSUB,
-        //                 OPCODE_NMSUB,
-        //                 OPCODE_NMADD -> new R4Type(data);
-        //            case OPCODE_BRANCH -> new BType(data);
-        //            case OPCODE_JAL -> new JType(data);
-        //            default -> throw new NoSuchElementException("opcode %02x".formatted(opcode));
-        //        };
     }
 }

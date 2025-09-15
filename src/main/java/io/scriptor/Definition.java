@@ -6,6 +6,7 @@ import io.scriptor.instruction.full.*;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.function.IntPredicate;
 
 import static io.scriptor.Constants.*;
 
@@ -436,31 +437,50 @@ public enum Definition {
 
     // ---------- RVC ---------- //
 
-    C_LWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_LWSP << 13, CIType.class),
-    C_LDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_LDSP << 13, CIType.class),
-    C_FLWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FLWSP << 13, CIType.class),
-    C_FLDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FLDSP << 13, CIType.class),
+    C_ADDI4SPN(0b1110000000000011, 0b0000000000000000, CIWType.class),
+    C_FLD(0b1110000000000011, 0b0010000000000000, CLType.class),
+    C_LW(0b1110000000000011, 0b0100000000000000, CLType.class),
+    C_FLW(0b1110000000000011, 0b0110000000000000, CLType.class),
+    C_LD(0b1110000000000011, 0b0110000000000000, CLType.class),
+    C_FSD(0b1110000000000011, 0b1010000000000000, CSType.class),
+    C_SW(0b1110000000000011, 0b1100000000000000, CSType.class),
+    C_FSW(0b1110000000000011, 0b1110000000000000, CSType.class),
+    C_SD(0b1110000000000011, 0b1110000000000000, CSType.class),
 
-    C_SWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_SWSP << 13, CSSType.class),
-    C_SDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_SDSP << 13, CSSType.class),
-    C_FSWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FSWSP << 13, CSSType.class),
-    C_FSDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FSDSP << 13, CSSType.class),
 
-    C_LW(0b1110000000000011, RVC_OPCODE_C0 | RVC_LW << 13, CLType.class),
-    C_LD(0b1110000000000011, RVC_OPCODE_C0 | RVC_LD << 13, CLType.class),
-    C_FLW(0b1110000000000011, RVC_OPCODE_C0 | RVC_FLW << 13, CLType.class),
-    C_FLD(0b1110000000000011, RVC_OPCODE_C0 | RVC_FLD << 13, CLType.class),
+    C_NOP(0b1110111110000011, 0b0000000000000001, CIType.class),
+    C_ADDI(0b1110000000000011, 0b0000000000000001, CIType.class, data -> ((data >> 7) & 0b11111) != 0),
+    C_JAL32_ADDIW64(0b1110000000000011, 0b0010000000000001, CIType.class),
+    C_LI(0b1110000000000011, 0b0100000000000001, CIType.class),
+    C_ADDI16SP(0b1110111110000011, 0b0110000100000001, CIType.class),
+    C_LUI(0b1110000000000011, 0b0110000000000001, CIType.class, data -> ((data >> 7) & 0b11111) != 2),
+    C_SRLI(0b1110110000000011, 0b1000000000000001, CBType.class),
+    C_SRAI(0b1110110000000011, 0b1000010000000001, CBType.class),
+    C_ANDI(0b1110110000000011, 0b1000100000000001, CBType.class),
+    C_SUB(0b1111110001100011, 0b1000110000000001, CAType.class),
+    C_XOR(0b1111110001100011, 0b1000110000100001, CAType.class),
+    C_OR(0b1111110001100011, 0b1000110001000001, CAType.class),
+    C_AND(0b1111110001100011, 0b1000110001100001, CAType.class),
+    C_SUBW(0b1111110001100011, 0b1001110000000001, CAType.class),
+    C_ADDW(0b1111110001100011, 0b1001110000100001, CAType.class),
+    C_J(0b1110000000000011, 0b1010000000000001, CJType.class),
+    C_BEQZ(0b1110000000000011, 0b1100000000000001, CBType.class),
+    C_BNEZ(0b1110000000000011, 0b1110000000000001, CBType.class),
 
-    C_SW(0b1110000000000011, RVC_OPCODE_C0 | RVC_SW << 13, CSType.class),
-    C_SD(0b1110000000000011, RVC_OPCODE_C0 | RVC_SD << 13, CSType.class),
-    C_FSW(0b1110000000000011, RVC_OPCODE_C0 | RVC_FSW << 13, CSType.class),
-    C_FSD(0b1110000000000011, RVC_OPCODE_C0 | RVC_FSD << 13, CSType.class),
-
-    C_J(0b1110000000000011, RVC_OPCODE_C1 | RVC_J << 13, CJType.class),
-    C_JAL(0b1110000000000011, RVC_OPCODE_C1 | RVC_JAL << 13, CJType.class),
-
-    C_JR(0b1111000000000011, RVC_OPCODE_C2 | RVC_JR << 12, CRType.class),
-    C_JALR(0b1111000000000011, RVC_OPCODE_C2 | RVC_JALR << 12, CRType.class),
+    C_SLLI(0b1110000000000011, 0b0000000000000010, CIType.class),
+    C_FLDSP(0b1110000000000011, 0b0010000000000010, CIType.class),
+    C_LWSP(0b1110000000000011, 0b0100000000000010, CIType.class),
+    C_FLWSP32_LDSP64(0b1110000000000011, 0b0110000000000010, CIType.class),
+    C_JR(0b1111000001111111, 0b1000000000000010, CRType.class),
+    C_MV(0b1111000000000011,
+         0b1000000000000010,
+         CRType.class,
+         data -> ((data >> 7) & 0b11111) != 0 && ((data >> 2) & 0b11111) != 0),
+    C_JALR(0b1111000001111111, 0b1001000000000010, CRType.class),
+    C_ADD(0b1111000000000011, 0b1001000000000010, CRType.class, data -> ((data >> 2) & 0b11111) != 0),
+    C_FSDSP(0b1110000000000011, 0b1010000000000010, CSSType.class),
+    C_SWSP(0b1110000000000011, 0b1100000000000010, CSSType.class),
+    C_FSWSP32_SDSP64(0b1110000000000011, 0b1110000000000010, CSSType.class),
 
     // ---------- Privileged ---------- //
 
@@ -471,6 +491,7 @@ public enum Definition {
     private final int mask;
     private final int bits;
     private final Class<? extends Instruction> type;
+    private final IntPredicate predicate;
 
     Definition(
             final int mask,
@@ -480,10 +501,23 @@ public enum Definition {
         this.mask = mask;
         this.bits = bits;
         this.type = type;
+        this.predicate = null;
+    }
+
+    Definition(
+            final int mask,
+            final int bits,
+            final @NotNull Class<? extends Instruction> type,
+            final @NotNull IntPredicate predicate
+    ) {
+        this.mask = mask;
+        this.bits = bits;
+        this.type = type;
+        this.predicate = predicate;
     }
 
     public boolean filter(final int data) {
-        return bits == (data & mask);
+        return bits == (data & mask) && (predicate == null || predicate.test(data));
     }
 
     public @NotNull Instruction instance(final int data) {

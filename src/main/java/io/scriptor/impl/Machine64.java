@@ -123,7 +123,7 @@ public final class Machine64 implements Machine {
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = signExtend(instruction.imm(), 12);
                 final var res = lhs + rhs;
-                gpr(instruction.rd(), res);
+                gpr(instruction.rd(), signExtend(res, 32));
             }
 
             case SLLIW -> {
@@ -319,7 +319,121 @@ public final class Machine64 implements Machine {
                 gpr(instruction.rd(), value);
             }
 
-            default -> throw new UnsupportedOperationException(instruction.toString());
+            case C_NOP -> {
+            }
+            case C_ADDI -> {
+                final var value = ((instruction.data() >> 12) & 0b1) << 5
+                                  | ((instruction.data() >> 2) & 0b11111);
+                final var se  = signExtend(value, 6);
+                final var res = gpr(instruction.rs1()) + se;
+                gpr(instruction.rd(), res);
+            }
+            case C_JAL32_ADDIW64 -> {
+                final var value = ((instruction.data() >> 12) & 0b1) << 5
+                                  | ((instruction.data() >> 2) & 0b11111);
+                final var se  = signExtend(value, 6);
+                final var res = gpr(instruction.rs1()) + se;
+                gpr(instruction.rd(), signExtend(res, 32));
+            }
+            case C_ADDI4SPN -> {
+                final var value = ((instruction.data() >> 7) & 0b1111) << 6
+                                  | ((instruction.data() >> 11) & 0b11) << 4
+                                  | ((instruction.data() >> 5) & 0b1) << 3
+                                  | ((instruction.data() >> 6) & 0b1) << 2;
+                gpr(instruction.rd(), gpr(0x2) + value);
+            }
+
+            case C_LI -> {
+                final var value = ((instruction.data() >> 12) & 0b1) << 5
+                                  | ((instruction.data() >> 2) & 0b11111);
+                final var se = signExtend(value, 6);
+                gpr(instruction.rd(), se);
+            }
+            case C_ADDI16SP -> {
+                final var value = ((instruction.data() >> 12) & 0b1) << 9
+                                  | ((instruction.data() >> 3) & 0b11) << 7
+                                  | ((instruction.data() >> 5) & 0b1) << 6
+                                  | ((instruction.data() >> 2) & 0b1) << 5
+                                  | ((instruction.data() >> 6) & 0b1) << 4;
+                final var se = signExtend(value, 10);
+                gpr(0x2, gpr(0x2) + se);
+            }
+            case C_LUI -> {
+                final var lo    = ((instruction.data() >> 2) & 0b11111) << 12;
+                final var hi    = ((instruction.data() >> 12) & 0b1) << 17;
+                final var value = signExtend(hi | lo, 18);
+                gpr(instruction.rd(), value);
+            }
+            case C_ANDI -> {
+                final var value = ((instruction.data() >> 12) & 0b1) << 5
+                                  | ((instruction.data() >> 2) & 0b11111);
+                final var se  = signExtend(value, 6);
+                final var res = gpr(instruction.rs1()) & se;
+                gpr(instruction.rd(), res);
+            }
+            case C_J -> {
+                final var value = ((instruction.data() >> 12) & 0b1) << 11
+                                  | ((instruction.data() >> 8) & 0b1) << 10
+                                  | ((instruction.data() >> 9) & 0b11) << 8
+                                  | ((instruction.data() >> 6) & 0b1) << 7
+                                  | ((instruction.data() >> 7) & 0b1) << 6
+                                  | ((instruction.data() >> 2) & 0b1) << 5
+                                  | ((instruction.data() >> 11) & 0b1) << 4
+                                  | ((instruction.data() >> 3) & 0b111) << 1;
+                final var se = signExtend(value, 12);
+                next = pc + se;
+            }
+            case C_BEQZ -> {
+                if (gpr(instruction.rs1()) == 0) {
+                    final var value = ((instruction.data() >> 12) & 0b1) << 8
+                                      | ((instruction.data() >> 5) & 0b11) << 6
+                                      | ((instruction.data() >> 2) & 0b1) << 5
+                                      | ((instruction.data() >> 10) & 0b11) << 3
+                                      | ((instruction.data() >> 3) & 0b11) << 1;
+                    final var se = signExtend(value, 9);
+                    next = pc + se;
+                }
+            }
+            case C_BNEZ -> {
+                if (gpr(instruction.rs1()) != 0) {
+                    final var value = ((instruction.data() >> 12) & 0b1) << 8
+                                      | ((instruction.data() >> 5) & 0b11) << 6
+                                      | ((instruction.data() >> 2) & 0b1) << 5
+                                      | ((instruction.data() >> 10) & 0b11) << 3
+                                      | ((instruction.data() >> 3) & 0b11) << 1;
+                    final var se = signExtend(value, 9);
+                    next = pc + se;
+                }
+            }
+
+            case C_FLWSP32_LDSP64 -> {
+                final var offset = ((instruction.data() >> 2) & 0b111) << 6
+                                   | ((instruction.data() >> 12) & 0b1) << 5
+                                   | ((instruction.data() >> 5) & 0b11) << 3;
+                final var address = gpr(0x2) + offset;
+                gpr(instruction.rd(), ld(address));
+            }
+            case C_JR -> {
+                next = gpr(instruction.rs1());
+            }
+            case C_MV -> {
+                final var res = gpr(instruction.rs2());
+                gpr(instruction.rd(), res);
+            }
+            case C_ADD -> {
+                final var lhs = gpr(instruction.rs1());
+                final var rhs = gpr(instruction.rs2());
+                final var res = lhs + rhs;
+                gpr(instruction.rd(), res);
+            }
+            case C_FSWSP32_SDSP64 -> {
+                final var offset  = ((instruction.data() >> 7) & 0b111) << 6 | ((instruction.data() >> 10) & 0b111) << 3;
+                final var address = gpr(0x2) + offset;
+                final var value   = gpr(instruction.rs2());
+                sd(address, value);
+            }
+
+            default -> throw new UnsupportedOperationException("%s: %s".formatted(instruction.def(), instruction));
         }
 
         return true;
@@ -468,7 +582,7 @@ public final class Machine64 implements Machine {
                 return bytes;
             }
 
-            throw new UnsupportedOperationException();
+            throw new UnsupportedOperationException("load mmio address=%016x n=%d".formatted(address, n));
         }
 
         memory.get(address - pdram, bytes, 0, n);
@@ -485,7 +599,7 @@ public final class Machine64 implements Machine {
                 return;
             }
 
-            throw new UnsupportedOperationException();
+            throw new UnsupportedOperationException("store mmio address=%016x n=%d".formatted(address, n));
         }
 
         memory.put(address - pdram, bytes, 0, bytes.length);

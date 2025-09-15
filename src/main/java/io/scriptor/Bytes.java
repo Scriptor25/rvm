@@ -92,8 +92,8 @@ public final class Bytes {
         return (value << shift) >> shift;
     }
 
-    public static long signExtend(final long value, final long bits) {
-        final var shift = 64L - bits;
+    public static long signExtend(final long value, final int bits) {
+        final var shift = 64 - bits;
         return (value << shift) >> shift;
     }
 }
