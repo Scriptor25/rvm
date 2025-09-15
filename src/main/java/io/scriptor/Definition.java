@@ -1,9 +1,11 @@
 package io.scriptor;
 
-import io.scriptor.instruction.*;
+import io.scriptor.instruction.Instruction;
+import io.scriptor.instruction.compressed.*;
+import io.scriptor.instruction.full.*;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.function.Predicate;
+import java.lang.reflect.InvocationTargetException;
 
 import static io.scriptor.Constants.*;
 
@@ -11,92 +13,90 @@ public enum Definition {
 
     // ---------- RV32I ---------- //
 
-    LUI(CODE_LUI, UType.class),
-    AUIPC(CODE_AUIPC, UType.class),
+    LUI(MASK_U, OPCODE_LUI, UType.class),
+    AUIPC(MASK_U, OPCODE_AUIPC, UType.class),
 
-    JAL(CODE_JAL, JType.class),
+    JAL(MASK_J, OPCODE_JAL, JType.class),
 
-    JALR(CODE_JALR, IType.class, instruction -> instruction.func3() == 0b000),
+    JALR(MASK_I, OPCODE_JALR, IType.class),
 
-    BEQ(CODE_BRANCH, BType.class, instruction -> instruction.func3() == 0b000),
-    BNE(CODE_BRANCH, BType.class, instruction -> instruction.func3() == 0b001),
-    BLT(CODE_BRANCH, BType.class, instruction -> instruction.func3() == 0b100),
-    BGE(CODE_BRANCH, BType.class, instruction -> instruction.func3() == 0b101),
-    BLTU(CODE_BRANCH, BType.class, instruction -> instruction.func3() == 0b110),
-    BGEU(CODE_BRANCH, BType.class, instruction -> instruction.func3() == 0b111),
+    BEQ(MASK_B, OPCODE_BRANCH, BType.class),
+    BNE(MASK_B, OPCODE_BRANCH | 0b001 << SHIFT_FUNCT3, BType.class),
+    BLT(MASK_B, OPCODE_BRANCH | 0b100 << SHIFT_FUNCT3, BType.class),
+    BGE(MASK_B, OPCODE_BRANCH | 0b101 << SHIFT_FUNCT3, BType.class),
+    BLTU(MASK_B, OPCODE_BRANCH | 0b110 << SHIFT_FUNCT3, BType.class),
+    BGEU(MASK_B, OPCODE_BRANCH | 0b111 << SHIFT_FUNCT3, BType.class),
 
-    LB(CODE_LOAD, IType.class, instruction -> instruction.func3() == 0b000),
-    LH(CODE_LOAD, IType.class, instruction -> instruction.func3() == 0b001),
-    LW(CODE_LOAD, IType.class, instruction -> instruction.func3() == 0b010),
-    LBU(CODE_LOAD, IType.class, instruction -> instruction.func3() == 0b100),
-    LHU(CODE_LOAD, IType.class, instruction -> instruction.func3() == 0b101),
+    LB(MASK_I, OPCODE_LOAD, IType.class),
+    LH(MASK_I, OPCODE_LOAD | 0b001 << SHIFT_FUNCT3, IType.class),
+    LW(MASK_I, OPCODE_LOAD | 0b010 << SHIFT_FUNCT3, IType.class),
+    LBU(MASK_I, OPCODE_LOAD | 0b100 << SHIFT_FUNCT3, IType.class),
+    LHU(MASK_I, OPCODE_LOAD | 0b101 << SHIFT_FUNCT3, IType.class),
 
-    SB(CODE_STORE, SType.class, instruction -> instruction.func3() == 0b000),
-    SH(CODE_STORE, SType.class, instruction -> instruction.func3() == 0b001),
-    SW(CODE_STORE, SType.class, instruction -> instruction.func3() == 0b010),
+    SB(MASK_S, OPCODE_STORE, SType.class),
+    SH(MASK_S, OPCODE_STORE | 0b001 << SHIFT_FUNCT3, SType.class),
+    SW(MASK_S, OPCODE_STORE | 0b010 << SHIFT_FUNCT3, SType.class),
 
-    ADDI(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b000),
-    SLTI(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b010),
-    SLTIU(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b011),
-    XORI(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b100),
-    ORI(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b110),
-    ANDI(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b111),
+    ADDI(MASK_I, OPCODE_OP_IMM, IType.class),
+    SLTI(MASK_I, OPCODE_OP_IMM | 0b010 << SHIFT_FUNCT3, IType.class),
+    SLTIU(MASK_I, OPCODE_OP_IMM | 0b011 << SHIFT_FUNCT3, IType.class),
+    XORI(MASK_I, OPCODE_OP_IMM | 0b100 << SHIFT_FUNCT3, IType.class),
+    ORI(MASK_I, OPCODE_OP_IMM | 0b110 << SHIFT_FUNCT3, IType.class),
+    ANDI(MASK_I, OPCODE_OP_IMM | 0b111 << SHIFT_FUNCT3, IType.class),
 
     /**
      * imm[11:6] = 0b0000000, imm[5:0] = shamt[5:0]
      */
-    SLLI(CODE_OP_IMM,
-         IType.class,
-         instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b0000000),
+    SLLI(MASK_I | MASK_FUNCT7, OPCODE_OP_IMM | 0b001 << SHIFT_FUNCT3, IType.class),
     /**
      * imm[11:6] = 0b0000000, imm[5:0] = shamt[5:0]
      */
-    SRLI(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0000000),
+    SRLI(MASK_I | MASK_FUNCT7, OPCODE_OP_IMM | 0b101 << SHIFT_FUNCT3, IType.class),
     /**
      * imm[11:6] = 0b0100000, imm[5:0] = shamt[5:0]
      */
-    SRAI(CODE_OP_IMM, IType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0100000),
+    SRAI(MASK_I | MASK_FUNCT7, OPCODE_OP_IMM | 0b101 << SHIFT_FUNCT3 | 0b0100000 << SHIFT_FUNCT7, IType.class),
 
-    ADD(CODE_OP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b0000000),
-    SUB(CODE_OP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b0100000),
-    SLL(CODE_OP, RType.class, instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b0000000),
-    SLT(CODE_OP, RType.class, instruction -> instruction.func3() == 0b010 && instruction.func7() == 0b0000000),
-    SLTU(CODE_OP, RType.class, instruction -> instruction.func3() == 0b011 && instruction.func7() == 0b0000000),
-    XOR(CODE_OP, RType.class, instruction -> instruction.func3() == 0b100 && instruction.func7() == 0b0000000),
-    SRL(CODE_OP, RType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0000000),
-    SRA(CODE_OP, RType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0100000),
-    OR(CODE_OP, RType.class, instruction -> instruction.func3() == 0b110 && instruction.func7() == 0b0000000),
-    AND(CODE_OP, RType.class, instruction -> instruction.func3() == 0b111 && instruction.func7() == 0b0000000),
+    ADD(MASK_R, OPCODE_OP, RType.class),
+    SUB(MASK_R, OPCODE_OP | 0b0100000 << SHIFT_FUNCT7, RType.class),
+    SLL(MASK_R, OPCODE_OP | 0b001 << SHIFT_FUNCT3, RType.class),
+    SLT(MASK_R, OPCODE_OP | 0b010 << SHIFT_FUNCT3, RType.class),
+    SLTU(MASK_R, OPCODE_OP | 0b011 << SHIFT_FUNCT3, RType.class),
+    XOR(MASK_R, OPCODE_OP | 0b100 << SHIFT_FUNCT3, RType.class),
+    SRL(MASK_R, OPCODE_OP | 0b101 << SHIFT_FUNCT3, RType.class),
+    SRA(MASK_R, OPCODE_OP | 0b101 << SHIFT_FUNCT3 | 0b0100000 << SHIFT_FUNCT7, RType.class),
+    OR(MASK_R, OPCODE_OP | 0b110 << SHIFT_FUNCT3, RType.class),
+    AND(MASK_R, OPCODE_OP | 0b111 << SHIFT_FUNCT3, RType.class),
 
     // TODO: FENCE, FENCE.TSO, PAUSE, ECALL, EBREAK
 
     // ---------- RV64I ---------- //
 
-    LWU(CODE_LOAD, IType.class, instruction -> instruction.func3() == 0b110),
-    LD(CODE_LOAD, IType.class, instruction -> instruction.func3() == 0b011),
+    LWU(MASK_I, OPCODE_LOAD | 0b110 << SHIFT_FUNCT3, IType.class),
+    LD(MASK_I, OPCODE_LOAD | 0b011 << SHIFT_FUNCT3, IType.class),
 
-    SD(CODE_STORE, SType.class, instruction -> instruction.func3() == 0b011),
+    SD(MASK_S, OPCODE_STORE | 0b011 << SHIFT_FUNCT3, SType.class),
 
-    ADDIW(CODE_OP_IMM_32, IType.class, instruction -> instruction.func3() == 0b000),
+    ADDIW(MASK_I, OPCODE_OP_IMM_32, IType.class),
 
     /**
      * imm[11:6] = 0b000000, imm[5] = 0b0, imm[4:0] = shamt[4:0]
      */
-    SLLIW(CODE_OP_IMM_32, IType.class, instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b0000000),
+    SLLIW(MASK_I | MASK_FUNCT7, OPCODE_OP_IMM_32 | 0b001 << SHIFT_FUNCT3, IType.class),
     /**
      * imm[11:6] = 0b000000, imm[5] = 0b0, imm[4:0] = shamt[4:0]
      */
-    SRLIW(CODE_OP_IMM_32, IType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0000000),
+    SRLIW(MASK_I | MASK_FUNCT7, OPCODE_OP_IMM_32 | 0b101 << SHIFT_FUNCT3, IType.class),
     /**
      * imm[11:6] = 0b010000, imm[5] = 0b0, imm[4:0] = shamt[4:0]
      */
-    SRAIW(CODE_OP_IMM_32, IType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0100000),
+    SRAIW(MASK_I | MASK_FUNCT7, OPCODE_OP_IMM_32 | 0b101 << SHIFT_FUNCT3 | 0b0100000 << SHIFT_FUNCT7, IType.class),
 
-    ADDW(CODE_OP_32, RType.class, instruction -> instruction.func2() == 0b000 && instruction.func7() == 0b0000000),
-    SUBW(CODE_OP_32, RType.class, instruction -> instruction.func2() == 0b000 && instruction.func7() == 0b0100000),
-    SLLW(CODE_OP_32, RType.class, instruction -> instruction.func2() == 0b001 && instruction.func7() == 0b0000000),
-    SRLW(CODE_OP_32, RType.class, instruction -> instruction.func2() == 0b101 && instruction.func7() == 0b0000000),
-    SRAW(CODE_OP_32, RType.class, instruction -> instruction.func2() == 0b101 && instruction.func7() == 0b0100000),
+    ADDW(MASK_R, OPCODE_OP_32, RType.class),
+    SUBW(MASK_R, OPCODE_OP_32 | 0b0100000 << SHIFT_FUNCT7, RType.class),
+    SLLW(MASK_R, OPCODE_OP_32 | 0b001 << SHIFT_FUNCT3, RType.class),
+    SRLW(MASK_R, OPCODE_OP_32 | 0b101 << SHIFT_FUNCT3, RType.class),
+    SRAW(MASK_R, OPCODE_OP_32 | 0b101 << SHIFT_FUNCT3 | 0b0100000 << SHIFT_FUNCT7, RType.class),
 
     // ---------- RV32/RV64 Zifencei ---------- //
 
@@ -107,280 +107,304 @@ public enum Definition {
     /**
      * imm = csr
      */
-    CSRRW(CODE_SYSTEM, IType.class, instruction -> instruction.func3() == 0b001),
+    CSRRW(MASK_I, OPCODE_SYSTEM | 0b001 << SHIFT_FUNCT3, IType.class),
     /**
      * imm = csr
      */
-    CSRRS(CODE_SYSTEM, IType.class, instruction -> instruction.func3() == 0b010),
+    CSRRS(MASK_I, OPCODE_SYSTEM | 0b010 << SHIFT_FUNCT3, IType.class),
     /**
      * imm = csr
      */
-    CSRRC(CODE_SYSTEM, IType.class, instruction -> instruction.func3() == 0b011),
+    CSRRC(MASK_I, OPCODE_SYSTEM | 0b011 << SHIFT_FUNCT3, IType.class),
     /**
      * imm = csr, rs1[4:0] = uimm[4:0]
      */
-    CSRRWI(CODE_SYSTEM, IType.class, instruction -> instruction.func3() == 0b101),
+    CSRRWI(MASK_I, OPCODE_SYSTEM | 0b101 << SHIFT_FUNCT3, IType.class),
     /**
      * imm = csr, rs1[4:0] = uimm[4:0]
      */
-    CSRRSI(CODE_SYSTEM, IType.class, instruction -> instruction.func3() == 0b110),
+    CSRRSI(MASK_I, OPCODE_SYSTEM | 0b110 << SHIFT_FUNCT3, IType.class),
     /**
      * imm = csr, rs1[4:0] = uimm[4:0]
      */
-    CSRRCI(CODE_SYSTEM, IType.class, instruction -> instruction.func3() == 0b111),
+    CSRRCI(MASK_I, OPCODE_SYSTEM | 0b111 << SHIFT_FUNCT3, IType.class),
 
     // ---------- RV32M ---------- //
 
-    MUL(CODE_OP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b0000001),
-    MULH(CODE_OP, RType.class, instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b0000001),
-    MULHSU(CODE_OP, RType.class, instruction -> instruction.func3() == 0b010 && instruction.func7() == 0b0000001),
-    MULHU(CODE_OP, RType.class, instruction -> instruction.func3() == 0b011 && instruction.func7() == 0b0000001),
-    DIV(CODE_OP, RType.class, instruction -> instruction.func3() == 0b100 && instruction.func7() == 0b0000001),
-    DIVU(CODE_OP, RType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0000001),
-    REM(CODE_OP, RType.class, instruction -> instruction.func3() == 0b110 && instruction.func7() == 0b0000001),
-    REMU(CODE_OP, RType.class, instruction -> instruction.func3() == 0b111 && instruction.func7() == 0b0000001),
+    MUL(MASK_R, OPCODE_OP | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    MULH(MASK_R, OPCODE_OP | 0b001 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    MULHSU(MASK_R, OPCODE_OP | 0b010 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    MULHU(MASK_R, OPCODE_OP | 0b011 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    DIV(MASK_R, OPCODE_OP | 0b100 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    DIVU(MASK_R, OPCODE_OP | 0b101 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    REM(MASK_R, OPCODE_OP | 0b110 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    REMU(MASK_R, OPCODE_OP | 0b111 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
 
     // ---------- RV64M ---------- //
 
-    MULW(CODE_OP_32, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b0000001),
-    DIVW(CODE_OP_32, RType.class, instruction -> instruction.func3() == 0b100 && instruction.func7() == 0b0000001),
-    DIVUW(CODE_OP_32, RType.class, instruction -> instruction.func3() == 0b101 && instruction.func7() == 0b0000001),
-    REMW(CODE_OP_32, RType.class, instruction -> instruction.func3() == 0b110 && instruction.func7() == 0b0000001),
-    REMUW(CODE_OP_32, RType.class, instruction -> instruction.func3() == 0b111 && instruction.func7() == 0b0000001),
+    MULW(MASK_R, OPCODE_OP_32 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    DIVW(MASK_R, OPCODE_OP_32 | 0b100 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    DIVUW(MASK_R, OPCODE_OP_32 | 0b101 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    REMW(MASK_R, OPCODE_OP_32 | 0b110 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
+    REMUW(MASK_R, OPCODE_OP_32 | 0b111 << SHIFT_FUNCT3 | 0b0000001 << SHIFT_FUNCT7, RType.class),
 
     // ---------- RV32A ---------- //
 
     /**
-     * func7[0] = rl, func7[1] = aq, rs2 = 0b00000
+     * funct7[0] = rl, funct7[1] = aq, rs2 = 0b00000
      */
-    LR_W(CODE_AMO,
-         RType.class,
-         instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b0001000 && instruction.rs2() == 0b00000),
+    LR_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27 | MASK_RS2,
+         OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b0001000 << SHIFT_FUNCT7,
+         RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    SC_W(CODE_AMO,
-         RType.class,
-         instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b0001100),
+    SC_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+         OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b0001100 << SHIFT_FUNCT7,
+         RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOSWAP_W(CODE_AMO,
-              RType.class,
-              instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b0000100),
+    AMOSWAP_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+              OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b0000100 << SHIFT_FUNCT7,
+              RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOADD_W(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b0000000),
+    AMOADD_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b010 << SHIFT_FUNCT3,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOXOR_W(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b0010000),
+    AMOXOR_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b0010000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOAND_W(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b0110000),
+    AMOAND_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b0110000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOOR_W(CODE_AMO,
-            RType.class,
-            instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b0100000),
+    AMOOR_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+            OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b0100000 << SHIFT_FUNCT7,
+            RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMIN_W(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b1000000),
+    AMOMIN_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b1000000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMAX_W(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b1010000),
+    AMOMAX_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b1010000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMINU_W(CODE_AMO,
-              RType.class,
-              instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b1100000),
+    AMOMINU_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+              OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b1100000 << SHIFT_FUNCT7,
+              RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMAXU_W(CODE_AMO,
-              RType.class,
-              instruction -> instruction.func3() == 0b010 && (instruction.func7() & 0b1111100) == 0b1110000),
+    AMOMAXU_W(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+              OPCODE_AMO | 0b010 << SHIFT_FUNCT3 | 0b1110000 << SHIFT_FUNCT7,
+              RType.class),
 
     // ---------- RV64A ---------- //
 
     /**
-     * func7[0] = rl, func7[1] = aq, rs2 = 0b00000
+     * funct7[0] = rl, funct7[1] = aq, rs2 = 0b00000
      */
-    LR_D(CODE_AMO,
-         RType.class,
-         instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b0001000 && instruction.rs2() == 0b00000),
+    LR_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27 | MASK_RS2,
+         OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b0001000 << SHIFT_FUNCT7,
+         RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    SC_D(CODE_AMO,
-         RType.class,
-         instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b0001100),
+    SC_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+         OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b0001100 << SHIFT_FUNCT7,
+         RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOSWAP_D(CODE_AMO,
-              RType.class,
-              instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b0000100),
+    AMOSWAP_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+              OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b0000100 << SHIFT_FUNCT7,
+              RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOADD_D(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b0000000),
+    AMOADD_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b011 << SHIFT_FUNCT3,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOXOR_D(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b0010000),
+    AMOXOR_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b0010000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOAND_D(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b0110000),
+    AMOAND_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b0110000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOOR_D(CODE_AMO,
-            RType.class,
-            instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b0100000),
+    AMOOR_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+            OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b0100000 << SHIFT_FUNCT7,
+            RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMIN_D(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b1000000),
+    AMOMIN_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b1000000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMAX_D(CODE_AMO,
-             RType.class,
-             instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b1010000),
+    AMOMAX_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+             OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b1010000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMINU_D(CODE_AMO,
-              RType.class,
-              instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b1100000),
+    AMOMINU_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+              OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b1100000 << SHIFT_FUNCT7,
+              RType.class),
     /**
-     * func7[0] = rl, func7[1] = aq
+     * funct7[0] = rl, funct7[1] = aq
      */
-    AMOMAXU_D(CODE_AMO,
-              RType.class,
-              instruction -> instruction.func3() == 0b011 && (instruction.func7() & 0b1111100) == 0b1110000),
+    AMOMAXU_D(MASK_OPCODE | MASK_FUNCT3 | 0b11111 << 27,
+              OPCODE_AMO | 0b011 << SHIFT_FUNCT3 | 0b1110000 << SHIFT_FUNCT7,
+              RType.class),
 
     // ---------- RV32F ---------- //
 
-    FLW(CODE_LOAD_FP, IType.class, instruction -> instruction.func3() == 0b010),
-    FSW(CODE_STORE_FP, SType.class, instruction -> instruction.func3() == 0b010),
+    FLW(MASK_I, OPCODE_LOAD_FP | 0b010 << SHIFT_FUNCT3, IType.class),
+    FSW(MASK_S, OPCODE_STORE_FP | 0b010 << SHIFT_FUNCT3, SType.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FMADD_S(CODE_MADD, R4Type.class),
+    FMADD_S(MASK_OPCODE | MASK_FUNCT2, OPCODE_MADD, R4Type.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FMSUB_S(CODE_MSUB, R4Type.class),
+    FMSUB_S(MASK_OPCODE | MASK_FUNCT2, OPCODE_MSUB, R4Type.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FNMSUB_S(CODE_NMSUB, R4Type.class),
+    FNMSUB_S(MASK_OPCODE | MASK_FUNCT2, OPCODE_NMSUB, R4Type.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FNMADD_S(CODE_NMADD, R4Type.class),
+    FNMADD_S(MASK_OPCODE | MASK_FUNCT2, OPCODE_NMADD, R4Type.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FADD_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b0000000),
+    FADD_S(MASK_OPCODE | MASK_FUNCT7, OPCODE_OP_FP, RType.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FSUB_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b0000100),
+    FSUB_S(MASK_OPCODE | MASK_FUNCT7, OPCODE_OP_FP | 0b0000100 << SHIFT_FUNCT7, RType.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FMUL_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b0001000),
+    FMUL_S(MASK_OPCODE | MASK_FUNCT7, OPCODE_OP_FP | 0b0001000 << SHIFT_FUNCT7, RType.class),
     /**
-     * func3 = rm
+     * funct3 = rm
      */
-    FDIV_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b0001100),
+    FDIV_S(MASK_OPCODE | MASK_FUNCT7, OPCODE_OP_FP | 0b0001100 << SHIFT_FUNCT7, RType.class),
     /**
-     * func3 = rm, rs2 = 0b00000
+     * funct3 = rm, rs2 = 0b00000
      */
-    FSQRT_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b0101100 && instruction.rs2() == 0b00000),
-    FSGNJ_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b0010000),
-    FSGNJN_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b0010000),
-    FSGNJX_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b010 && instruction.func7() == 0b0010000),
-    FMIN_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b0010100),
-    FMAX_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b0010100),
+    FSQRT_S(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+            OPCODE_OP_FP | 0b0101100 << SHIFT_FUNCT7,
+            RType.class),
+    FSGNJ_S(MASK_R, OPCODE_OP_FP | 0b0010000 << SHIFT_FUNCT7, RType.class),
+    FSGNJN_S(MASK_R, OPCODE_OP_FP | 0b001 << SHIFT_FUNCT3 | 0b0010000 << SHIFT_FUNCT7, RType.class),
+    FSGNJX_S(MASK_R, OPCODE_OP_FP | 0b010 << SHIFT_FUNCT3 | 0b0010000 << SHIFT_FUNCT7, RType.class),
+    FMIN_S(MASK_R, OPCODE_OP_FP | 0b0010100 << SHIFT_FUNCT7, RType.class),
+    FMAX_S(MASK_R, OPCODE_OP_FP | 0b001 << SHIFT_FUNCT3 | 0b0010100 << SHIFT_FUNCT7, RType.class),
     /**
-     * func3 = rm, rs2 = 0b00000
+     * funct3 = rm, rs2 = 0b00000
      */
-    FCVT_W_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1100000 && instruction.rs2() == 0b00000),
+    FCVT_W_S(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+             OPCODE_OP_FP | 0b1100000 << SHIFT_FUNCT7,
+             RType.class),
     /**
-     * func3 = rm, rs2 = 0b00001
+     * funct3 = rm, rs2 = 0b00001
      */
-    FCVT_WU_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1100000 && instruction.rs2() == 0b00001),
-    /**
-     * rs2 = 0b00000
-     */
-    FMV_X_W(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b1110000),
-    FEQ_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b010 && instruction.func7() == 0b1010000),
-    FLT_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b1010000),
-    FLE_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b1010000),
-    /**
-     * rs2 = 0b00000
-     */
-    FCLASS_S(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b001 && instruction.func7() == 0b1110000),
-    /**
-     * func3 = rm, rs2 = 0b00000
-     */
-    FCVT_S_W(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1101000 && instruction.rs2() == 0b00000),
-    /**
-     * func3 = rm, rs2 = 0b00001
-     */
-    FCVT_S_WU(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1101000 && instruction.rs2() == 0b00001),
+    FCVT_WU_S(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+              OPCODE_OP_FP | 0b1100000 << SHIFT_FUNCT7 | 0b00001 << SHIFT_RS2,
+              RType.class),
     /**
      * rs2 = 0b00000
      */
-    FMV_W_X(CODE_OP_FP, RType.class, instruction -> instruction.func3() == 0b000 && instruction.func7() == 0b1111000),
+    FMV_X_W(MASK_R | MASK_RS2,
+            OPCODE_OP_FP | 0b1110000 << SHIFT_FUNCT7,
+            RType.class),
+    FEQ_S(MASK_R, OPCODE_OP_FP | 0b010 << SHIFT_FUNCT3 | 0b1010000 << SHIFT_FUNCT7, RType.class),
+    FLT_S(MASK_R, OPCODE_OP_FP | 0b001 << SHIFT_FUNCT3 | 0b1010000 << SHIFT_FUNCT7, RType.class),
+    FLE_S(MASK_R, OPCODE_OP_FP | 0b1010000 << SHIFT_FUNCT7, RType.class),
+    /**
+     * rs2 = 0b00000
+     */
+    FCLASS_S(MASK_R | MASK_RS2,
+             OPCODE_OP_FP | 0b001 << SHIFT_FUNCT3 | 0b1110000 << SHIFT_FUNCT7,
+             RType.class),
+    /**
+     * funct3 = rm, rs2 = 0b00000
+     */
+    FCVT_S_W(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+             OPCODE_OP_FP | 0b1101000 << SHIFT_FUNCT7,
+             RType.class),
+    /**
+     * funct3 = rm, rs2 = 0b00001
+     */
+    FCVT_S_WU(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+              OPCODE_OP_FP | 0b1101000 << SHIFT_FUNCT7 | 0b00001 << SHIFT_RS2,
+              RType.class),
+    /**
+     * rs2 = 0b00000
+     */
+    FMV_W_X(MASK_R | MASK_RS2,
+            OPCODE_OP_FP | 0b1111000 << SHIFT_FUNCT7,
+            RType.class),
 
     // ---------- RV64F ---------- //
 
     /**
-     * func3 = rm, rs2 = 0b00010
+     * funct3 = rm, rs2 = 0b00010
      */
-    FCVT_L_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1100000 && instruction.rs2() == 0b00010),
+    FCVT_L_S(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+             OPCODE_OP_FP | 0b1100000 << SHIFT_FUNCT7 | 0b00010 << SHIFT_RS2,
+             RType.class),
     /**
-     * func3 = rm, rs2 = 0b00011
+     * funct3 = rm, rs2 = 0b00011
      */
-    FCVT_LU_S(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1100000 && instruction.rs2() == 0b00011),
+    FCVT_LU_S(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+              OPCODE_OP_FP | 0b1100000 << SHIFT_FUNCT7 | 0b00011 << SHIFT_RS2,
+              RType.class),
     /**
-     * func3 = rm, rs2 = 0b00010
+     * funct3 = rm, rs2 = 0b00010
      */
-    FCVT_S_L(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1101000 && instruction.rs2() == 0b00010),
+    FCVT_S_L(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+             OPCODE_OP_FP | 0b1101000 << SHIFT_FUNCT7 | 0b00010 << SHIFT_RS2,
+             RType.class),
     /**
-     * func3 = rm, rs2 = 0b00011
+     * funct3 = rm, rs2 = 0b00011
      */
-    FCVT_S_LU(CODE_OP_FP, RType.class, instruction -> instruction.func7() == 0b1101000 && instruction.rs2() == 0b00011),
+    FCVT_S_LU(MASK_OPCODE | MASK_FUNCT7 | MASK_RS2,
+              OPCODE_OP_FP | 0b1101000 << SHIFT_FUNCT7 | 0b00011 << SHIFT_RS2,
+              RType.class),
 
     // ---------- RV32D ---------- //
 
@@ -410,39 +434,67 @@ public enum Definition {
 
     // TODO
 
+    // ---------- RVC ---------- //
+
+    C_LWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_LWSP << 13, CIType.class),
+    C_LDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_LDSP << 13, CIType.class),
+    C_FLWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FLWSP << 13, CIType.class),
+    C_FLDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FLDSP << 13, CIType.class),
+
+    C_SWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_SWSP << 13, CSSType.class),
+    C_SDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_SDSP << 13, CSSType.class),
+    C_FSWSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FSWSP << 13, CSSType.class),
+    C_FSDSP(0b1110000000000011, RVC_OPCODE_C2 | RVC_FSDSP << 13, CSSType.class),
+
+    C_LW(0b1110000000000011, RVC_OPCODE_C0 | RVC_LW << 13, CLType.class),
+    C_LD(0b1110000000000011, RVC_OPCODE_C0 | RVC_LD << 13, CLType.class),
+    C_FLW(0b1110000000000011, RVC_OPCODE_C0 | RVC_FLW << 13, CLType.class),
+    C_FLD(0b1110000000000011, RVC_OPCODE_C0 | RVC_FLD << 13, CLType.class),
+
+    C_SW(0b1110000000000011, RVC_OPCODE_C0 | RVC_SW << 13, CSType.class),
+    C_SD(0b1110000000000011, RVC_OPCODE_C0 | RVC_SD << 13, CSType.class),
+    C_FSW(0b1110000000000011, RVC_OPCODE_C0 | RVC_FSW << 13, CSType.class),
+    C_FSD(0b1110000000000011, RVC_OPCODE_C0 | RVC_FSD << 13, CSType.class),
+
+    C_J(0b1110000000000011, RVC_OPCODE_C1 | RVC_J << 13, CJType.class),
+    C_JAL(0b1110000000000011, RVC_OPCODE_C1 | RVC_JAL << 13, CJType.class),
+
+    C_JR(0b1111000000000011, RVC_OPCODE_C2 | RVC_JR << 12, CRType.class),
+    C_JALR(0b1111000000000011, RVC_OPCODE_C2 | RVC_JALR << 12, CRType.class),
+
     // ---------- Privileged ---------- //
 
-    WFI(CODE_SYSTEM,
-        IType.class,
-        instruction -> instruction.imm() == 0b000100000101 && instruction.rs1() == 0b00000 && instruction.rd() == 0b00000),
+    WFI(MASK_OPCODE | MASK_RS1 | MASK_RS2 | 0b111111111111 << 20, OPCODE_SYSTEM | 0b000100000101 << 20, IType.class),
 
     ;
 
-    private final int opcode;
+    private final int mask;
+    private final int bits;
     private final Class<? extends Instruction> type;
-    private final Predicate<Instruction> predicate;
 
     Definition(
-            final int opcode,
-            final @NotNull Class<? extends Instruction> type,
-            final @NotNull Predicate<Instruction> predicate
+            final int mask,
+            final int bits,
+            final @NotNull Class<? extends Instruction> type
     ) {
-        this.opcode = opcode;
+        this.mask = mask;
+        this.bits = bits;
         this.type = type;
-        this.predicate = predicate;
     }
 
-    Definition(final int opcode, final @NotNull Class<? extends Instruction> type) {
-        this.opcode = opcode;
-        this.type = type;
-        this.predicate = null;
+    public boolean filter(final int data) {
+        return bits == (data & mask);
     }
 
-    public boolean filter(final @NotNull Instruction instruction) {
-        if (!this.type.isInstance(instruction))
-            return false;
-        if (this.opcode != instruction.opcode())
-            return false;
-        return predicate == null || predicate.test(instruction);
+    public @NotNull Instruction instance(final int data) {
+        try {
+            return type.getConstructor(int.class, Definition.class)
+                       .newInstance(data, this);
+        } catch (final InstantiationException |
+                       IllegalAccessException |
+                       InvocationTargetException |
+                       NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

@@ -5,14 +5,20 @@ import org.jetbrains.annotations.NotNull;
 
 public class Instruction {
 
-    public static int decode(final int data) {
-        return data & 0b1111111;
+    protected final int data;
+    private final Definition definition;
+
+    public Instruction(final int data, final @NotNull Definition definition) {
+        this.data = data;
+        this.definition = definition;
     }
 
-    protected final int data;
+    public int data() {
+        return data;
+    }
 
-    public Instruction(final int data) {
-        this.data = data;
+    public final @NotNull Definition def() {
+        return definition;
     }
 
     public int opcode() {
@@ -35,23 +41,7 @@ public class Instruction {
         return (data >> 27) & 0b11111;
     }
 
-    public int func2() {
-        return (data >> 25) & 0b11;
-    }
-
-    public int func3() {
-        return (data >> 12) & 0b111;
-    }
-
-    public int func7() {
-        return (data >> 25) & 0b1111111;
-    }
-
     public int imm() {
-        throw new UnsupportedOperationException();
-    }
-
-    public @NotNull Definition def() {
         throw new UnsupportedOperationException();
     }
 

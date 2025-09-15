@@ -2,6 +2,7 @@ package io.scriptor.impl;
 
 import io.scriptor.Machine;
 import io.scriptor.MachineLayout;
+import io.scriptor.instruction.CompressedInstruction;
 import io.scriptor.io.IOStream;
 import io.scriptor.io.LongByteBuffer;
 import org.jetbrains.annotations.NotNull;
@@ -45,10 +46,13 @@ public final class Machine64 implements Machine {
         }
 
         pc = next;
-        next = pc + 4;
 
         final var instruction = decode();
         final var definition  = instruction.def();
+
+        final var ilen = ((instruction instanceof CompressedInstruction) ? 2 : 4);
+
+        next = pc + ilen;
 
         switch (definition) {
             case ADDI -> {
@@ -160,8 +164,8 @@ public final class Machine64 implements Machine {
                 // (pc') = (pc) + {imm}
                 // (rd) = (pc) + 4
                 final var offset = signExtend(instruction.imm(), 21);
-                offsetPC(offset);
-                gpr(instruction.rd(), getPC() + 4);
+                next = pc + offset;
+                gpr(instruction.rd(), pc + ilen);
             }
 
             case JALR -> {
@@ -169,8 +173,8 @@ public final class Machine64 implements Machine {
                 // (rd) = (pc) + 4
                 final var base   = gpr(instruction.rs1());
                 final var offset = signExtend(instruction.imm(), 12);
-                setPC(base + offset);
-                gpr(instruction.rd(), getPC() + 4);
+                next = base + offset;
+                gpr(instruction.rd(), pc + ilen);
             }
 
             case LUI -> {
@@ -179,7 +183,7 @@ public final class Machine64 implements Machine {
             }
             case AUIPC -> {
                 // (rd) = (pc) + imm
-                gpr(instruction.rd(), getPC() + instruction.imm());
+                gpr(instruction.rd(), pc + instruction.imm());
             }
 
             case BEQ -> {
@@ -187,7 +191,7 @@ public final class Machine64 implements Machine {
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = gpr(instruction.rs2());
                 if (lhs == rhs) {
-                    offsetPC(signExtend(instruction.imm(), 13));
+                    next = pc + signExtend(instruction.imm(), 13);
                 }
             }
             case BNE -> {
@@ -195,7 +199,7 @@ public final class Machine64 implements Machine {
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = gpr(instruction.rs2());
                 if (lhs != rhs) {
-                    offsetPC(signExtend(instruction.imm(), 13));
+                    next = pc + signExtend(instruction.imm(), 13);
                 }
             }
             case BLT -> {
@@ -203,7 +207,7 @@ public final class Machine64 implements Machine {
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = gpr(instruction.rs2());
                 if (lhs < rhs) {
-                    offsetPC(signExtend(instruction.imm(), 13));
+                    next = pc + signExtend(instruction.imm(), 13);
                 }
             }
             case BGE -> {
@@ -211,7 +215,7 @@ public final class Machine64 implements Machine {
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = gpr(instruction.rs2());
                 if (lhs >= rhs) {
-                    offsetPC(signExtend(instruction.imm(), 13));
+                    next = pc + signExtend(instruction.imm(), 13);
                 }
             }
             case BLTU -> {
@@ -219,7 +223,7 @@ public final class Machine64 implements Machine {
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = gpr(instruction.rs2());
                 if (Long.compareUnsigned(lhs, rhs) < 0) {
-                    offsetPC(signExtend(instruction.imm(), 13));
+                    next = pc + signExtend(instruction.imm(), 13);
                 }
             }
             case BGEU -> {
@@ -227,7 +231,7 @@ public final class Machine64 implements Machine {
                 final var lhs = gpr(instruction.rs1());
                 final var rhs = gpr(instruction.rs2());
                 if (Long.compareUnsigned(lhs, rhs) >= 0) {
-                    offsetPC(signExtend(instruction.imm(), 13));
+                    next = pc + signExtend(instruction.imm(), 13);
                 }
             }
 
@@ -485,17 +489,5 @@ public final class Machine64 implements Machine {
         }
 
         memory.put(address - pdram, bytes, 0, bytes.length);
-    }
-
-    private long getPC() {
-        return pc;
-    }
-
-    private void setPC(final long address) {
-        next = address;
-    }
-
-    private void offsetPC(final long offset) {
-        next = pc + offset;
     }
 }

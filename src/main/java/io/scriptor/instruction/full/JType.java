@@ -1,26 +1,13 @@
-package io.scriptor.instruction;
+package io.scriptor.instruction.full;
 
 import io.scriptor.Definition;
+import io.scriptor.instruction.Instruction;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.Arrays;
 
 public final class JType extends Instruction {
 
-    private final Definition definition;
-
-    public JType(final int data) {
-        super(data);
-
-        final var definitions = Arrays.stream(Definition.values())
-                                      .filter(definition -> definition.filter(this))
-                                      .toList();
-
-        if (definitions.size() != 1) {
-            throw new IllegalStateException();
-        }
-
-        definition = definitions.getFirst();
+    public JType(final int data, final @NotNull Definition definition) {
+        super(data, definition);
     }
 
     @Override
@@ -29,11 +16,6 @@ public final class JType extends Instruction {
                | (((data >> 12) & 0b11111111) << 12)
                | (((data >> 20) & 0b1) << 11)
                | (((data >> 21) & 0b1111111111) << 1);
-    }
-
-    @Override
-    public @NotNull Definition def() {
-        return definition;
     }
 
     @Override
