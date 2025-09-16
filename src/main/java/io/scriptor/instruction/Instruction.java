@@ -5,6 +5,12 @@ import org.jetbrains.annotations.NotNull;
 
 public class Instruction {
 
+    @FunctionalInterface
+    public interface Constructor<T extends Instruction> {
+
+        @NotNull T create(final int data, final @NotNull Definition definition);
+    }
+
     protected final int data;
     private final Definition definition;
 

@@ -1,10 +1,8 @@
 package io.scriptor.io;
 
 import org.jetbrains.annotations.NotNull;
-import sun.nio.ch.FileChannelImpl;
 
 import java.io.EOFException;
-import java.io.FileDescriptor;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -14,10 +12,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
 public class FileStream extends IOStream {
-
-    public static final IOStream stdin = new FileStream(FileDescriptor.in, true, false);
-    public static final IOStream stdout = new FileStream(FileDescriptor.out, false, true);
-    public static final IOStream stderr = new FileStream(FileDescriptor.err, false, true);
 
     private final FileChannel channel;
 
@@ -29,10 +23,6 @@ public class FileStream extends IOStream {
             option = StandardOpenOption.READ;
         }
         channel = FileChannel.open(Path.of(filename), option);
-    }
-
-    public FileStream(final @NotNull FileDescriptor fd, final boolean readable, final boolean writable) {
-        channel = FileChannelImpl.open(fd, null, readable, writable, false, false, this);
     }
 
     @Override

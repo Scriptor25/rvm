@@ -1,6 +1,8 @@
 plugins {
     id("java")
     id("application")
+
+    id("org.graalvm.buildtools.native") version "0.11.0"
 }
 
 group = "io.scriptor"
@@ -27,14 +29,12 @@ application {
     mainClass = "io.scriptor.Main"
 
     applicationName = "rvm"
-    applicationDefaultJvmArgs = listOf("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED")
 }
 
-tasks.withType<JavaCompile> {
-    options.compilerArgs.addAll(listOf("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED"))
+graalvmNative {
+    toolchainDetection = true
 }
 
 tasks.withType<JavaExec> {
     args("riscv-os/kernel.elf", "elf")
-    jvmArgs("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED")
 }
