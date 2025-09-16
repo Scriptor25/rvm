@@ -101,7 +101,7 @@ public enum Definition {
 
     // ---------- RV32/RV64 Zifencei ---------- //
 
-    // TODO: FENCE.I
+    FENCE_I(0xffffffff, OPCODE_MISC_MEM | 0b001 << SHIFT_FUNCT3, IType::new),
 
     // ---------- RV32/RV64 Zicsr ---------- //
 

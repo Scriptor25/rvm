@@ -129,11 +129,17 @@ public final class Main {
             }
         } catch (final IOException e) {
             e.printStackTrace(System.err);
+            return;
         }
 
-        machine.reset();
-        while (machine.step())
-            ;
+        try {
+            machine.reset();
+            while (machine.step())
+                ;
+        } catch (final Exception e) {
+            machine.dump(System.err);
+            e.printStackTrace(System.err);
+        }
     }
 
     private Main() {

@@ -34,7 +34,3 @@ application {
 graalvmNative {
     toolchainDetection = true
 }
-
-tasks.withType<JavaExec> {
-    args("riscv-os/kernel.elf", "elf")
-}

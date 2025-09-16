@@ -22,13 +22,6 @@ public final class LongByteBuffer {
         }
     }
 
-    public LongByteBuffer(final @NotNull ByteBuffer buffer) {
-        this.chunkSize = buffer.capacity();
-        this.chunks = new ByteBuffer[1];
-
-        this.chunks[0] = buffer;
-    }
-
     public @NotNull ByteBuffer[] chunks() {
         return chunks;
     }
