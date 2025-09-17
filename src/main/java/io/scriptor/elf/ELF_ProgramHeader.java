@@ -5,56 +5,45 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-public final class ELF_ProgramHeader {
+import static io.scriptor.elf.ELF.CLASS_32;
+import static io.scriptor.elf.ELF.CLASS_64;
 
-    /**
-     * Identifies the type of the segment.
-     */
-    public final int type;
-    /**
-     * Segment-dependent flags (position for 64-bit structure).
-     */
-    public final int flags64;
-    /**
-     * Offset of the segment in the file image.
-     */
-    public final long offset;
-    /**
-     * Virtual address of the segment in memory.
-     */
-    public final long vaddr;
-    /**
-     * On systems where physical address is relevant, reserved for segment's physical address.
-     */
-    public final long paddr;
-    /**
-     * Size in bytes of the segment in the file image. May be 0.
-     */
-    public final long filesz;
-    /**
-     * Size in bytes of the segment in memory. May be 0.
-     */
-    public final long memsz;
-    /**
-     * Segment-dependent flags (position for 32-bit structure).
-     */
-    public final int flags32;
-    /**
-     * 0 and 1 specify no alignment.
-     * Otherwise, should be a positive, integral power of 2, with p_vaddr equating p_offset modulus p_align.
-     */
-    public final long align;
+/**
+ * @param type    Identifies the type of the segment.
+ * @param flags64 Segment-dependent flags (position for 64-bit structure).
+ * @param offset  Offset of the segment in the file image.
+ * @param vaddr   Virtual address of the segment in memory.
+ * @param paddr   On systems where physical address is relevant, reserved for segment's physical address.
+ * @param filesz  Size in bytes of the segment in the file image. May be 0.
+ * @param memsz   Size in bytes of the segment in memory. May be 0.
+ * @param flags32 Segment-dependent flags (position for 32-bit structure).
+ * @param align   0 and 1 specify no alignment.
+ *                Otherwise, should be a positive, integral power of 2, with p_vaddr equating p_offset modulus p_align.
+ */
+public record ELF_ProgramHeader(
+        int type,
+        int flags64,
+        long offset,
+        long vaddr,
+        long paddr,
+        long filesz,
+        long memsz,
+        int flags32,
+        long align
+) {
 
-    public ELF_ProgramHeader(final @NotNull IOStream stream, final @NotNull ELF_Format format) throws IOException {
-        type = format.readInt(stream);
-        flags64 = format.getBits() == 64 ? format.readInt(stream) : 0;
-        offset = format.readOffset(stream);
-        vaddr = format.readOffset(stream);
-        paddr = format.readOffset(stream);
-        filesz = format.readOffset(stream);
-        memsz = format.readOffset(stream);
-        flags32 = format.getBits() == 32 ? format.readInt(stream) : 0;
-        align = format.readOffset(stream);
+    public static @NotNull ELF_ProgramHeader read(final @NotNull ELF_Identity identity, final @NotNull IOStream stream)
+            throws IOException {
+        final var type    = identity.readInt(stream);
+        final var flags64 = identity.class_() == CLASS_64 ? identity.readInt(stream) : 0;
+        final var offset  = identity.readOffset(stream);
+        final var vaddr   = identity.readOffset(stream);
+        final var paddr   = identity.readOffset(stream);
+        final var filesz  = identity.readOffset(stream);
+        final var memsz   = identity.readOffset(stream);
+        final var flags32 = identity.class_() == CLASS_32 ? identity.readInt(stream) : 0;
+        final var align   = identity.readOffset(stream);
+        return new ELF_ProgramHeader(type, flags64, offset, vaddr, paddr, filesz, memsz, flags32, align);
     }
 
     @Override

@@ -5,9 +5,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-public final class Bytes {
+public final class ByteUtil {
 
-    private Bytes() {
+    private ByteUtil() {
     }
 
     public static short parseShortLE(final byte @NotNull [] bytes) {

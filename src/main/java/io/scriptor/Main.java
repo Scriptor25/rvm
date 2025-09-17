@@ -1,6 +1,7 @@
 package io.scriptor;
 
 import io.scriptor.elf.ELF_Header;
+import io.scriptor.elf.ELF_Identity;
 import io.scriptor.elf.ELF_ProgramHeader;
 import io.scriptor.elf.ELF_SectionHeader;
 import io.scriptor.impl.Machine64;
@@ -12,7 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.NoSuchElementException;
 
-import static io.scriptor.Bytes.readString;
+import static io.scriptor.ByteUtil.readString;
 import static io.scriptor.Unit.MiB;
 
 public final class Main {
@@ -83,47 +84,48 @@ public final class Main {
                     machine.loadDirect(stream);
                 }
                 case ELF -> {
-                    final var header = new ELF_Header(stream);
+                    final var identity = ELF_Identity.read(stream);
+                    final var header   = ELF_Header.read(identity, stream);
 
-                    machine.setEntry(header.entry);
+                    machine.setEntry(header.entry());
 
-                    final var programHeaderTable = new ELF_ProgramHeader[header.phnum];
-                    final var sectionHeaderTable = new ELF_SectionHeader[header.shnum];
+                    final var programHeaderTable = new ELF_ProgramHeader[header.phnum()];
+                    final var sectionHeaderTable = new ELF_SectionHeader[header.shnum()];
 
-                    for (int i = 0; i < header.phnum; ++i) {
-                        stream.seek(header.phoff + i * header.phentsize);
-                        programHeaderTable[i] = new ELF_ProgramHeader(stream, header.identity.format);
+                    for (int i = 0; i < header.phnum(); ++i) {
+                        stream.seek(header.phoff() + i * header.phentsize());
+                        programHeaderTable[i] = ELF_ProgramHeader.read(identity, stream);
                     }
 
-                    for (int i = 0; i < header.shnum; ++i) {
-                        stream.seek(header.shoff + i * header.shentsize);
-                        sectionHeaderTable[i] = new ELF_SectionHeader(stream, header.identity.format);
+                    for (int i = 0; i < header.shnum(); ++i) {
+                        stream.seek(header.shoff() + i * header.shentsize());
+                        sectionHeaderTable[i] = ELF_SectionHeader.read(identity, stream);
                     }
 
-                    final var stringSectionHeader = sectionHeaderTable[header.shstrndx];
+                    final var stringSectionHeader = sectionHeaderTable[header.shstrndx()];
 
                     System.out.println("program headers:");
                     for (final var programHeader : programHeaderTable) {
                         System.out.println(programHeader);
 
-                        stream.seek(programHeader.offset);
-                        print(stream, programHeader.offset, programHeader.filesz);
+                        stream.seek(programHeader.offset());
+                        print(stream, programHeader.offset(), programHeader.filesz());
 
-                        if (programHeader.type == 0x01) {
-                            stream.seek(programHeader.offset);
+                        if (programHeader.type() == 0x01) {
+                            stream.seek(programHeader.offset());
                             machine.loadSegment(stream,
-                                                programHeader.paddr,
-                                                programHeader.filesz);
+                                                programHeader.paddr(),
+                                                programHeader.filesz());
                         }
                     }
 
                     System.out.println("section headers:");
                     for (final var sectionHeader : sectionHeaderTable) {
-                        stream.seek(stringSectionHeader.offset + sectionHeader.name);
+                        stream.seek(stringSectionHeader.offset() + sectionHeader.name());
                         System.out.printf("%s: %s%n", readString(stream), sectionHeader);
 
-                        stream.seek(sectionHeader.offset);
-                        print(stream, sectionHeader.offset, sectionHeader.size);
+                        stream.seek(sectionHeader.offset());
+                        print(stream, sectionHeader.offset(), sectionHeader.size());
                     }
                 }
             }

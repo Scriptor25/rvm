@@ -1,5 +1,6 @@
 package io.scriptor.impl;
 
+import io.scriptor.Log;
 import io.scriptor.Machine;
 import io.scriptor.MachineLayout;
 import io.scriptor.instruction.CompressedInstruction;
@@ -13,7 +14,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static io.scriptor.Bytes.*;
+import static io.scriptor.ByteUtil.*;
 
 public final class Machine64 implements Machine {
 
@@ -611,8 +612,6 @@ public final class Machine64 implements Machine {
         final var bytes = new byte[n];
 
         if (address < pdram) {
-            // TODO: mmio
-
             // uart rx
             if (address == 0x10000000L && n == 1) {
                 try {
@@ -623,6 +622,7 @@ public final class Machine64 implements Machine {
                 }
                 return bytes;
             }
+
             // uart lsr
             if (address == 0x10000005L && n == 1) {
                 try {
@@ -634,7 +634,10 @@ public final class Machine64 implements Machine {
                 return bytes;
             }
 
-            throw new UnsupportedOperationException("load address=%016x (mmio) n=%d".formatted(address, n));
+            // TODO: mmio
+
+            Log.warn("load address=%016x n=%d".formatted(address, n));
+            return bytes;
         }
 
         memory.get(address - pdram, bytes, 0, n);
@@ -643,15 +646,16 @@ public final class Machine64 implements Machine {
 
     private void store(final long address, final int n, final byte @NotNull ... bytes) {
         if (address < pdram) {
-            // TODO: mmio
-
             // uart rx
             if (address == 0x10000000L && n == 1) {
                 System.out.print((char) bytes[0]);
                 return;
             }
 
-            throw new UnsupportedOperationException("store address=%016x (mmio) n=%d".formatted(address, n));
+            // TODO: mmio
+
+            Log.warn("store address=%016x n=%d".formatted(address, n));
+            return;
         }
 
         memory.put(address - pdram, bytes, 0, bytes.length);
