@@ -7,10 +7,13 @@ import io.scriptor.elf.ELF_SectionHeader;
 import io.scriptor.impl.Machine64;
 import io.scriptor.io.FileStream;
 import io.scriptor.io.IOStream;
+import io.scriptor.isa.Registry;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.List;
 import java.util.NoSuchElementException;
 
 import static io.scriptor.ByteUtil.readString;
@@ -60,6 +63,21 @@ public final class Main {
             return;
         }
 
+        final var files    = List.of("rv32i.isa", "rv64i.isa");
+        final var registry = new Registry();
+
+        for (final var name : files) {
+            try (final var stream = ClassLoader.getSystemResourceAsStream(name)) {
+                if (stream == null)
+                    throw new FileNotFoundException("resource name '%s'".formatted(name));
+
+                registry.parse(stream);
+            } catch (final IOException e) {
+                e.printStackTrace(System.err);
+                return;
+            }
+        }
+
         final String filename;
         try {
             filename = new File(args[0]).getCanonicalPath();
@@ -80,8 +98,11 @@ public final class Main {
         try (final var stream = new FileStream(filename, false)) {
             switch (format) {
                 case BIN -> {
+                    System.out.println("raw binary:");
+                    print(stream, 0, stream.size());
+
                     machine.setEntry(0x80000000L);
-                    machine.loadDirect(stream);
+                    machine.loadDirect(stream.seek(0));
                 }
                 case ELF -> {
                     final var identity = ELF_Identity.read(stream);
@@ -107,13 +128,12 @@ public final class Main {
                     System.out.println("program headers:");
                     for (final var programHeader : programHeaderTable) {
                         System.out.println(programHeader);
-
-                        stream.seek(programHeader.offset());
-                        print(stream, programHeader.offset(), programHeader.filesz());
+                        print(stream.seek(programHeader.offset()),
+                              programHeader.offset(),
+                              programHeader.filesz());
 
                         if (programHeader.type() == 0x01) {
-                            stream.seek(programHeader.offset());
-                            machine.loadSegment(stream,
+                            machine.loadSegment(stream.seek(programHeader.offset()),
                                                 programHeader.paddr(),
                                                 programHeader.filesz());
                         }
@@ -121,11 +141,11 @@ public final class Main {
 
                     System.out.println("section headers:");
                     for (final var sectionHeader : sectionHeaderTable) {
-                        stream.seek(stringSectionHeader.offset() + sectionHeader.name());
-                        System.out.printf("%s: %s%n", readString(stream), sectionHeader);
+                        System.out.printf("%s: %s%n",
+                                          readString(stream.seek(stringSectionHeader.offset() + sectionHeader.name())),
+                                          sectionHeader);
 
-                        stream.seek(sectionHeader.offset());
-                        print(stream, sectionHeader.offset(), sectionHeader.size());
+                        print(stream.seek(sectionHeader.offset()), sectionHeader.offset(), sectionHeader.size());
                     }
                 }
             }

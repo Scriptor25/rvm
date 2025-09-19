@@ -11,11 +11,15 @@ public abstract class IOStream implements Closeable {
         return false;
     }
 
-    public void seek(final long pos) throws IOException {
+    public IOStream seek(final long pos) throws IOException {
         throw new UnsupportedOperationException();
     }
 
     public long tell() throws IOException {
+        throw new UnsupportedOperationException();
+    }
+
+    public long size() throws IOException {
         throw new UnsupportedOperationException();
     }
 
@@ -31,7 +35,7 @@ public abstract class IOStream implements Closeable {
         throw new UnsupportedOperationException();
     }
 
-    public long read(final @NotNull LongByteBuffer buffer) throws IOException {
+    public long read(final @NotNull LongByteBuffer buffer, final long index, final long count) throws IOException {
         throw new UnsupportedOperationException();
     }
 
@@ -43,7 +47,7 @@ public abstract class IOStream implements Closeable {
         throw new UnsupportedOperationException();
     }
 
-    public long write(final @NotNull LongByteBuffer buffer) throws IOException {
+    public long write(final @NotNull LongByteBuffer buffer, final long index, final long count) throws IOException {
         throw new UnsupportedOperationException();
     }
 

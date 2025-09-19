@@ -487,8 +487,7 @@ public final class Machine64 implements Machine {
 
     @Override
     public void loadDirect(final @NotNull IOStream stream) throws IOException {
-        stream.read(memory.reset());
-        memory.reset();
+        stream.read(memory, 0, memory.capacity());
     }
 
     @Override
@@ -498,8 +497,7 @@ public final class Machine64 implements Machine {
             final long size
     ) throws IOException {
         final var dst = address - pdram;
-        stream.read(memory.range(dst, dst + size));
-        memory.reset();
+        stream.read(memory, dst, dst + size);
     }
 
     @Override

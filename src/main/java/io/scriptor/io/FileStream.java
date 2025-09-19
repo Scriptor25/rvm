@@ -31,13 +31,19 @@ public class FileStream extends IOStream {
     }
 
     @Override
-    public void seek(final long pos) throws IOException {
+    public FileStream seek(final long pos) throws IOException {
         channel.position(pos);
+        return this;
     }
 
     @Override
     public long tell() throws IOException {
         return channel.position();
+    }
+
+    @Override
+    public long size() throws IOException {
+        return channel.size();
     }
 
     @Override
@@ -64,8 +70,8 @@ public class FileStream extends IOStream {
     }
 
     @Override
-    public long read(final @NotNull LongByteBuffer buffer) throws IOException {
-        return channel.read(buffer.chunks());
+    public long read(final @NotNull LongByteBuffer buffer, final long index, final long count) throws IOException {
+        return channel.read(buffer.range(index, count));
     }
 
     @Override
@@ -83,8 +89,8 @@ public class FileStream extends IOStream {
     }
 
     @Override
-    public long write(final @NotNull LongByteBuffer buffer) throws IOException {
-        return channel.write(buffer.chunks());
+    public long write(final @NotNull LongByteBuffer buffer, final long index, final long count) throws IOException {
+        return channel.write(buffer.range(index, count));
     }
 
     @Override

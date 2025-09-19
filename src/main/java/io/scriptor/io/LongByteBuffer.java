@@ -22,63 +22,6 @@ public final class LongByteBuffer {
         }
     }
 
-    public @NotNull ByteBuffer[] chunks() {
-        return chunks;
-    }
-
-    public byte @NotNull [] bytes(final long offset, final int length) {
-        final var bytes = new byte[length];
-
-        final var chunkOffset    = (int) (offset / (long) chunkSize);
-        final var chunkOffsetRem = (int) (offset % (long) chunkSize);
-        final var chunkCount     = (int) (length / (long) chunkSize);
-        final var chunkCountRem  = (int) (length % (long) chunkSize);
-
-        for (int i = 0; i < chunkCount; ++i) {
-            chunks[i + chunkOffset].position(i == 0 ? chunkOffsetRem : 0)
-                                   .get(bytes, i * chunkSize, chunkSize);
-        }
-
-        if (chunkCountRem != 0) {
-            chunks[chunkCount + chunkOffset].position(chunkCount == 0 ? chunkOffsetRem : 0)
-                                            .get(bytes, chunkCount * chunkSize, chunkCountRem);
-        }
-
-        return bytes;
-    }
-
-    public @NotNull LongByteBuffer reset() {
-        for (final var chunk : chunks) {
-            chunk.position(0)
-                 .limit(chunkSize);
-        }
-
-        return this;
-    }
-
-    public @NotNull LongByteBuffer range(final long begin, final long end) {
-        final var beginChunk  = (int) (begin / (long) chunkSize);
-        final var beginOffset = (int) (begin % (long) chunkSize);
-        final var endChunk    = (int) (end / (long) chunkSize);
-        final var endOffset   = (int) (end % (long) chunkSize);
-
-        for (final var chunk : chunks) {
-            chunk.position(0)
-                 .limit(chunkSize);
-        }
-        for (int i = 0; i < beginChunk; ++i) {
-            chunks[i].limit(0);
-        }
-        for (int i = endChunk; i < chunks.length; ++i) {
-            chunks[i].limit(0);
-        }
-
-        chunks[beginChunk].position(beginOffset);
-        chunks[endChunk].limit(endOffset);
-
-        return this;
-    }
-
     public byte get(final long index) {
         final var chunk  = (int) (index / (long) chunkSize);
         final var offset = (int) (index % (long) chunkSize);
@@ -103,5 +46,36 @@ public final class LongByteBuffer {
 
     public long capacity() {
         return (long) chunks.length * (long) chunkSize;
+    }
+
+    public @NotNull ByteBuffer[] range(final long index, final long count) {
+        final var num = (int) ((count + (long) chunkSize - 1L) / (long) chunkSize);
+
+        final var buffers = new ByteBuffer[num];
+
+        var chunk  = (int) (index / (long) chunkSize);
+        var offset = (int) (index % (long) chunkSize);
+
+        var remainder = count;
+
+        for (int i = 0; i < num; ++i) {
+            final var buffer = chunks[chunk++];
+
+            final int limit;
+            if (remainder <= chunkSize) {
+                limit = (int) remainder;
+            } else {
+                limit = chunkSize;
+                remainder -= chunkSize;
+            }
+
+            buffers[i] = buffer.duplicate()
+                               .order(buffer.order())
+                               .position(offset)
+                               .limit(limit);
+            offset = 0;
+        }
+
+        return buffers;
     }
 }
