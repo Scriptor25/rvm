@@ -44,11 +44,19 @@ public final class LongByteBuffer {
             put(index + i, bytes[offset + i]);
     }
 
+    public void fill(final long index, final long count, final byte value) {
+        for (long i = 0; i < count; ++i)
+            put(index + i, value);
+    }
+
     public long capacity() {
         return (long) chunks.length * (long) chunkSize;
     }
 
     public @NotNull ByteBuffer[] range(final long index, final long count) {
+        if (index < 0L || count < 0L)
+            throw new IndexOutOfBoundsException("index=%d count=%d".formatted(index, count));
+
         final var num = (int) ((count + (long) chunkSize - 1L) / (long) chunkSize);
 
         final var buffers = new ByteBuffer[num];

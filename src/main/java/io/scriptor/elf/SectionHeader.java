@@ -20,7 +20,7 @@ import java.io.IOException;
  * @param entsize   Contains the size, in bytes, of each entry, for sections that contain fixed-size entries.
  *                  Otherwise, this field contains zero.
  */
-public record ELF_SectionHeader(
+public record SectionHeader(
         int name,
         int type,
         long flags,
@@ -33,7 +33,7 @@ public record ELF_SectionHeader(
         long entsize
 ) {
 
-    public static @NotNull ELF_SectionHeader read(final @NotNull ELF_Identity identity, final @NotNull IOStream stream)
+    public static @NotNull SectionHeader read(final @NotNull Identity identity, final @NotNull IOStream stream)
             throws IOException {
         final var name      = identity.readInt(stream);
         final var type      = identity.readInt(stream);
@@ -45,7 +45,7 @@ public record ELF_SectionHeader(
         final var info      = identity.readInt(stream);
         final var addralign = identity.readOffset(stream);
         final var entsize   = identity.readOffset(stream);
-        return new ELF_SectionHeader(name, type, flags, addr, offset, size, link, info, addralign, entsize);
+        return new SectionHeader(name, type, flags, addr, offset, size, link, info, addralign, entsize);
     }
 
     @Override

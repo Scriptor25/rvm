@@ -1,4 +1,4 @@
-package io.scriptor;
+package io.scriptor.util;
 
 public final class Unit {
 

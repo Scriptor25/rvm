@@ -70,6 +70,11 @@ public class FileStream extends IOStream {
     }
 
     @Override
+    public long read(final @NotNull ByteBuffer buffer) throws IOException {
+        return channel.read(buffer);
+    }
+
+    @Override
     public long read(final @NotNull LongByteBuffer buffer, final long index, final long count) throws IOException {
         return channel.read(buffer.range(index, count));
     }

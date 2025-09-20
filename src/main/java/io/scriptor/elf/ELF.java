@@ -1,12 +1,19 @@
 package io.scriptor.elf;
 
+import io.scriptor.io.IOStream;
+import org.jetbrains.annotations.NotNull;
+
+import java.io.IOException;
+
+import static io.scriptor.util.ByteUtil.readString;
+
 public interface ELF {
 
-    byte CLASS_32 = 0x1;
-    byte CLASS_64 = 0x2;
+    byte ELF32 = 0x1;
+    byte ELF64 = 0x2;
 
-    byte DATA_LE = 0x1;
-    byte DATA_BE = 0x2;
+    byte LE = 0x1;
+    byte BE = 0x2;
 
     byte VERSION_1 = 0x1;
 
@@ -36,4 +43,27 @@ public interface ELF {
     short TYPE_CORE = 0x0004;
 
     short MACHINE_RISC_V = 0x00F3;
+
+    static void readSymbols(
+            final @NotNull Identity identity,
+            final @NotNull IOStream stream,
+            final @NotNull SectionHeader symtab,
+            final @NotNull SectionHeader strtab,
+            final @NotNull SymbolTable symbols,
+            final long offset
+    ) throws IOException {
+        for (long o = 0L; o < symtab.size(); o += symtab.entsize()) {
+            stream.seek(symtab.offset() + o);
+
+            final var name  = identity.readInt(stream);
+            final var info  = stream.read();
+            final var other = stream.read();
+            final var shndx = identity.readShort(stream) & 0xFFFF;
+            final var value = identity.readLong(stream);
+            final var size  = identity.readLong(stream);
+
+            final var string = readString(stream.seek(strtab.offset() + name));
+            symbols.put(value + offset, string);
+        }
+    }
 }

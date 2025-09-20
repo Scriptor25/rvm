@@ -1,6 +1,6 @@
 package io.scriptor.isa;
 
-import io.scriptor.Log;
+import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
@@ -23,15 +23,17 @@ public final class Registry {
         return instance;
     }
 
-    public static boolean has(final int value) {
+    public static boolean has(final int mode, final int value) {
         return instance.instructions.values()
                                     .stream()
+                                    .filter(instruction -> instruction.restriction() == 0 || instruction.restriction() == mode)
                                     .anyMatch(instruction -> instruction.test(value));
     }
 
-    public static @NotNull Instruction get(final int value) {
+    public static @NotNull Instruction get(final int mode, final int value) {
         final var definitions = instance.instructions.values()
                                                      .stream()
+                                                     .filter(instruction -> instruction.restriction() == 0 || instruction.restriction() == mode)
                                                      .filter(instruction -> instruction.test(value))
                                                      .toList();
 
@@ -146,11 +148,6 @@ public final class Registry {
     ) {
         final var instruction = parseInstructionEntry(mInstruction);
 
-        if (mInstruction.group(3) != null) {
-            final var bits = Integer.parseUnsignedInt(mInstruction.group(3));
-            // TODO
-        }
-
         if (mInstruction.group(4) != null) {
             final var type = types.get(mInstruction.group(4).trim());
             instruction.operands().putAll(type.operands());
@@ -186,6 +183,13 @@ public final class Registry {
             }
         }
 
-        return new Instruction(mInstruction.group(1), ilen, mask, bits, new HashMap<>());
+        final int restriction;
+        if (mInstruction.group(3) != null) {
+            restriction = Integer.parseUnsignedInt(mInstruction.group(3));
+        } else {
+            restriction = 0;
+        }
+
+        return new Instruction(mInstruction.group(1), ilen, mask, bits, restriction, new HashMap<>());
     }
 }

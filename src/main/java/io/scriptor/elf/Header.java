@@ -26,7 +26,7 @@ import java.io.IOException;
  * @param shnum     Contains the number of entries in the section header table.
  * @param shstrndx  Contains index of the section header table entry that contains the section names.
  */
-public record ELF_Header(
+public record Header(
         short type,
         short machine,
         int version,
@@ -42,7 +42,7 @@ public record ELF_Header(
         short shstrndx
 ) {
 
-    public static @NotNull ELF_Header read(final @NotNull ELF_Identity identity, final @NotNull IOStream stream)
+    public static @NotNull Header read(final @NotNull Identity identity, final @NotNull IOStream stream)
             throws IOException {
         final var type      = identity.readShort(stream);
         final var machine   = identity.readShort(stream);
@@ -57,18 +57,36 @@ public record ELF_Header(
         final var shentsize = identity.readShort(stream);
         final var shnum     = identity.readShort(stream);
         final var shstrndx  = identity.readShort(stream);
-        return new ELF_Header(type,
-                              machine,
-                              version,
-                              entry,
-                              phoff,
-                              shoff,
-                              flags,
-                              ehsize,
-                              phentsize,
-                              phnum,
-                              shentsize,
-                              shnum,
-                              shstrndx);
+        return new Header(type,
+                          machine,
+                          version,
+                          entry,
+                          phoff,
+                          shoff,
+                          flags,
+                          ehsize,
+                          phentsize,
+                          phnum,
+                          shentsize,
+                          shnum,
+                          shstrndx);
+    }
+
+    @Override
+    public @NotNull String toString() {
+        return "type=%x, machine=%x, version=%x, entry=%x, phoff=%x, shoff=%x, flags=%x, ehsize=%x, phentsize=%x, phnum=%x, shentsize=%x, shnum=%x, shstrndx=%x"
+                .formatted(type,
+                           machine,
+                           version,
+                           entry,
+                           phoff,
+                           shoff,
+                           flags,
+                           ehsize,
+                           phentsize,
+                           phnum,
+                           shentsize,
+                           shnum,
+                           shstrndx);
     }
 }

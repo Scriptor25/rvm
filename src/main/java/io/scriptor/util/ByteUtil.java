@@ -1,4 +1,4 @@
-package io.scriptor;
+package io.scriptor.util;
 
 import io.scriptor.io.IOStream;
 import org.jetbrains.annotations.NotNull;

@@ -5,8 +5,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-import static io.scriptor.elf.ELF.CLASS_32;
-import static io.scriptor.elf.ELF.CLASS_64;
+import static io.scriptor.elf.ELF.ELF32;
+import static io.scriptor.elf.ELF.ELF64;
 
 /**
  * @param type    Identifies the type of the segment.
@@ -20,7 +20,7 @@ import static io.scriptor.elf.ELF.CLASS_64;
  * @param align   0 and 1 specify no alignment.
  *                Otherwise, should be a positive, integral power of 2, with p_vaddr equating p_offset modulus p_align.
  */
-public record ELF_ProgramHeader(
+public record ProgramHeader(
         int type,
         int flags64,
         long offset,
@@ -32,18 +32,18 @@ public record ELF_ProgramHeader(
         long align
 ) {
 
-    public static @NotNull ELF_ProgramHeader read(final @NotNull ELF_Identity identity, final @NotNull IOStream stream)
+    public static @NotNull ProgramHeader read(final @NotNull Identity identity, final @NotNull IOStream stream)
             throws IOException {
         final var type    = identity.readInt(stream);
-        final var flags64 = identity.class_() == CLASS_64 ? identity.readInt(stream) : 0;
+        final var flags64 = identity.class_() == ELF64 ? identity.readInt(stream) : 0;
         final var offset  = identity.readOffset(stream);
         final var vaddr   = identity.readOffset(stream);
         final var paddr   = identity.readOffset(stream);
         final var filesz  = identity.readOffset(stream);
         final var memsz   = identity.readOffset(stream);
-        final var flags32 = identity.class_() == CLASS_32 ? identity.readInt(stream) : 0;
+        final var flags32 = identity.class_() == ELF32 ? identity.readInt(stream) : 0;
         final var align   = identity.readOffset(stream);
-        return new ELF_ProgramHeader(type, flags64, offset, vaddr, paddr, filesz, memsz, flags32, align);
+        return new ProgramHeader(type, flags64, offset, vaddr, paddr, filesz, memsz, flags32, align);
     }
 
     @Override

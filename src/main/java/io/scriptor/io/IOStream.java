@@ -4,6 +4,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 public abstract class IOStream implements Closeable {
 
@@ -32,6 +33,10 @@ public abstract class IOStream implements Closeable {
     }
 
     public long read(final byte @NotNull [] bytes) throws IOException {
+        throw new UnsupportedOperationException();
+    }
+
+    public long read(final @NotNull ByteBuffer buffer) throws IOException {
         throw new UnsupportedOperationException();
     }
 

@@ -1,4 +1,4 @@
-package io.scriptor;
+package io.scriptor.util;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -22,11 +22,16 @@ public final class Log {
         System.err.printf("[ error ] %s%n", message.formatted(args));
     }
 
+    public static void direct(final @NotNull String message, final @NotNull Object... args) {
+        prepare(args);
+        System.err.printf("%s%n", message.formatted(args));
+    }
+
     private static void prepare(final @NotNull Object[] args) {
         for (int i = 0; i < args.length; ++i) {
-            if (args[i] instanceof Throwable t) {
+            if (args[i] instanceof Throwable throwable) {
                 final var stream = new ByteArrayOutputStream();
-                t.printStackTrace(new PrintStream(stream));
+                throwable.printStackTrace(new PrintStream(stream));
                 args[i] = stream.toString();
             }
         }

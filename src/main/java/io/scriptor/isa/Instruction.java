@@ -10,6 +10,7 @@ public record Instruction(
         int ilen,
         int mask,
         int bits,
+        int restriction,
         @NotNull Map<String, Operand> operands
 ) implements IntPredicate {
 
