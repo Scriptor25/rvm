@@ -1,12 +1,10 @@
 package io.scriptor;
 
-import io.scriptor.instruction.Instruction;
 import io.scriptor.io.IOStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.PrintStream;
-import java.util.Arrays;
 
 public interface Machine {
 
@@ -45,20 +43,4 @@ public interface Machine {
     void sw(final long address, final int value);
 
     void sd(final long address, final long value);
-
-    default @NotNull Instruction decode(final int instruction) {
-        final var definitions = Arrays.stream(Definition.values())
-                                      .filter(definition -> definition.filter(instruction))
-                                      .toList();
-
-        if (definitions.isEmpty()) {
-            throw new IllegalStateException("no definition for instruction %08x".formatted(instruction));
-        }
-        if (definitions.size() > 1) {
-            throw new IllegalStateException("ambiguous definitions for instruction %08x: %s"
-                                                    .formatted(instruction, definitions));
-        }
-
-        return definitions.getFirst().instance(instruction);
-    }
 }

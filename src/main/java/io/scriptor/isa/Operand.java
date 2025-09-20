@@ -25,4 +25,9 @@ public record Operand(
         }
         return result;
     }
+
+    @Override
+    public @NotNull String toString() {
+        return "%s%s!%s".formatted(label, segments, exclude);
+    }
 }

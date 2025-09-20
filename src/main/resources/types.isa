@@ -1,0 +1,19 @@
+# standard types
+type R rs2[24:20] rs1[19:15] rd[11:7]
+type I imm[31:20] rs1[19:15] rd[11:7]
+type S imm[31:25<<5|11:7] rs2[24:20] rs1[19:15]
+type B imm[31<<12|32:25<<5|11:8<<1|7<<11] rs2[24:20] rs1[19:15]
+type U imm[31:12<<12] rd[11:7]
+type J imm[31<<20|30:21<<1|20<<11|19:12<<12] rd[11:7]
+
+type R4 rs3[31:27] rs2[24:20] rs1[19:15] rd[11:7]
+
+# shift types
+type SH shamt[24:20] rs1[19:15] rd[11:7]
+
+# csr types
+type CSR  csr[31:20] rs1[19:15]  rd[11:7]
+type CSRI csr[31:20] uimm[19:15] rd[11:7]
+
+# atomic types
+type A aq[26] rl[25] rs2[24:20] rs1[19:15] rd[11:7]

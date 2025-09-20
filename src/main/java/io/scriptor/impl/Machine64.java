@@ -3,9 +3,9 @@ package io.scriptor.impl;
 import io.scriptor.Log;
 import io.scriptor.Machine;
 import io.scriptor.MachineLayout;
-import io.scriptor.instruction.CompressedInstruction;
 import io.scriptor.io.IOStream;
 import io.scriptor.io.LongByteBuffer;
+import io.scriptor.isa.Registry;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -49,7 +49,9 @@ public final class Machine64 implements Machine {
 
         final var instruction = fetch(true);
         out.printf("pc=%016x, instruction=%08x%n", pc, instruction);
-        out.printf("  %s%n", decode(instruction));
+
+        if (Registry.has(instruction))
+            out.printf("  %s%n", Registry.get(instruction));
 
         for (int i = 0; i < gprs.length; ++i) {
             out.printf("x%-2d: %016x  ", i, gprs[i]);
@@ -63,8 +65,11 @@ public final class Machine64 implements Machine {
 
         final var sp = gprs[0x2];
         out.printf("stack (sp=%016x):%n", sp);
-        for (int offset = -0x10; offset <= 0x10; offset += 0x08) {
+        for (long offset = -0x10; offset <= 0x10; offset += 0x08) {
             final var address = sp + offset;
+            if (address < 0L) {
+                continue;
+            }
 
             final long value;
             if (address < pdram) {
@@ -88,393 +93,472 @@ public final class Machine64 implements Machine {
 
         pc = next;
 
-        final var instruction = decode(fetch(false));
-        final var definition  = instruction.def();
-
-        final var ilen = ((instruction instanceof CompressedInstruction) ? 2 : 4);
+        final var instruction = fetch(false);
+        final var definition  = Registry.get(instruction);
+        final var ilen        = definition.ilen();
 
         next = pc + ilen;
 
-        switch (definition) {
-            case FENCE_I, C_NOP -> {
+        switch (definition.mnemonic()) {
+            case "fence.i", "c.nop" -> {
                 // noop
             }
 
-            case ADDI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = signExtend(instruction.imm(), 12);
-                final var res = lhs + rhs;
-                gpr(instruction.rd(), res);
+            case "addi" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(rs1) + signExtend(imm, 12));
             }
-            case SLTI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = signExtend(instruction.imm(), 12);
-                final var res = lhs < rhs ? 1 : 0;
-                gpr(instruction.rd(), res);
+            case "slti" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(rs1) < signExtend(imm, 12) ? 1 : 0);
             }
-            case SLTIU -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = instruction.imm();
-                final var res = Long.compareUnsigned(lhs, rhs) < 0 ? 1 : 0;
-                gpr(instruction.rd(), res);
+            case "sltiu" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, Long.compareUnsigned(gpr(rs1), imm) < 0 ? 1 : 0);
             }
 
-            case XORI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = signExtend(instruction.imm(), 12);
-                final var res = lhs ^ rhs;
-                gpr(instruction.rd(), res);
+            case "xori" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(rs1) ^ signExtend(imm, 12));
             }
-            case ORI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = signExtend(instruction.imm(), 12);
-                final var res = lhs | rhs;
-                gpr(instruction.rd(), res);
+            case "ori" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(rs1) | signExtend(imm, 12));
             }
-            case ANDI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = signExtend(instruction.imm(), 12);
-                final var res = lhs & rhs;
-                gpr(instruction.rd(), res);
+            case "andi" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(rs1) & signExtend(imm, 12));
             }
 
-            case SLLI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = instruction.imm() & 0b111111;
-                final var res = lhs << rhs;
-                gpr(instruction.rd(), res);
+            case "slli", "c.slli" -> {
+                final var rd    = definition.get("rd", instruction);
+                final var rs1   = definition.get("rs1", instruction);
+                final var shamt = definition.get("shamt", instruction);
+
+                gpr(rd, gpr(rs1) << shamt);
             }
-            case SRLI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = instruction.imm() & 0b111111;
-                final var res = lhs >>> rhs;
-                gpr(instruction.rd(), res);
+            case "srli" -> {
+                final var rd    = definition.get("rd", instruction);
+                final var rs1   = definition.get("rs1", instruction);
+                final var shamt = definition.get("shamt", instruction);
+
+                gpr(rd, gpr(rs1) >>> shamt);
             }
-            case SRAI -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = instruction.imm() & 0b111111;
-                final var res = lhs >> rhs;
-                gpr(instruction.rd(), res);
+            case "srai" -> {
+                final var rd    = definition.get("rd", instruction);
+                final var rs1   = definition.get("rs1", instruction);
+                final var shamt = definition.get("shamt", instruction);
+
+                gpr(rd, gpr(rs1) >> shamt);
             }
 
-            case ADDIW -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = signExtend(instruction.imm(), 12);
-                final var res = lhs + rhs;
-                gpr(instruction.rd(), signExtend(res, 32));
+            case "addiw" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, signExtend(gpr(rs1) + signExtend(imm, 12), 32));
             }
 
-            case SLLIW -> {
-                final var lhs = (int) gpr(instruction.rs1());
-                final var rhs = instruction.imm() & 0b11111;
-                final var res = lhs << rhs;
-                gpr(instruction.rd(), res);
+            case "slliw" -> {
+                final var rd    = definition.get("rd", instruction);
+                final var rs1   = definition.get("rs1", instruction);
+                final var shamt = definition.get("shamt", instruction);
+
+                gpr(rd, signExtend(gpr(rs1) << shamt, 32));
             }
-            case SRLIW -> {
-                final var lhs = (int) gpr(instruction.rs1());
-                final var rhs = instruction.imm() & 0b11111;
-                final var res = lhs >>> rhs;
-                gpr(instruction.rd(), res);
+            case "srliw" -> {
+                final var rd    = definition.get("rd", instruction);
+                final var rs1   = definition.get("rs1", instruction);
+                final var shamt = definition.get("shamt", instruction);
+
+                gpr(rd, signExtend(gpr(rs1) >>> shamt, 32));
             }
-            case SRAIW -> {
-                final var lhs = (int) gpr(instruction.rs1());
-                final var rhs = instruction.imm() & 0b11111;
-                final var res = lhs >> rhs;
-                gpr(instruction.rd(), res);
+            case "sraiw" -> {
+                final var rd    = definition.get("rd", instruction);
+                final var rs1   = definition.get("rs1", instruction);
+                final var shamt = definition.get("shamt", instruction);
+
+                gpr(rd, signExtend(gpr(rs1) >> shamt, 32));
             }
 
-            case ADD, C_ADD -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                final var res = lhs + rhs;
-                gpr(instruction.rd(), res);
+            case "add", "c.add" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+
+                gpr(rd, gpr(rs1) + gpr(rs2));
             }
 
-            case SUB -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                final var res = lhs - rhs;
-                gpr(instruction.rd(), res);
+            case "sub" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+
+                gpr(rd, gpr(rs1) - gpr(rs2));
             }
 
-            case SUBW -> {
-                final var lhs = (int) gpr(instruction.rs1());
-                final var rhs = (int) gpr(instruction.rs2());
-                final var res = lhs - rhs;
-                gpr(instruction.rd(), res);
+            case "subw" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+
+                gpr(rd, signExtend(gpr(rs1) - gpr(rs2), 32));
             }
 
-            case JAL -> {
-                final var offset = signExtend(instruction.imm(), 21);
-                next = pc + offset;
-                gpr(instruction.rd(), pc + ilen);
+            case "jal" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                next = pc + signExtend(imm, 21);
+
+                gpr(rd, pc + ilen);
             }
 
-            case JALR -> {
-                final var base   = gpr(instruction.rs1());
-                final var offset = signExtend(instruction.imm(), 12);
-                next = base + offset;
-                gpr(instruction.rd(), pc + ilen);
+            case "jalr" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                next = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, pc + ilen);
             }
 
-            case LUI -> {
-                gpr(instruction.rd(), instruction.imm());
+            case "lui" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, imm);
             }
-            case AUIPC -> {
-                gpr(instruction.rd(), pc + instruction.imm());
+            case "auipc" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, pc + imm);
             }
 
-            case BEQ -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                if (lhs == rhs) {
-                    next = pc + signExtend(instruction.imm(), 13);
+            case "beq" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (gpr(rs1) == gpr(rs2)) {
+                    next = pc + signExtend(imm, 13);
                 }
             }
-            case BNE -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                if (lhs != rhs) {
-                    next = pc + signExtend(instruction.imm(), 13);
+            case "bne" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (gpr(rs1) != gpr(rs2)) {
+                    next = pc + signExtend(imm, 13);
                 }
             }
-            case BLT -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                if (lhs < rhs) {
-                    next = pc + signExtend(instruction.imm(), 13);
+            case "blt" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (gpr(rs1) < gpr(rs2)) {
+                    next = pc + signExtend(imm, 13);
                 }
             }
-            case BGE -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                if (lhs >= rhs) {
-                    next = pc + signExtend(instruction.imm(), 13);
+            case "bge" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (gpr(rs1) >= gpr(rs2)) {
+                    next = pc + signExtend(imm, 13);
                 }
             }
-            case BLTU -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                if (Long.compareUnsigned(lhs, rhs) < 0) {
-                    next = pc + signExtend(instruction.imm(), 13);
+            case "bltu" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (Long.compareUnsigned(gpr(rs1), gpr(rs2)) < 0) {
+                    next = pc + signExtend(imm, 13);
                 }
             }
-            case BGEU -> {
-                final var lhs = gpr(instruction.rs1());
-                final var rhs = gpr(instruction.rs2());
-                if (Long.compareUnsigned(lhs, rhs) >= 0) {
-                    next = pc + signExtend(instruction.imm(), 13);
+            case "bgeu" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (Long.compareUnsigned(gpr(rs1), gpr(rs2)) >= 0) {
+                    next = pc + signExtend(imm, 13);
                 }
             }
 
-            case LB -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = lb(address);
-                gpr(instruction.rd(), value);
+            case "lb" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, lb(address));
             }
-            case LH -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = lh(address);
-                gpr(instruction.rd(), value);
+            case "lh" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, lh(address));
             }
-            case LW -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = lw(address);
-                gpr(instruction.rd(), value);
+            case "lw" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, lw(address));
             }
-            case LD -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = ld(address);
-                gpr(instruction.rd(), value);
+            case "ld" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, ld(address));
             }
-            case LBU -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = lbu(address);
-                gpr(instruction.rd(), value);
+            case "lbu" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, lbu(address));
             }
-            case LHU -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = lhu(address);
-                gpr(instruction.rd(), value);
+            case "lhu" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, lhu(address));
             }
-            case LWU -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = lwu(address);
-                gpr(instruction.rd(), value);
+            case "lwu" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                gpr(rd, lwu(address));
             }
 
-            case SB -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = gpr(instruction.rs2());
-                sb(address, (byte) value);
+            case "sb" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                sb(address, (byte) gpr(rs2));
             }
-            case SH -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = gpr(instruction.rs2());
-                sh(address, (short) value);
+            case "sh" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                sh(address, (short) gpr(rs2));
             }
-            case SW -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = gpr(instruction.rs2());
-                sw(address, (int) value);
+            case "sw" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                sw(address, (int) gpr(rs2));
             }
-            case SD -> {
-                final var address = gpr(instruction.rs1()) + signExtend(instruction.imm(), 12);
-                final var value   = gpr(instruction.rs2());
-                sd(address, value);
+            case "sd" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(rs1) + signExtend(imm, 12);
+
+                sd(address, gpr(rs2));
             }
 
-            case CSRRW -> {
-                final var value = csr(instruction.imm());
-                csr(instruction.imm(), gpr(instruction.rs1()));
-                gpr(instruction.rd(), value);
+            case "csrrw" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var csr = definition.get("csr", instruction);
+
+                final var value = csr(csr);
+                csr(csr, gpr(rs1));
+                gpr(rd, value);
             }
-            case CSRRWI -> {
-                final var value = csr(instruction.imm());
-                csr(instruction.imm(), instruction.rs1());
-                gpr(instruction.rd(), value);
+            case "csrrwi" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var csr = definition.get("csr", instruction);
+
+                final var value = csr(csr);
+                csr(csr, rs1);
+                gpr(rd, value);
             }
-            case CSRRC -> {
-                final var value = csr(instruction.imm());
-                if (instruction.rs1() != 0) {
-                    final var mask = gpr(instruction.rs1());
-                    csr(instruction.imm(), value & ~mask);
+            case "csrrc" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var csr = definition.get("csr", instruction);
+
+                final var value = csr(csr);
+                if (rs1 != 0) {
+                    final var mask = gpr(rs1);
+                    csr(csr, value & ~mask);
                 }
-                gpr(instruction.rd(), value);
+                gpr(rd, value);
             }
 
-            case AMOSWAP_W -> {
-                final var address = gpr(instruction.rs1());
+            case "amoswap.w" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+
+                final var address = gpr(rs1);
                 final var aligned = address & ~0x3L;
 
-                final int value;
+                final long value;
                 synchronized (acquireLock(aligned)) {
-                    final var source = (int) gpr(instruction.rs2());
+                    final var source = (int) gpr(rs2);
                     value = lw(aligned);
-
                     sw(aligned, source);
                 }
 
-                final var result = signExtend((long) value, 32);
-                gpr(instruction.rd(), result);
+                gpr(rd, signExtend(value, 32));
             }
 
-            case WFI -> {
+            case "wfi" -> {
                 wfi = true;
             }
 
-            case C_ADDI -> {
-                final var value = ((instruction.data() >> 12) & 0b1) << 5
-                                  | ((instruction.data() >> 2) & 0b11111);
-                final var se  = signExtend(value, 6);
-                final var res = gpr(instruction.rs1()) + se;
-                gpr(instruction.rd(), res);
+            case "c.addi" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(rs1) + signExtend(imm, 6));
             }
-            case C_JAL32_ADDIW64 -> {
-                final var value = ((instruction.data() >> 12) & 0b1) << 5
-                                  | ((instruction.data() >> 2) & 0b11111);
-                final var se  = signExtend(value, 6);
-                final var res = gpr(instruction.rs1()) + se;
-                gpr(instruction.rd(), signExtend(res, 32));
+            case "c.addiw" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, signExtend(gpr(rs1) + signExtend(imm, 6), 32));
             }
-            case C_ADDI4SPN -> {
-                final var value = ((instruction.data() >> 7) & 0b1111) << 6
-                                  | ((instruction.data() >> 11) & 0b11) << 4
-                                  | ((instruction.data() >> 5) & 0b1) << 3
-                                  | ((instruction.data() >> 6) & 0b1) << 2;
-                gpr(instruction.rd(), gpr(0x2) + value);
+            case "c.addi4spn" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(0x2) + imm);
             }
-            case C_LI -> {
-                final var value = ((instruction.data() >> 12) & 0b1) << 5
-                                  | ((instruction.data() >> 2) & 0b11111);
-                final var se = signExtend(value, 6);
-                gpr(instruction.rd(), se);
+            case "c.li" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, signExtend(imm, 6));
             }
-            case C_ADDI16SP -> {
-                final var value = ((instruction.data() >> 12) & 0b1) << 9
-                                  | ((instruction.data() >> 3) & 0b11) << 7
-                                  | ((instruction.data() >> 5) & 0b1) << 6
-                                  | ((instruction.data() >> 2) & 0b1) << 5
-                                  | ((instruction.data() >> 6) & 0b1) << 4;
-                final var se = signExtend(value, 10);
-                gpr(0x2, gpr(0x2) + se);
+            case "c.addi16sp" -> {
+                final var imm = definition.get("imm", instruction);
+
+                gpr(0x2, gpr(0x2) + signExtend(imm, 10));
             }
-            case C_LUI -> {
-                final var value = ((instruction.data() >> 12) & 0b1) << 17
-                                  | ((instruction.data() >> 2) & 0b11111) << 12;
-                final var se = signExtend(value, 18);
-                gpr(instruction.rd(), se);
+            case "c.lui" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, signExtend(imm, 18));
             }
-            case C_SLLI -> {
-                final var shamt = ((instruction.data() >> 12) & 0b1) << 5
-                                  | ((instruction.data() >> 2) & 0b11111);
-                final var res = gpr(instruction.rs1()) << shamt;
-                gpr(instruction.rd(), res);
+            case "c.andi" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                gpr(rd, gpr(rs1) & signExtend(imm, 6));
             }
-            case C_ANDI -> {
-                final var value = ((instruction.data() >> 12) & 0b1) << 5
-                                  | ((instruction.data() >> 2) & 0b11111);
-                final var se  = signExtend(value, 6);
-                final var res = gpr(instruction.rs1()) & se;
-                gpr(instruction.rd(), res);
+            case "c.j" -> {
+                final var imm = definition.get("imm", instruction);
+
+                next = pc + signExtend(imm, 12);
             }
-            case C_J -> {
-                final var value = ((instruction.data() >> 12) & 0b1) << 11
-                                  | ((instruction.data() >> 8) & 0b1) << 10
-                                  | ((instruction.data() >> 9) & 0b11) << 8
-                                  | ((instruction.data() >> 6) & 0b1) << 7
-                                  | ((instruction.data() >> 7) & 0b1) << 6
-                                  | ((instruction.data() >> 2) & 0b1) << 5
-                                  | ((instruction.data() >> 11) & 0b1) << 4
-                                  | ((instruction.data() >> 3) & 0b111) << 1;
-                final var se = signExtend(value, 12);
-                next = pc + se;
-            }
-            case C_BEQZ -> {
-                if (gpr(instruction.rs1()) == 0) {
-                    final var value = ((instruction.data() >> 12) & 0b1) << 8
-                                      | ((instruction.data() >> 5) & 0b11) << 6
-                                      | ((instruction.data() >> 2) & 0b1) << 5
-                                      | ((instruction.data() >> 10) & 0b11) << 3
-                                      | ((instruction.data() >> 3) & 0b11) << 1;
-                    final var se = signExtend(value, 9);
-                    next = pc + se;
+            case "c.beqz" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (gpr(rs1) == 0) {
+                    next = pc + signExtend(imm, 9);
                 }
             }
-            case C_BNEZ -> {
-                if (gpr(instruction.rs1()) != 0) {
-                    final var value = ((instruction.data() >> 12) & 0b1) << 8
-                                      | ((instruction.data() >> 5) & 0b11) << 6
-                                      | ((instruction.data() >> 2) & 0b1) << 5
-                                      | ((instruction.data() >> 10) & 0b11) << 3
-                                      | ((instruction.data() >> 3) & 0b11) << 1;
-                    final var se = signExtend(value, 9);
-                    next = pc + se;
+            case "c.bnez" -> {
+                final var rs1 = definition.get("rs1", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                if (gpr(rs1) != 0) {
+                    next = pc + signExtend(imm, 9);
                 }
             }
-            case C_FLWSP32_LDSP64 -> {
-                final var offset = ((instruction.data() >> 2) & 0b111) << 6
-                                   | ((instruction.data() >> 12) & 0b1) << 5
-                                   | ((instruction.data() >> 5) & 0b11) << 3;
-                final var address = gpr(0x2) + offset;
-                gpr(instruction.rd(), ld(address));
+            case "c.ldsp" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(0x2) + imm;
+
+                gpr(rd, ld(address));
             }
-            case C_JR -> {
-                next = gpr(instruction.rs1());
+            case "c.jr" -> {
+                final var rs1 = definition.get("rs1", instruction);
+
+                next = gpr(rs1);
             }
-            case C_MV -> {
-                final var res = gpr(instruction.rs2());
-                gpr(instruction.rd(), res);
+            case "c.mv" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+
+                gpr(rd, gpr(rs2));
             }
-            case C_FSWSP32_SDSP64 -> {
-                final var offset = ((instruction.data() >> 7) & 0b111) << 6
-                                   | ((instruction.data() >> 10) & 0b111) << 3;
-                final var address = gpr(0x2) + offset;
-                final var value   = gpr(instruction.rs2());
-                sd(address, value);
+            case "c.sdsp" -> {
+                final var rs2 = definition.get("rs2", instruction);
+                final var imm = definition.get("imm", instruction);
+
+                final var address = gpr(0x2) + imm;
+
+                sd(address, gpr(rs2));
             }
 
-            default -> throw new UnsupportedOperationException("%s: %s".formatted(instruction.def(), instruction));
+            default -> throw new UnsupportedOperationException(definition.toString());
         }
 
         return true;

@@ -14,7 +14,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.List;
-import java.util.NoSuchElementException;
 
 import static io.scriptor.ByteUtil.readString;
 import static io.scriptor.Unit.MiB;
@@ -63,8 +62,23 @@ public final class Main {
             return;
         }
 
-        final var files    = List.of("rv32i.isa", "rv64i.isa");
-        final var registry = new Registry();
+        final var files = List.of("types.isa",
+                                  "rv32i.isa",
+                                  "rv32m.isa",
+                                  "rv32a.isa",
+                                  "rv32f.isa",
+                                  "rv32d.isa",
+                                  "rv32q.isa",
+                                  "rv64i.isa",
+                                  "rv64m.isa",
+                                  "rv64a.isa",
+                                  "rv64f.isa",
+                                  "rv64d.isa",
+                                  "rv64q.isa",
+                                  "rvc.isa",
+                                  "zicsr.isa",
+                                  "zifencei.isa");
+        final var registry = Registry.getInstance();
 
         for (final var name : files) {
             try (final var stream = ClassLoader.getSystemResourceAsStream(name)) {
@@ -73,8 +87,7 @@ public final class Main {
 
                 registry.parse(stream);
             } catch (final IOException e) {
-                e.printStackTrace(System.err);
-                return;
+                Log.warn("failed to read isa file '%s': %s", name, e);
             }
         }
 
@@ -82,15 +95,11 @@ public final class Main {
         try {
             filename = new File(args[0]).getCanonicalPath();
         } catch (final IOException e) {
-            e.printStackTrace(System.err);
+            Log.error("failed to get canonical path for filename '%s': %s", args[0], e);
             return;
         }
 
-        final var format = switch (args[1]) {
-            case "bin" -> FileFormat.BIN;
-            case "elf" -> FileFormat.ELF;
-            default -> throw new NoSuchElementException("format '%s'".formatted(args[1]));
-        };
+        final var format = FileFormat.valueOf(args[1].toUpperCase());
 
         final var     layout  = new MachineLayout(32, 0x1000, 0x80000000L, MiB(4));
         final Machine machine = new Machine64(layout);
