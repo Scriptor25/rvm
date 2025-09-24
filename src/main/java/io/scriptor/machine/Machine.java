@@ -29,7 +29,7 @@ public interface Machine {
      *
      * @param out output print stream
      */
-    @Contract(mutates = "io,param")
+    @Contract(mutates = "io,this,param")
     void dump(final @NotNull PrintStream out);
 
     /**
