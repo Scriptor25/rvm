@@ -1,6 +1,7 @@
 package io.scriptor.isa;
 
 import io.scriptor.util.Log;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
@@ -19,10 +20,12 @@ public final class Registry {
 
     private static final Registry instance = new Registry();
 
+    @Contract(pure = true)
     public static @NotNull Registry getInstance() {
         return instance;
     }
 
+    @Contract(pure = true)
     public static boolean has(final int mode, final int value) {
         return instance.instructions.values()
                                     .stream()
@@ -30,6 +33,7 @@ public final class Registry {
                                     .anyMatch(instruction -> instruction.test(value));
     }
 
+    @Contract(pure = true)
     public static @NotNull Instruction get(final int mode, final int value) {
         final var definitions = instance.instructions.values()
                                                      .stream()
@@ -64,6 +68,7 @@ public final class Registry {
     private Registry() {
     }
 
+    @Contract(mutates = "io,this,param")
     public void parse(final @NotNull InputStream stream) {
         final var reader = new BufferedReader(new InputStreamReader(stream));
         reader.lines()

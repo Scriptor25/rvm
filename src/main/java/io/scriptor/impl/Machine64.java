@@ -808,7 +808,7 @@ public final class Machine64 implements Machine {
             return 0L;
         }
 
-        if (!privileged(addr, priv)) {
+        if (unprivileged(addr, priv)) {
             Log.warn("read csr[addr=%03x, priv=%x]: unprivileged", addr, priv);
             return 0L;
         }
@@ -823,7 +823,7 @@ public final class Machine64 implements Machine {
             return;
         }
 
-        if (!privileged(addr, priv)) {
+        if (unprivileged(addr, priv)) {
             Log.warn("write csr[addr=%03x, priv=%x] = val=%x: unprivileged", addr, priv, val);
             return;
         }

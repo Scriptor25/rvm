@@ -1,5 +1,6 @@
 package io.scriptor.elf;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Iterator;
@@ -11,6 +12,7 @@ public final class SymbolTable implements Iterable<Symbol> {
 
     private final TreeMap<Long, String> map = new TreeMap<>();
 
+    @Contract(pure = true)
     public @NotNull String resolve(final long addr) {
         if (map.isEmpty()) {
             return NULL;
@@ -28,11 +30,13 @@ public final class SymbolTable implements Iterable<Symbol> {
         return "%s+0x%x".formatted(entry.getValue(), addr - entry.getKey());
     }
 
+    @Contract(mutates = "this")
     public void put(final long addr, final @NotNull String name) {
         map.put(addr, name);
     }
 
     @Override
+    @Contract(pure = true, value = "->new")
     public @NotNull Iterator<Symbol> iterator() {
         return map.entrySet()
                   .stream()

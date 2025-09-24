@@ -1,5 +1,6 @@
 package io.scriptor.isa;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
@@ -15,6 +16,7 @@ public record Instruction(
 ) implements IntPredicate {
 
     @Override
+    @Contract(pure = true)
     public boolean test(final int value) {
         return bits == (value & mask)
                && operands.values()
@@ -22,6 +24,7 @@ public record Instruction(
                           .noneMatch(operand -> operand.excludes(value));
     }
 
+    @Contract(pure = true)
     public int get(final @NotNull String operand, final int value) {
         if (!operands.containsKey(operand))
             throw new IllegalArgumentException("operand name '%s'".formatted(operand));
@@ -29,6 +32,7 @@ public record Instruction(
     }
 
     @Override
+    @Contract(pure = true)
     public @NotNull String toString() {
         return "%s [%d -> %08x & %08x] %s".formatted(mnemonic, ilen, bits, mask, operands);
     }

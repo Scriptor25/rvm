@@ -1,5 +1,6 @@
 package io.scriptor.io;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
@@ -22,37 +23,44 @@ public final class LongByteBuffer {
         }
     }
 
+    @Contract(pure = true)
     public byte get(final long index) {
         final var chunk  = (int) (index / (long) chunkSize);
         final var offset = (int) (index % (long) chunkSize);
         return chunks[chunk].get(offset);
     }
 
+    @Contract(mutates = "param2")
     public void get(final long index, final byte @NotNull [] bytes, final int offset, final int length) {
         for (int i = 0; i < length; ++i)
             bytes[offset + i] = get(index + i);
     }
 
+    @Contract(mutates = "this")
     public void put(final long index, final byte value) {
         final var chunk  = (int) (index / (long) chunkSize);
         final var offset = (int) (index % (long) chunkSize);
         chunks[chunk].put(offset, value);
     }
 
+    @Contract(mutates = "this")
     public void put(final long index, final byte @NotNull [] bytes, final int offset, final int length) {
         for (int i = 0; i < length; ++i)
             put(index + i, bytes[offset + i]);
     }
 
+    @Contract(mutates = "this")
     public void fill(final long index, final long count, final byte value) {
         for (long i = 0; i < count; ++i)
             put(index + i, value);
     }
 
+    @Contract(pure = true)
     public long capacity() {
         return (long) chunks.length * (long) chunkSize;
     }
 
+    @Contract(pure = true, value = "_,_->new")
     public @NotNull ByteBuffer[] range(final long index, final long count) {
         if (index < 0L || count < 0L)
             throw new IndexOutOfBoundsException("index=%d count=%d".formatted(index, count));

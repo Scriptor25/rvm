@@ -2,6 +2,7 @@ package io.scriptor.machine;
 
 import io.scriptor.elf.SymbolTable;
 import io.scriptor.io.IOStream;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -11,13 +12,16 @@ import static io.scriptor.util.ByteUtil.signExtend;
 
 public interface Machine {
 
+    @Contract(pure = true)
     long getDRAM();
 
+    @Contract(pure = true)
     @NotNull SymbolTable getSymbols();
 
     /**
      * reset the machine state.
      */
+    @Contract(mutates = "this")
     void reset();
 
     /**
@@ -25,6 +29,7 @@ public interface Machine {
      *
      * @param out output print stream
      */
+    @Contract(mutates = "io,param")
     void dump(final @NotNull PrintStream out);
 
     /**
@@ -32,6 +37,7 @@ public interface Machine {
      *
      * @return if machine state is still ok
      */
+    @Contract(mutates = "this")
     boolean step();
 
     /**
@@ -39,6 +45,7 @@ public interface Machine {
      *
      * @param address entry address
      */
+    @Contract(mutates = "this")
     void setEntry(final long address);
 
     /**
@@ -47,6 +54,7 @@ public interface Machine {
      * @param stream input stream
      * @throws IOException if any
      */
+    @Contract(mutates = "io,this,param1")
     void loadDirect(final @NotNull IOStream stream, final long address, final long size, final long allocate)
             throws IOException;
 
@@ -58,6 +66,7 @@ public interface Machine {
      * @param size    destination size
      * @throws IOException if any
      */
+    @Contract(mutates = "io,this,param1")
     void loadSegment(final @NotNull IOStream stream, final long address, final long size, final long allocate)
             throws IOException;
 
@@ -67,6 +76,7 @@ public interface Machine {
      * @param unsafe return 0 instead of error
      * @return instruction at pc, or 0 if error and unsafe
      */
+    @Contract(mutates = "this")
     int fetch(final boolean unsafe);
 
     /**
@@ -74,6 +84,7 @@ public interface Machine {
      *
      * @param gpr source register
      */
+    @Contract(mutates = "this")
     int gprw(final int gpr);
 
     /**
@@ -82,6 +93,7 @@ public interface Machine {
      * @param gpr   destination register
      * @param value source value
      */
+    @Contract(mutates = "this")
     void gprw(final int gpr, final int value);
 
     /**
@@ -89,6 +101,7 @@ public interface Machine {
      *
      * @param gpr source register
      */
+    @Contract(mutates = "this")
     long gprd(final int gpr);
 
     /**
@@ -97,40 +110,45 @@ public interface Machine {
      * @param gpr   destination register
      * @param value source value
      */
+    @Contract(mutates = "this")
     void gprd(final int gpr, final long value);
 
     /**
      * read a 4-byte value from a control/status register.
      *
      * @param addr source register
-     * @param priv
+     * @param priv privilege level
      */
+    @Contract(mutates = "this")
     int csrw(final int addr, final int priv);
 
     /**
      * write a 4-byte value to a control/status register.
      *
      * @param addr destination register
-     * @param priv
+     * @param priv privilege level
      * @param val  source value
      */
+    @Contract(mutates = "this")
     void csrw(final int addr, final int priv, final int val);
 
     /**
      * read an 8-byte value from a control/status register.
      *
      * @param addr source register
-     * @param priv
+     * @param priv privilege level
      */
+    @Contract(mutates = "this")
     long csrd(final int addr, int priv);
 
     /**
      * write an 8-byte value to a control/status register.
      *
      * @param csr  destination register
-     * @param priv
+     * @param priv privilege level
      * @param val  source value
      */
+    @Contract(mutates = "this")
     void csrd(final int csr, final int priv, final long val);
 
     /**
@@ -139,6 +157,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
+    @Contract(mutates = "io,this")
     default int lb(final long address) {
         return (int) signExtend(read(address, 1), 8);
     }
@@ -149,6 +168,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
+    @Contract(mutates = "io,this")
     default int lbu(final long address) {
         return (int) read(address, 1);
     }
@@ -159,6 +179,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
+    @Contract(mutates = "io,this")
     default int lh(final long address) {
         return (int) signExtend(read(address, 2), 16);
     }
@@ -169,6 +190,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
+    @Contract(mutates = "io,this")
     default int lhu(final long address) {
         return (int) read(address, 2);
     }
@@ -179,6 +201,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
+    @Contract(mutates = "io,this")
     default int lw(final long address) {
         return (int) signExtend(read(address, 4), 32);
     }
@@ -189,6 +212,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
+    @Contract(mutates = "io,this")
     default int lwu(final long address) {
         return (int) read(address, 4);
     }
@@ -199,6 +223,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
+    @Contract(mutates = "io,this")
     default long ld(final long address) {
         return read(address, 8);
     }
@@ -209,6 +234,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
+    @Contract(mutates = "io,this")
     default void sb(final long address, final byte value) {
         write(address, 1, value);
     }
@@ -219,6 +245,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
+    @Contract(mutates = "io,this")
     default void sh(final long address, final short value) {
         write(address, 2, value);
     }
@@ -229,6 +256,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
+    @Contract(mutates = "io,this")
     default void sw(final long address, final int value) {
         write(address, 4, value);
     }
@@ -239,6 +267,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
+    @Contract(mutates = "io,this")
     default void sd(final long address, final long value) {
         write(address, 8, value);
     }
@@ -250,6 +279,7 @@ public interface Machine {
      * @param size    value size
      * @return N-byte value at source address
      */
+    @Contract(mutates = "io,this")
     long read(final long address, final int size);
 
     /**
@@ -259,5 +289,6 @@ public interface Machine {
      * @param size    value size
      * @param value   N-byte source value
      */
+    @Contract(mutates = "io,this")
     void write(final long address, final int size, final long value);
 }

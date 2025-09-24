@@ -1,5 +1,7 @@
 package io.scriptor.isa;
 
+import org.jetbrains.annotations.Contract;
+
 public interface CSR {
 
     /**
@@ -774,11 +776,13 @@ public interface CSR {
      */
     int dscratch1 = 0x7B3;
 
+    @Contract(pure = true)
     static boolean readonly(final int addr) {
         return ((addr >> 10) & 0b11) == 0b11;
     }
 
-    static boolean privileged(final int addr, final int priv) {
-        return ((addr >> 8) & 0b11) <= priv;
+    @Contract(pure = true)
+    static boolean unprivileged(final int addr, final int priv) {
+        return ((addr >> 8) & 0b11) > priv;
     }
 }

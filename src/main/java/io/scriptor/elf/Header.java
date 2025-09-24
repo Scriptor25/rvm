@@ -1,6 +1,7 @@
 package io.scriptor.elf;
 
 import io.scriptor.io.IOStream;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -42,6 +43,7 @@ public record Header(
         short shstrndx
 ) {
 
+    @Contract(mutates = "io,param2", value = "_,_->new")
     public static @NotNull Header read(final @NotNull Identity identity, final @NotNull IOStream stream)
             throws IOException {
         final var type      = identity.readShort(stream);
@@ -73,6 +75,7 @@ public record Header(
     }
 
     @Override
+    @Contract(pure = true)
     public @NotNull String toString() {
         return "type=%x, machine=%x, version=%x, entry=%x, phoff=%x, shoff=%x, flags=%x, ehsize=%x, phentsize=%x, phnum=%x, shentsize=%x, shnum=%x, shstrndx=%x"
                 .formatted(type,

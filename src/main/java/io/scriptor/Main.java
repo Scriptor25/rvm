@@ -1,5 +1,6 @@
 package io.scriptor;
 
+import io.scriptor.arg.Template;
 import io.scriptor.elf.*;
 import io.scriptor.impl.Machine64;
 import io.scriptor.io.FileStream;
@@ -9,16 +10,16 @@ import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import static io.scriptor.arg.Template.TEMPLATE_LOAD;
+import static io.scriptor.arg.Template.TEMPLATE_MEMORY;
 import static io.scriptor.elf.ELF.readSymbols;
 import static io.scriptor.util.ByteUtil.readString;
-import static io.scriptor.util.Unit.*;
+import static io.scriptor.util.Unit.MiB;
 
 public final class Main {
 
@@ -28,64 +29,26 @@ public final class Main {
     // https://wiki.osdev.org/RISC-V_Bare_Bones
 
     // rvm
-    //  --firmware, -f=<filename>
-    //  --executable, -x=<filename>
-    //  --memory, -m=<size:unit>
+    //  --file, -f=<filename[:base]>
+    //  --memory, -m=<size[:unit]>
 
     public static void main(final @NotNull String @NotNull [] args) {
 
-        final List<Symbol> filenames = new ArrayList<>();
+        final var templates = Template.parse(args);
 
-        long memory = MiB(32);
+        final var files = templates.getOrDefault(TEMPLATE_LOAD, List.of())
+                                   .stream()
+                                   .filter(Symbol.class::isInstance)
+                                   .map(Symbol.class::cast)
+                                   .toList();
 
-        for (final var arg : args) {
-            final var split = arg.indexOf('=') + 1;
-
-            if (arg.startsWith("--file=") || arg.startsWith("-f=")) {
-                final var slice = arg.substring(split);
-                final var colon = slice.indexOf(':');
-
-                var filename = slice.substring(0, colon);
-                try {
-                    filename = new File(filename).getCanonicalPath();
-                } catch (final IOException e) {
-                    Log.error("failed to get canonical path for filename '%s': %s", filename, e);
-                    return;
-                }
-
-                final var value = slice.substring(colon + 1);
-                final var addr  = Long.parseUnsignedLong(value, 0x10);
-
-                filenames.add(new Symbol(addr, filename));
-                continue;
-            }
-
-            if (arg.startsWith("--memory=") || arg.startsWith("-m=")) {
-                final var slice = arg.substring(split);
-
-                final String value;
-                final char   unit;
-                if (slice.contains(":")) {
-                    final var colon = slice.indexOf(':');
-                    value = slice.substring(0, colon);
-                    unit = slice.charAt(colon + 1);
-                } else {
-                    value = slice;
-                    unit = 'M';
-                }
-                final var v = Long.parseUnsignedLong(value);
-                memory = switch (unit) {
-                    case 'K' -> KiB(v);
-                    case 'M' -> MiB(v);
-                    case 'G' -> GiB(v);
-                    default -> throw new IllegalArgumentException("unit '%c'".formatted(unit));
-                };
-
-                continue;
-            }
-
-            throw new IllegalArgumentException(arg);
-        }
+        final var memory = templates.getOrDefault(TEMPLATE_MEMORY, List.of())
+                                    .stream()
+                                    .filter(Long.class::isInstance)
+                                    .map(Long.class::cast)
+                                    .mapToLong(Long::longValue)
+                                    .findAny()
+                                    .orElse(MiB(32));
 
         final var isa = List.of("types.isa",
                                 "priv.isa",
@@ -120,24 +83,19 @@ public final class Main {
 
         final Machine machine = new Machine64(memory);
 
-        for (final var file : filenames) {
-            if (loadFilename(machine, file.name(), file.addr())) {
-                return;
-            }
-        }
+        for (final var file : files)
+            loadFilename(machine, file.name(), file.addr());
 
         try {
-            machine.reset();
-            while (machine.step())
+            for (machine.reset(); machine.step(); )
                 ;
-            machine.dump(System.err);
         } catch (final Exception e) {
             machine.dump(System.err);
             Log.warn("machine exception: %s", e);
         }
     }
 
-    private static boolean loadFilename(
+    private static void loadFilename(
             final @NotNull Machine machine,
             final @NotNull String filename,
             final long offset
@@ -217,10 +175,8 @@ public final class Main {
                 machine.setEntry(machine.getDRAM());
                 machine.loadDirect(stream.seek(0L), 0L, stream.size(), stream.size());
             }
-            return false;
         } catch (final IOException e) {
-            e.printStackTrace(System.err);
-            return true;
+            Log.warn("failed to load file '%s' (offset %x): %s", filename, offset, e);
         }
     }
 

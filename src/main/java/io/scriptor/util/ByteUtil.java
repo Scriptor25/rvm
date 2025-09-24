@@ -1,6 +1,7 @@
 package io.scriptor.util;
 
 import io.scriptor.io.IOStream;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -10,16 +11,19 @@ public final class ByteUtil {
     private ByteUtil() {
     }
 
+    @Contract(pure = true)
     public static short parseShortLE(final byte @NotNull [] bytes) {
         return (short) (((bytes[1] & 0xff) << 8)
                         | (bytes[0] & 0xff));
     }
 
+    @Contract(pure = true)
     public static short parseShortBE(final byte @NotNull [] bytes) {
         return (short) (((bytes[0] & 0xff) << 8)
                         | (bytes[1] & 0xff));
     }
 
+    @Contract(pure = true)
     public static int parseIntLE(final byte @NotNull [] bytes) {
         return ((bytes[3] & 0xff) << 24)
                | ((bytes[2] & 0xff) << 16)
@@ -27,6 +31,7 @@ public final class ByteUtil {
                | (bytes[0] & 0xff);
     }
 
+    @Contract(pure = true)
     public static int parseIntBE(final byte @NotNull [] bytes) {
         return ((bytes[0] & 0xff) << 24)
                | ((bytes[1] & 0xff) << 16)
@@ -34,6 +39,7 @@ public final class ByteUtil {
                | (bytes[3] & 0xff);
     }
 
+    @Contract(pure = true)
     public static long parseLongLE(final byte @NotNull [] bytes) {
         return ((bytes[7] & 0xffL) << 56L)
                | ((bytes[6] & 0xffL) << 48L)
@@ -45,6 +51,7 @@ public final class ByteUtil {
                | (bytes[0] & 0xffL);
     }
 
+    @Contract(pure = true)
     public static long parseLongBE(final byte @NotNull [] bytes) {
         return ((bytes[0] & 0xffL) << 56L)
                | ((bytes[1] & 0xffL) << 48L)
@@ -56,30 +63,37 @@ public final class ByteUtil {
                | (bytes[7] & 0xffL);
     }
 
+    @Contract(mutates = "io,param")
     public static short readShortLE(final @NotNull IOStream stream) throws IOException {
         return parseShortLE(stream.read(2));
     }
 
+    @Contract(mutates = "io,param")
     public static short readShortBE(final @NotNull IOStream stream) throws IOException {
         return parseShortBE(stream.read(2));
     }
 
+    @Contract(mutates = "io,param")
     public static int readIntLE(final @NotNull IOStream stream) throws IOException {
         return parseIntLE(stream.read(4));
     }
 
+    @Contract(mutates = "io,param")
     public static int readIntBE(final @NotNull IOStream stream) throws IOException {
         return parseIntBE(stream.read(4));
     }
 
+    @Contract(mutates = "io,param")
     public static long readLongLE(final @NotNull IOStream stream) throws IOException {
         return parseLongLE(stream.read(8));
     }
 
+    @Contract(mutates = "io,param")
     public static long readLongBE(final @NotNull IOStream stream) throws IOException {
         return parseLongBE(stream.read(8));
     }
 
+    @Contract(mutates = "io,param", value = "_->new")
     public static @NotNull String readString(final @NotNull IOStream stream) throws IOException {
         final var builder = new StringBuilder();
         for (int b; (b = stream.read()) > 0; )
@@ -87,11 +101,13 @@ public final class ByteUtil {
         return builder.toString();
     }
 
+    @Contract(pure = true)
     public static int signExtend(final int value, final int bits) {
         final var shift = 32 - bits;
         return (value << shift) >> shift;
     }
 
+    @Contract(pure = true)
     public static long signExtend(final long value, final int bits) {
         final var shift = 64 - bits;
         return (value << shift) >> shift;
