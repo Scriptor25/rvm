@@ -154,7 +154,10 @@ public final class Registry {
         final var instruction = parseInstructionEntry(mInstruction);
 
         if (mInstruction.group(4) != null) {
-            final var type = types.get(mInstruction.group(4).trim());
+            final var typename = mInstruction.group(4).trim();
+            if (!types.containsKey(typename))
+                throw new IllegalArgumentException("invalid typename '%s'".formatted(typename));
+            final var type = types.get(typename);
             instruction.operands().putAll(type.operands());
         }
 

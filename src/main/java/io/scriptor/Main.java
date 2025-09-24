@@ -10,8 +10,10 @@ import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.FileNotFoundException;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -19,7 +21,9 @@ import static io.scriptor.arg.Template.TEMPLATE_LOAD;
 import static io.scriptor.arg.Template.TEMPLATE_MEMORY;
 import static io.scriptor.elf.ELF.readSymbols;
 import static io.scriptor.util.ByteUtil.readString;
+import static io.scriptor.util.Resource.read;
 import static io.scriptor.util.Unit.MiB;
+import static java.util.function.Predicate.not;
 
 public final class Main {
 
@@ -50,41 +54,30 @@ public final class Main {
                                     .findAny()
                                     .orElse(MiB(32));
 
-        final var isa = List.of("types.isa",
-                                "priv.isa",
-                                "rv32i.isa",
-                                "rv32m.isa",
-                                "rv32a.isa",
-                                "rv32f.isa",
-                                "rv32d.isa",
-                                "rv32q.isa",
-                                "rv64i.isa",
-                                "rv64m.isa",
-                                "rv64a.isa",
-                                "rv64f.isa",
-                                "rv64d.isa",
-                                "rv64q.isa",
-                                "rvc.isa",
-                                "zicsr.isa",
-                                "zifencei.isa");
+        final List<String> isa = new ArrayList<>();
+        isa.add("types");
+
+        if (read("index.txt", stream -> {
+            final var reader = new BufferedReader(new InputStreamReader(stream));
+            reader.lines()
+                  .map(String::trim)
+                  .filter(not(String::isEmpty))
+                  .filter(line -> line.endsWith(".isa"))
+                  .forEach(isa::add);
+        }))
+            return;
 
         final var registry = Registry.getInstance();
 
-        for (final var name : isa) {
-            try (final var stream = ClassLoader.getSystemResourceAsStream(name)) {
-                if (stream == null)
-                    throw new FileNotFoundException("resource name '%s'".formatted(name));
-
-                registry.parse(stream);
-            } catch (final IOException e) {
-                Log.warn("failed to read isa definition file '%s': %s", name, e);
-            }
-        }
+        for (final var name : isa)
+            if (read(name, registry::parse))
+                return;
 
         final Machine machine = new Machine64(memory);
 
         for (final var file : files)
-            loadFilename(machine, file.name(), file.addr());
+            if (loadFilename(machine, file.name(), file.addr()))
+                return;
 
         try {
             for (machine.reset(); machine.step(); )
@@ -95,7 +88,7 @@ public final class Main {
         }
     }
 
-    private static void loadFilename(
+    private static boolean loadFilename(
             final @NotNull Machine machine,
             final @NotNull String filename,
             final long offset
@@ -175,8 +168,10 @@ public final class Main {
                 machine.setEntry(machine.getDRAM());
                 machine.loadDirect(stream.seek(0L), 0L, stream.size(), stream.size());
             }
+            return false;
         } catch (final IOException e) {
             Log.warn("failed to load file '%s' (offset %x): %s", filename, offset, e);
+            return true;
         }
     }
 

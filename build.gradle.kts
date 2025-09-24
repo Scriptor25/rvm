@@ -34,3 +34,36 @@ application {
 graalvmNative {
     toolchainDetection = true
 }
+
+val generateResourceDescriptor by tasks.registering {
+    val source = layout.buildDirectory.dir("resources/main")
+    val index = source.map { it.file("index.txt") }
+
+    outputs.file(index)
+    dependsOn(tasks.named("processResources"))
+
+    doLast {
+        val directory = source.get().asFile
+        val file = index.get().asFile
+
+        if (!directory.exists()) {
+            directory.mkdirs()
+        }
+
+        file.bufferedWriter(Charsets.UTF_8).use { writer ->
+            directory.walkTopDown()
+                .filter { it.isFile }
+                .forEach { file ->
+                    val path = directory.toPath().relativize(file.toPath()).toString()
+                    if (path != "index.txt") {
+                        writer.write(path.replace(File.separatorChar, '/'))
+                        writer.newLine()
+                    }
+                }
+        }
+    }
+}
+
+tasks.named<Jar>("jar") {
+    dependsOn(generateResourceDescriptor)
+}
