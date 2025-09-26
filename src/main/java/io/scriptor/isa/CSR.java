@@ -7,36 +7,36 @@ public interface CSR {
     /**
      * read/write
      */
-    int RW0 = 0b00;
+    int CSR_RW0 = 0b00;
     /**
      * read/write
      */
-    int RW1 = 0b01;
+    int CSR_RW1 = 0b01;
     /**
      * read/write
      */
-    int RW2 = 0b10;
+    int CSR_RW2 = 0b10;
     /**
      * read-only
      */
-    int RO = 0b11;
+    int CSR_RO = 0b11;
 
     /**
      * user
      */
-    int U = 0b00;
+    int CSR_U = 0b00;
     /**
      * supervisor
      */
-    int S = 0b01;
+    int CSR_S = 0b01;
     /**
      * hypervisor
      */
-    int H = 0b10;
+    int CSR_H = 0b10;
     /**
      * machine
      */
-    int M = 0b11;
+    int CSR_M = 0b11;
 
     /**
      * Floating-Point Accrued Exceptions.

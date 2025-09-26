@@ -94,6 +94,10 @@ void kmain(void)
         {
             puts("Hello world!\r\n");
         }
+        else if (strcmp(command, "panic") == 0)
+        {
+            *((char*)~0) = 'P';
+        }
         else if (strlen(command))
         {
             puts("undefined command '");

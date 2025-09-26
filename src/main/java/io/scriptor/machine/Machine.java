@@ -114,44 +114,6 @@ public interface Machine {
     void gprd(final int gpr, final long value);
 
     /**
-     * read a 4-byte value from a control/status register.
-     *
-     * @param addr source register
-     * @param priv privilege level
-     */
-    @Contract(mutates = "this")
-    int csrw(final int addr, final int priv);
-
-    /**
-     * write a 4-byte value to a control/status register.
-     *
-     * @param addr destination register
-     * @param priv privilege level
-     * @param val  source value
-     */
-    @Contract(mutates = "this")
-    void csrw(final int addr, final int priv, final int val);
-
-    /**
-     * read an 8-byte value from a control/status register.
-     *
-     * @param addr source register
-     * @param priv privilege level
-     */
-    @Contract(mutates = "this")
-    long csrd(final int addr, int priv);
-
-    /**
-     * write an 8-byte value to a control/status register.
-     *
-     * @param csr  destination register
-     * @param priv privilege level
-     * @param val  source value
-     */
-    @Contract(mutates = "this")
-    void csrd(final int csr, final int priv, final long val);
-
-    /**
      * load a sign-extended 1-byte value.
      *
      * @param address source address

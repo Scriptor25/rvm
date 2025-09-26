@@ -4,6 +4,7 @@ import io.scriptor.elf.SymbolTable;
 import io.scriptor.io.IOStream;
 import io.scriptor.io.LongByteBuffer;
 import io.scriptor.isa.Registry;
+import io.scriptor.machine.ControlStatusFile;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
@@ -22,9 +23,9 @@ public final class Machine64 implements Machine {
     private final Map<Long, Object> locks = new ConcurrentHashMap<>();
     private final SymbolTable symbols = new SymbolTable();
 
+    private final ControlStatusFile controlStatusFile = new ControlStatusFile64();
+
     private final long[] gprs;
-    private final long[] csrs;
-    private final boolean[] csrsp;
 
     private final long dram = 0x80000000L;
     private final LongByteBuffer memory;
@@ -37,10 +38,35 @@ public final class Machine64 implements Machine {
 
     public Machine64(final long memory) {
         this.gprs = new long[32];
-        this.csrs = new long[0x1000];
-        this.csrsp = new boolean[0x1000];
 
         this.memory = new LongByteBuffer(0x1000, memory);
+    }
+
+    private @NotNull Object acquireLock(final long address) {
+        return locks.computeIfAbsent(address, _ -> new Object());
+    }
+
+    private void printStackTrace(final @NotNull PrintStream out) {
+        var ra = gprs[0x1];
+        var fp = gprs[0x8];
+
+        out.printf("stack trace (pc=%016x, ra=%016x, fp=%016x):%n", pc, ra, fp);
+
+        {
+            final var symbol = symbols.resolve(pc);
+            out.printf(" %016x : %s%n", pc, symbol);
+        }
+
+        while (fp != 0L) {
+            final var symbol = symbols.resolve(ra);
+            out.printf(" %016x : %s%n", ra, symbol);
+
+            final var prev_fp = read(fp, 8);
+            final var prev_ra = read(fp + 8, 8);
+
+            fp = prev_fp;
+            ra = prev_ra;
+        }
     }
 
     @Override
@@ -55,72 +81,72 @@ public final class Machine64 implements Machine {
 
     @Override
     public void reset() {
+        controlStatusFile.reset();
+
         Arrays.fill(gprs, 0);
-        Arrays.fill(csrs, 0);
-        Arrays.fill(csrsp, false);
 
         gprs[0x0A] = 0xDEADBEEFL;
 
         pc = entry;
 
-        priv = 0b11;
+        priv = CSR_M;
         wfi = false;
 
         // machine isa
-        putcsr(misa,
-               1L << 63 // mxl = 64
-               | 1L << 20 // 'U' - user mode implemented
-               | 1L << 18 // 'S' - supervisor mode implemented
-               | 1L << 12 // 'M' - integer multiply/divide extension
-               | 1L << 8 // 'I' - base isa
-               | 1L << 5 // 'F' - single-precision floating-point extension
-               | 1L << 3 // 'D' - double-precision floating-point extension
-               | 1L << 2 // 'C' - compressed extension
-               | 1L // 'A' - atomic extension
+        controlStatusFile.putd(misa,
+                               1L << 63 // mxl = 64
+                               | 1L << 20 // 'U' - user mode implemented
+                               | 1L << 18 // 'S' - supervisor mode implemented
+                               | 1L << 12 // 'M' - integer multiply/divide extension
+                               | 1L << 8 // 'I' - base isa
+                               | 1L << 5 // 'F' - single-precision floating-point extension
+                               | 1L << 3 // 'D' - double-precision floating-point extension
+                               | 1L << 2 // 'C' - compressed extension
+                               | 1L // 'A' - atomic extension
         );
 
         // machine identification
-        putcsr(mvendorid, 0xCAFEBABEL);
-        putcsr(marchid, 0x1L);
-        putcsr(mimpid, 0x1L);
-        putcsr(mhartid, 0x0L);
+        controlStatusFile.putd(mvendorid, 0xCAFEBABEL);
+        controlStatusFile.putd(marchid, 0x1L);
+        controlStatusFile.putd(mimpid, 0x1L);
+        controlStatusFile.putd(mhartid, 0x0L);
 
         // machine status/control
-        putcsr(mstatus, 0x1800L);
-        putcsr(sstatus, 0L);
-        putcsr(medeleg, 0L);
-        putcsr(mideleg, 0L);
+        controlStatusFile.putd(mstatus, 0x1800L);
+        controlStatusFile.putd(sstatus, 0L);
+        controlStatusFile.putd(medeleg, 0L);
+        controlStatusFile.putd(mideleg, 0L);
 
         // machine interrupt control
-        putcsr(mie, 0L);
-        putcsr(mip, 0L);
-        putcsr(sie, 0L);
-        putcsr(sip, 0L);
+        controlStatusFile.putd(mie, 0L);
+        controlStatusFile.putd(mip, 0L);
+        controlStatusFile.putd(sie, 0L);
+        controlStatusFile.putd(sip, 0L);
 
         // machine trap handling
-        putcsr(mtvec, 0L);
-        putcsr(stvec, 0L);
-        putcsr(mepc, 0L);
-        putcsr(sepc, 0L);
-        putcsr(mcause, 0L);
-        putcsr(scause, 0L);
-        putcsr(mtval, 0L);
-        putcsr(stval, 0L);
-        putcsr(mscratch, 0L);
+        controlStatusFile.putd(mtvec, 0L);
+        controlStatusFile.putd(stvec, 0L);
+        controlStatusFile.putd(mepc, 0L);
+        controlStatusFile.putd(sepc, 0L);
+        controlStatusFile.putd(mcause, 0L);
+        controlStatusFile.putd(scause, 0L);
+        controlStatusFile.putd(mtval, 0L);
+        controlStatusFile.putd(stval, 0L);
+        controlStatusFile.putd(mscratch, 0L);
 
         // machine virtual memory
-        putcsr(satp, 0L);
+        controlStatusFile.putd(satp, 0L);
 
         // machine counters/timers
-        putcsr(time, 0L);
-        putcsr(cycle, 0L);
-        putcsr(instret, 0L);
+        controlStatusFile.putd(time, 0L);
+        controlStatusFile.putd(cycle, 0L);
+        controlStatusFile.putd(instret, 0L);
 
         for (int pmpcfgx = pmpcfg0; pmpcfgx <= pmpcfg15; ++pmpcfgx)
-            putcsr(pmpcfgx, 0L);
+            controlStatusFile.putd(pmpcfgx, 0L);
 
         for (int pmpaddrx = pmpaddr0; pmpaddrx <= pmpaddr63; ++pmpaddrx)
-            putcsr(pmpaddrx, 0L);
+            controlStatusFile.putd(pmpaddrx, 0L);
     }
 
     @Override
@@ -152,7 +178,11 @@ public final class Machine64 implements Machine {
             }
         }
 
-        out.printf("mstatus=%x, mtvec=%x, mcause=%x, mepc=%x%n", csrs[mstatus], csrs[mtvec], csrs[mcause], csrs[mepc]);
+        out.printf("mstatus=%x, mtvec=%x, mcause=%x, mepc=%x%n",
+                   controlStatusFile.getd(mstatus),
+                   controlStatusFile.getd(mtvec),
+                   controlStatusFile.getd(mcause),
+                   controlStatusFile.getd(mepc));
 
         final var sp = gprs[0x2];
         out.printf("stack (sp=%016x):%n", sp);
@@ -175,29 +205,6 @@ public final class Machine64 implements Machine {
         }
 
         printStackTrace(out);
-    }
-
-    private void printStackTrace(final @NotNull PrintStream out) {
-        var ra = gprs[0x1];
-        var fp = gprs[0x8];
-
-        out.printf("stack trace (ra=%016x, fp=%016x):%n", ra, fp);
-
-        {
-            final var symbol = symbols.resolve(pc);
-            out.printf(" %016x : %s%n", pc, symbol);
-        }
-
-        while (fp != 0L) {
-            final var symbol = symbols.resolve(ra);
-            out.printf(" %016x : %s%n", ra, symbol);
-
-            final var next_fp = read(fp, 8);
-            final var next_ra = read(fp + 8, 8);
-
-            fp = next_fp;
-            ra = next_ra;
-        }
     }
 
     @Override
@@ -531,8 +538,8 @@ public final class Machine64 implements Machine {
                 final var rs1 = definition.get("rs1", instruction);
                 final var csr = definition.get("csr", instruction);
 
-                final var value = csrd(csr, priv);
-                csrd(csr, priv, gprd(rs1));
+                final var value = controlStatusFile.getd(csr, priv);
+                controlStatusFile.putd(csr, priv, gprd(rs1));
                 gprd(rd, value);
             }
             case "csrrwi" -> {
@@ -540,8 +547,8 @@ public final class Machine64 implements Machine {
                 final var uimm = definition.get("uimm", instruction);
                 final var csr  = definition.get("csr", instruction);
 
-                final var value = csrd(csr, priv);
-                csrd(csr, priv, uimm);
+                final var value = controlStatusFile.getd(csr, priv);
+                controlStatusFile.putd(csr, priv, uimm);
                 gprd(rd, value);
             }
             case "csrrc" -> {
@@ -549,10 +556,10 @@ public final class Machine64 implements Machine {
                 final var rs1 = definition.get("rs1", instruction);
                 final var csr = definition.get("csr", instruction);
 
-                final var value = csrd(csr, priv);
+                final var value = controlStatusFile.getd(csr, priv);
                 if (rs1 != 0) {
                     final var mask = gprd(rs1);
-                    csrd(csr, priv, value & ~mask);
+                    controlStatusFile.putd(csr, priv, value & ~mask);
                 }
                 gprd(rd, value);
             }
@@ -791,52 +798,6 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public int csrw(final int addr, final int priv) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void csrw(final int addr, final int priv, final int val) {
-        throw new UnsupportedOperationException();
-    }
-
-
-    @Override
-    public long csrd(final int addr, final int priv) {
-        if (!csrsp[addr]) {
-            Log.warn("read csr[addr=%03x, priv=%x]: not present", addr, priv);
-            return 0L;
-        }
-
-        if (unprivileged(addr, priv)) {
-            Log.warn("read csr[addr=%03x, priv=%x]: unprivileged", addr, priv);
-            return 0L;
-        }
-
-        return csrs[addr];
-    }
-
-    @Override
-    public void csrd(final int addr, final int priv, final long val) {
-        if (!csrsp[addr]) {
-            Log.warn("write csr[addr=%03x, priv=%x] = val=%x: not present", addr, priv, val);
-            return;
-        }
-
-        if (unprivileged(addr, priv)) {
-            Log.warn("write csr[addr=%03x, priv=%x] = val=%x: unprivileged", addr, priv, val);
-            return;
-        }
-
-        if (readonly(addr)) {
-            Log.warn("write csr[addr=%03x, priv=%x] = val=%x: read-only", addr, priv, val);
-            return;
-        }
-
-        csrs[addr] = val;
-    }
-
-    @Override
     public long read(final long address, final int size) {
         if (dram <= address && address + size < dram + memory.capacity()) {
             final var bytes = new byte[size];
@@ -870,9 +831,9 @@ public final class Machine64 implements Machine {
             }
         }
 
+        dump(System.err);
         Log.warn("read [%016x:%016x]".formatted(address, address + size - 1));
         return 0L;
-
     }
 
     @Override
@@ -893,15 +854,7 @@ public final class Machine64 implements Machine {
             return;
         }
 
+        dump(System.err);
         Log.warn("store [%016x:%016x] = %x".formatted(address, address + size - 1, value));
-    }
-
-    private @NotNull Object acquireLock(final long address) {
-        return locks.computeIfAbsent(address, _ -> new Object());
-    }
-
-    private void putcsr(final int csr, final long value) {
-        csrs[csr] = value;
-        csrsp[csr] = true;
     }
 }
