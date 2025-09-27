@@ -1,17 +1,44 @@
 package io.scriptor.impl;
 
-import io.scriptor.machine.ControlStatusFile;
+import io.scriptor.machine.CSRFile;
 import io.scriptor.util.Log;
+import org.jetbrains.annotations.NotNull;
 
+import java.io.PrintStream;
 import java.util.Arrays;
 
 import static io.scriptor.isa.CSR.readonly;
 import static io.scriptor.isa.CSR.unprivileged;
 
-public class ControlStatusFile64 implements ControlStatusFile {
+public final class CSRFile64 implements CSRFile {
 
-    private final long[] csrs = new long[0x1000];
-    private final boolean[] csrsp = new boolean[0x1000];
+    private final long[] values = new long[0x1000];
+    private final boolean[] present = new boolean[0x1000];
+
+    @Override
+    public void reset() {
+        Arrays.fill(values, 0);
+        Arrays.fill(present, false);
+    }
+
+    @Override
+    public void dump(final @NotNull PrintStream out) {
+        int j = 0;
+        for (int i = 0; i < values.length; ++i) {
+            if (!present[i]) {
+                continue;
+            }
+
+            out.printf("%03x: %016x  ", i, values[i]);
+
+            if (++j % 4 == 0) {
+                out.println();
+            }
+        }
+        if (j % 4 != 0) {
+            out.println();
+        }
+    }
 
     @Override
     public int getw(final int addr, final int priv) {
@@ -26,7 +53,7 @@ public class ControlStatusFile64 implements ControlStatusFile {
 
     @Override
     public long getd(final int addr, final int priv) {
-        if (!csrsp[addr]) {
+        if (!present[addr]) {
             Log.warn("read csr[addr=%03x, priv=%x]: not present", addr, priv);
             return 0L;
         }
@@ -36,33 +63,27 @@ public class ControlStatusFile64 implements ControlStatusFile {
             return 0L;
         }
 
-        return csrs[addr];
+        return values[addr];
     }
 
     @Override
     public void putd(final int addr, final int priv, final long val) {
-        if (!csrsp[addr]) {
-            Log.warn("write csr[addr=%03x, priv=%x] = val=%x: not present", addr, priv, val);
+        if (!present[addr]) {
+            Log.warn("write csr[addr=%03x, priv=%x] = %x: not present", addr, priv, val);
             return;
         }
 
         if (unprivileged(addr, priv)) {
-            Log.warn("write csr[addr=%03x, priv=%x] = val=%x: unprivileged", addr, priv, val);
+            Log.warn("write csr[addr=%03x, priv=%x] = %x: unprivileged", addr, priv, val);
             return;
         }
 
         if (readonly(addr)) {
-            Log.warn("write csr[addr=%03x, priv=%x] = val=%x: read-only", addr, priv, val);
+            Log.warn("write csr[addr=%03x, priv=%x] = %x: read-only", addr, priv, val);
             return;
         }
 
-        csrs[addr] = val;
-    }
-
-    @Override
-    public void reset() {
-        Arrays.fill(csrs, 0);
-        Arrays.fill(csrsp, false);
+        values[addr] = val;
     }
 
     @Override
@@ -72,8 +93,8 @@ public class ControlStatusFile64 implements ControlStatusFile {
 
     @Override
     public void putd(final int addr, final long val) {
-        csrs[addr] = val;
-        csrsp[addr] = true;
+        values[addr] = val;
+        present[addr] = true;
     }
 
     @Override
@@ -83,6 +104,6 @@ public class ControlStatusFile64 implements ControlStatusFile {
 
     @Override
     public long getd(final int addr) {
-        return csrs[addr];
+        return values[addr];
     }
 }

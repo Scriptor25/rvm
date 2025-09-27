@@ -1,7 +1,6 @@
 package io.scriptor.elf;
 
 import io.scriptor.io.IOStream;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -28,7 +27,6 @@ public record Identity(
         byte abiversion
 ) {
 
-    @Contract(mutates = "io,param", value = "_->new")
     public static @NotNull Identity read(final @NotNull IOStream stream) throws IOException {
         final var magic = new byte[4];
         stream.read(magic);
@@ -41,7 +39,6 @@ public record Identity(
         return new Identity(magic, class_, data, version, osabi, abiversion);
     }
 
-    @Contract(mutates = "io,param")
     public short readShort(final @NotNull IOStream stream) throws IOException {
         return switch (data) {
             case LE -> readShortLE(stream);
@@ -50,7 +47,6 @@ public record Identity(
         };
     }
 
-    @Contract(mutates = "io,param")
     public int readInt(final @NotNull IOStream stream) throws IOException {
         return switch (data) {
             case LE -> readIntLE(stream);
@@ -59,7 +55,6 @@ public record Identity(
         };
     }
 
-    @Contract(mutates = "io,param")
     public long readLong(final @NotNull IOStream stream) throws IOException {
         return switch (data) {
             case LE -> readLongLE(stream);
@@ -68,7 +63,6 @@ public record Identity(
         };
     }
 
-    @Contract(mutates = "io,param")
     public long readOffset(final @NotNull IOStream stream) throws IOException {
         return switch (class_) {
             case ELF32 -> readInt(stream);
@@ -78,7 +72,6 @@ public record Identity(
     }
 
     @Override
-    @Contract(pure = true)
     public @NotNull String toString() {
         return "magic=[%x, %x, %x, %x], class=%x, data=%x, version=%x, osabi=%x, abiversion=%x"
                 .formatted(magic[0], magic[1], magic[2], magic[3], class_, data, version, osabi, abiversion);

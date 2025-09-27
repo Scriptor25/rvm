@@ -1,7 +1,13 @@
 package io.scriptor;
 
+import io.scriptor.arg.LoadPayload;
+import io.scriptor.arg.MemoryPayload;
+import io.scriptor.arg.RegisterPayload;
 import io.scriptor.arg.Template;
-import io.scriptor.elf.*;
+import io.scriptor.elf.Header;
+import io.scriptor.elf.Identity;
+import io.scriptor.elf.ProgramHeader;
+import io.scriptor.elf.SectionHeader;
 import io.scriptor.impl.Machine64;
 import io.scriptor.io.FileStream;
 import io.scriptor.io.IOStream;
@@ -17,8 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static io.scriptor.arg.Template.TEMPLATE_LOAD;
-import static io.scriptor.arg.Template.TEMPLATE_MEMORY;
+import static io.scriptor.arg.Template.*;
 import static io.scriptor.elf.ELF.readSymbols;
 import static io.scriptor.util.ByteUtil.readString;
 import static io.scriptor.util.Resource.read;
@@ -38,21 +43,12 @@ public final class Main {
 
     public static void main(final @NotNull String @NotNull [] args) {
 
-        final var templates = Template.parse(args);
+        final var payloadMap = Template.parse(args);
 
-        final var files = templates.getOrDefault(TEMPLATE_LOAD, List.of())
-                                   .stream()
-                                   .filter(Symbol.class::isInstance)
-                                   .map(Symbol.class::cast)
-                                   .toList();
-
-        final var memory = templates.getOrDefault(TEMPLATE_MEMORY, List.of())
-                                    .stream()
-                                    .filter(Long.class::isInstance)
-                                    .map(Long.class::cast)
-                                    .mapToLong(Long::longValue)
-                                    .findAny()
-                                    .orElse(MiB(32));
+        final var loadPayloads     = payloadMap.getAll(TEMPLATE_LOAD, LoadPayload.class);
+        final var registerPayloads = payloadMap.getAll(TEMPLATE_REGISTER, RegisterPayload.class);
+        final var memoryPayload = payloadMap.get(TEMPLATE_MEMORY, MemoryPayload.class)
+                                            .orElseGet(() -> new MemoryPayload(MiB(32)));
 
         final List<String> isa = new ArrayList<>();
         isa.add("types");
@@ -73,22 +69,27 @@ public final class Main {
             if (read(name, registry::parse))
                 return;
 
-        final Machine machine = new Machine64(memory);
+        final Machine machine = new Machine64(memoryPayload.size(), 1);
 
-        for (final var file : files)
-            if (loadFilename(machine, file.name(), file.addr()))
+        for (final var payload : loadPayloads)
+            if (load(machine, payload.filename(), payload.offset()))
                 return;
 
+        machine.reset();
+
+        for (final var payload : registerPayloads)
+            machine.getHarts().forEach(hart -> hart.getGPRFile().putd(payload.register(), payload.value()));
+
         try {
-            for (machine.reset(); machine.step(); )
-                ;
+            while (true)
+                machine.step();
         } catch (final Exception e) {
             machine.dump(System.err);
             Log.warn("machine exception: %s", e);
         }
     }
 
-    private static boolean loadFilename(
+    private static boolean load(
             final @NotNull Machine machine,
             final @NotNull String filename,
             final long offset
@@ -165,8 +166,7 @@ public final class Main {
             } else {
                 // print(stream.seek(0L), 0, stream.size());
 
-                machine.setEntry(machine.getDRAM());
-                machine.loadDirect(stream.seek(0L), 0L, stream.size(), stream.size());
+                machine.loadSegment(stream.seek(0L), offset, stream.size(), stream.size());
             }
             return false;
         } catch (final IOException e) {

@@ -1,27 +1,29 @@
 package io.scriptor.machine;
 
 import io.scriptor.elf.SymbolTable;
+import io.scriptor.impl.CLINT;
 import io.scriptor.io.IOStream;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.stream.Stream;
 
 import static io.scriptor.util.ByteUtil.signExtend;
 
 public interface Machine {
 
-    @Contract(pure = true)
-    long getDRAM();
-
-    @Contract(pure = true)
     @NotNull SymbolTable getSymbols();
+
+    @NotNull CLINT getCLINT();
+
+    @NotNull Hart getHart(final int id);
+
+    @NotNull Stream<Hart> getHarts();
 
     /**
      * reset the machine state.
      */
-    @Contract(mutates = "this")
     void reset();
 
     /**
@@ -29,23 +31,26 @@ public interface Machine {
      *
      * @param out output print stream
      */
-    @Contract(mutates = "io,this,param")
     void dump(final @NotNull PrintStream out);
 
     /**
      * proceed execution.
-     *
-     * @return if machine state is still ok
      */
-    @Contract(mutates = "this")
-    boolean step();
+    void step();
+
+    /**
+     * acquire a read/write lock for the specified address
+     *
+     * @param address the address
+     * @return the lock object
+     */
+    @NotNull Object acquireLock(final long address);
 
     /**
      * set the entry address.
      *
      * @param address entry address
      */
-    @Contract(mutates = "this")
     void setEntry(final long address);
 
     /**
@@ -54,7 +59,6 @@ public interface Machine {
      * @param stream input stream
      * @throws IOException if any
      */
-    @Contract(mutates = "io,this,param1")
     void loadDirect(final @NotNull IOStream stream, final long address, final long size, final long allocate)
             throws IOException;
 
@@ -66,52 +70,8 @@ public interface Machine {
      * @param size    destination size
      * @throws IOException if any
      */
-    @Contract(mutates = "io,this,param1")
     void loadSegment(final @NotNull IOStream stream, final long address, final long size, final long allocate)
             throws IOException;
-
-    /**
-     * fetch the 4-byte value at pc.
-     *
-     * @param unsafe return 0 instead of error
-     * @return instruction at pc, or 0 if error and unsafe
-     */
-    @Contract(mutates = "this")
-    int fetch(final boolean unsafe);
-
-    /**
-     * read a 4-byte value from a general purpose register.
-     *
-     * @param gpr source register
-     */
-    @Contract(mutates = "this")
-    int gprw(final int gpr);
-
-    /**
-     * write a 4-byte value to a general purpose register.
-     *
-     * @param gpr   destination register
-     * @param value source value
-     */
-    @Contract(mutates = "this")
-    void gprw(final int gpr, final int value);
-
-    /**
-     * read an 8-byte value from a general purpose register.
-     *
-     * @param gpr source register
-     */
-    @Contract(mutates = "this")
-    long gprd(final int gpr);
-
-    /**
-     * write an 8-byte value to a general purpose register.
-     *
-     * @param gpr   destination register
-     * @param value source value
-     */
-    @Contract(mutates = "this")
-    void gprd(final int gpr, final long value);
 
     /**
      * load a sign-extended 1-byte value.
@@ -119,9 +79,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    @Contract(mutates = "io,this")
     default int lb(final long address) {
-        return (int) signExtend(read(address, 1), 8);
+        return (int) signExtend(read(address, 1, false), 8);
     }
 
     /**
@@ -130,9 +89,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    @Contract(mutates = "io,this")
     default int lbu(final long address) {
-        return (int) read(address, 1);
+        return (int) read(address, 1, false);
     }
 
     /**
@@ -141,9 +99,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    @Contract(mutates = "io,this")
     default int lh(final long address) {
-        return (int) signExtend(read(address, 2), 16);
+        return (int) signExtend(read(address, 2, false), 16);
     }
 
     /**
@@ -152,9 +109,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    @Contract(mutates = "io,this")
     default int lhu(final long address) {
-        return (int) read(address, 2);
+        return (int) read(address, 2, false);
     }
 
     /**
@@ -163,9 +119,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    @Contract(mutates = "io,this")
     default int lw(final long address) {
-        return (int) signExtend(read(address, 4), 32);
+        return (int) signExtend(read(address, 4, false), 32);
     }
 
     /**
@@ -174,9 +129,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    @Contract(mutates = "io,this")
     default int lwu(final long address) {
-        return (int) read(address, 4);
+        return (int) read(address, 4, false);
     }
 
     /**
@@ -185,9 +139,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    @Contract(mutates = "io,this")
     default long ld(final long address) {
-        return read(address, 8);
+        return read(address, 8, false);
     }
 
     /**
@@ -196,9 +149,8 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    @Contract(mutates = "io,this")
     default void sb(final long address, final byte value) {
-        write(address, 1, value);
+        write(address, 1, value, false);
     }
 
     /**
@@ -207,9 +159,8 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    @Contract(mutates = "io,this")
     default void sh(final long address, final short value) {
-        write(address, 2, value);
+        write(address, 2, value, false);
     }
 
     /**
@@ -218,9 +169,8 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    @Contract(mutates = "io,this")
     default void sw(final long address, final int value) {
-        write(address, 4, value);
+        write(address, 4, value, false);
     }
 
     /**
@@ -229,9 +179,8 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    @Contract(mutates = "io,this")
     default void sd(final long address, final long value) {
-        write(address, 8, value);
+        write(address, 8, value, false);
     }
 
     /**
@@ -239,10 +188,10 @@ public interface Machine {
      *
      * @param address source address
      * @param size    value size
+     * @param unsafe  ignore errors
      * @return N-byte value at source address
      */
-    @Contract(mutates = "io,this")
-    long read(final long address, final int size);
+    long read(final long address, final int size, final boolean unsafe);
 
     /**
      * write a N-byte value.
@@ -250,7 +199,16 @@ public interface Machine {
      * @param address destination address
      * @param size    value size
      * @param value   N-byte source value
+     * @param unsafe  ignore errors
      */
-    @Contract(mutates = "io,this")
-    void write(final long address, final int size, final long value);
+    void write(final long address, final int size, final long value, boolean unsafe);
+
+    /**
+     * fetch the 4-byte value at pc.
+     *
+     * @param pc     program counter
+     * @param unsafe return 0 instead of error
+     * @return instruction at pc, or 0 if error and unsafe
+     */
+    int fetch(final long pc, final boolean unsafe);
 }

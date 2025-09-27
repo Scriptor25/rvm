@@ -1,7 +1,6 @@
 package io.scriptor.elf;
 
 import io.scriptor.io.IOStream;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -45,7 +44,6 @@ public interface ELF {
 
     short MACHINE_RISC_V = 0x00F3;
 
-    @Contract(mutates = "io,param2,param5")
     static void readSymbols(
             final @NotNull Identity identity,
             final @NotNull IOStream stream,
@@ -65,6 +63,9 @@ public interface ELF {
             final var size  = identity.readLong(stream);
 
             final var string = readString(stream.seek(strtab.offset() + name));
+            if (string.isBlank()) {
+                continue;
+            }
             symbols.put(value + offset, string);
         }
     }

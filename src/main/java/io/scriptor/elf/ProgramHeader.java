@@ -1,7 +1,6 @@
 package io.scriptor.elf;
 
 import io.scriptor.io.IOStream;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -33,7 +32,6 @@ public record ProgramHeader(
         long align
 ) {
 
-    @Contract(mutates = "io,param2", value = "_,_->new")
     public static @NotNull ProgramHeader read(final @NotNull Identity identity, final @NotNull IOStream stream)
             throws IOException {
         final var type    = identity.readInt(stream);
@@ -49,7 +47,6 @@ public record ProgramHeader(
     }
 
     @Override
-    @Contract(pure = true)
     public @NotNull String toString() {
         return "type=%x, flags=%x, offset=%x, vaddr=%x, paddr=%x, filesz=%x, memsz=%x, align=%x"
                 .formatted(type, flags64 | flags32, offset, vaddr, paddr, filesz, memsz, align);

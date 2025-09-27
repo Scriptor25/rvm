@@ -9,7 +9,8 @@ type J imm[31<<20|30:21<<1|20<<11|19:12<<12] rd[11:7]
 type R4 rs3[31:27] rs2[24:20] rs1[19:15] rd[11:7]
 
 # shift types
-type SH shamt[24:20] rs1[19:15] rd[11:7]
+type SH   shamt[24:20] rs1[19:15] rd[11:7]
+type SH64 shamt[25:20] rs1[19:15] rd[11:7]
 
 # csr types
 type CSR  csr[31:20] rs1[19:15]  rd[11:7]

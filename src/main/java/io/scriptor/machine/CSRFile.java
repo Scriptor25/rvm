@@ -1,8 +1,14 @@
 package io.scriptor.machine;
 
-import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
 
-public interface ControlStatusFile {
+import java.io.PrintStream;
+
+public interface CSRFile {
+
+    void reset();
+
+    void dump(final @NotNull PrintStream out);
 
     /**
      * read a 4-byte value from a control/status register.
@@ -19,7 +25,6 @@ public interface ControlStatusFile {
      * @param priv privilege level
      * @param val  source value
      */
-    @Contract(mutates = "this")
     void putw(final int addr, final int priv, final int val);
 
     /**
@@ -37,16 +42,10 @@ public interface ControlStatusFile {
      * @param priv privilege level
      * @param val  source value
      */
-    @Contract(mutates = "this")
     void putd(final int addr, final int priv, final long val);
 
-    @Contract(mutates = "this")
-    void reset();
-
-    @Contract(mutates = "this")
     void putw(final int addr, final int val);
 
-    @Contract(mutates = "this")
     void putd(final int addr, final long val);
 
     int getw(final int addr);

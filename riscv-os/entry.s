@@ -26,6 +26,9 @@ bss_clear:
 	addi t5, t5, 8
 	bltu t5, t6, bss_clear
 
+	la t0, trap
+	csrw mtvec, t0
+
 	la t0, kmain
 	csrw mepc, t0
 
@@ -33,8 +36,9 @@ bss_clear:
 	call kmain
 
     /* infinite loop */
-1:  wfi
-    j 1b
+trap:
+    wfi
+    j trap
 
 	.cfi_endproc
 

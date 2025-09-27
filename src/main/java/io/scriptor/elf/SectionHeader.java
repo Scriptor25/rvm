@@ -1,7 +1,6 @@
 package io.scriptor.elf;
 
 import io.scriptor.io.IOStream;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -34,7 +33,6 @@ public record SectionHeader(
         long entsize
 ) {
 
-    @Contract(mutates = "io,param2", value = "_,_->new")
     public static @NotNull SectionHeader read(final @NotNull Identity identity, final @NotNull IOStream stream)
             throws IOException {
         final var name      = identity.readInt(stream);
@@ -51,7 +49,6 @@ public record SectionHeader(
     }
 
     @Override
-    @Contract(pure = true)
     public @NotNull String toString() {
         return "name=%x, type=%x, flags=%x, addr=%x, offset=%x, size=%x, link=%x, info=%x, addralign=%x, entsize=%x"
                 .formatted(name, type, flags, addr, offset, size, link, info, addralign, entsize);
