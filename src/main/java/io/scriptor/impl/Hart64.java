@@ -22,6 +22,7 @@ public final class Hart64 implements Hart {
     private long pc;
     private int priv;
     private boolean wfi;
+    private boolean active;
 
     public Hart64(final @NotNull Machine machine, final int id) {
         this.machine = machine;
@@ -62,6 +63,7 @@ public final class Hart64 implements Hart {
 
         priv = CSR_M;
         wfi = false;
+        active = false;
 
         // machine isa
         csrFile.putd(misa,
@@ -170,6 +172,10 @@ public final class Hart64 implements Hart {
 
     @Override
     public void step() {
+        if (machine.hitBreakpoint(id, pc)) {
+            return;
+        }
+
         try {
             final var instruction = machine.fetch(pc, false);
             final var definition  = Registry.get(64, instruction);
@@ -238,8 +244,6 @@ public final class Hart64 implements Hart {
         final var ilen = definition.ilen();
 
         var next = pc + ilen;
-
-        dump(System.err);
 
         switch (definition.mnemonic()) {
             case "fence.i", "c.nop" -> {
@@ -954,17 +958,37 @@ public final class Hart64 implements Hart {
     }
 
     @Override
-    public @NotNull GPRFile getGPRFile() {
+    public long pc() {
+        return pc;
+    }
+
+    @Override
+    public void pc(final long pc) {
+        this.pc = pc;
+    }
+
+    @Override
+    public boolean active() {
+        return active;
+    }
+
+    @Override
+    public void active(final boolean active) {
+        this.active = active;
+    }
+
+    @Override
+    public @NotNull GPRFile gprFile() {
         return gprFile;
     }
 
     @Override
-    public @NotNull FPRFile getFPRFile() {
+    public @NotNull FPRFile fprFile() {
         return fprFile;
     }
 
     @Override
-    public @NotNull CSRFile getCSRFile() {
+    public @NotNull CSRFile csrFile() {
         return csrFile;
     }
 }

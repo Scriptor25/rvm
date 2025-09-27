@@ -19,24 +19,32 @@ public interface Hart {
 
     void wake();
 
+    long pc();
+
+    void pc(final long pc);
+
+    boolean active();
+
+    void active(final boolean active);
+
     /**
      * get the harts gpr file
      *
      * @return the gpr file
      */
-    @NotNull GPRFile getGPRFile();
+    @NotNull GPRFile gprFile();
 
     /**
      * get the harts fpr file
      *
      * @return the fpr file
      */
-    @NotNull FPRFile getFPRFile();
+    @NotNull FPRFile fprFile();
 
     /**
      * get the harts csr file
      *
      * @return the csr file
      */
-    @NotNull CSRFile getCSRFile();
+    @NotNull CSRFile csrFile();
 }

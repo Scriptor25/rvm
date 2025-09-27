@@ -8,6 +8,7 @@ import io.scriptor.elf.Header;
 import io.scriptor.elf.Identity;
 import io.scriptor.elf.ProgramHeader;
 import io.scriptor.elf.SectionHeader;
+import io.scriptor.gdb.GDBStub;
 import io.scriptor.impl.Machine64;
 import io.scriptor.io.FileStream;
 import io.scriptor.io.IOStream;
@@ -77,15 +78,31 @@ public final class Main {
 
         machine.reset();
 
-        for (final var payload : registerPayloads)
-            machine.getHarts().forEach(hart -> hart.getGPRFile().putd(payload.register(), payload.value()));
+        for (final var payload : registerPayloads) {
+            machine.getHarts().forEach(hart -> hart.gprFile().putd(payload.register(), payload.value()));
+        }
 
-        try {
-            while (true)
-                machine.step();
-        } catch (final Exception e) {
-            machine.dump(System.err);
-            Log.warn("machine exception: %s", e);
+        try (final var gdb = new GDBStub(machine, 1234)) {
+            final var gdbThread = new Thread(gdb);
+            gdbThread.start();
+
+            try {
+                while (gdbThread.isAlive()) {
+                    machine.tick();
+                }
+            } catch (final Exception e) {
+                machine.dump(System.err);
+                Log.warn("machine exception: %s", e);
+            }
+
+            try {
+                gdbThread.join();
+            } catch (final InterruptedException e) {
+                Log.warn("gdb thread interrupted: %s", e);
+            }
+
+        } catch (final IOException e) {
+            Log.warn("failed to create gdb thread: %s", e);
         }
     }
 

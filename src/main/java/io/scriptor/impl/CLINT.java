@@ -17,11 +17,11 @@ public final class CLINT {
     private final long[] mtimecmp;
     private long mtime;
 
-    public CLINT(final @NotNull Machine machine, final int harts) {
+    public CLINT(final @NotNull Machine machine, final int hartCount) {
         this.machine = machine;
-        this.count = harts;
-        this.msip = new int[harts];
-        this.mtimecmp = new long[harts];
+        this.count = hartCount;
+        this.msip = new int[hartCount];
+        this.mtimecmp = new long[hartCount];
         this.mtime = 0;
     }
 
@@ -53,27 +53,27 @@ public final class CLINT {
                 pending |= (1L << 3);
 
             final var hart = machine.getHart(id);
-            hart.getCSRFile().putd(mip, CSR_M, pending);
+            hart.csrFile().putd(mip, CSR_M, pending);
             if (pending != 0 && hart.wfi()) {
                 hart.wake();
             }
         }
     }
 
-    public void msip(final int hart, final int value) {
-        msip[hart] = value;
+    public void msip(final int id, final int value) {
+        msip[id] = value;
     }
 
-    public int msip(final int hart) {
-        return msip[hart];
+    public int msip(final int id) {
+        return msip[id];
     }
 
-    public void mtimecmp(final int hart, final long value) {
-        mtimecmp[hart] = value;
+    public void mtimecmp(final int id, final long value) {
+        mtimecmp[id] = value;
     }
 
-    public long mtimecmp(final int hart) {
-        return mtimecmp[hart];
+    public long mtimecmp(final int id) {
+        return mtimecmp[id];
     }
 
     public void mtime(final long value) {

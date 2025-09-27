@@ -7,6 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.function.IntConsumer;
 import java.util.stream.Stream;
 
 import static io.scriptor.util.ByteUtil.signExtend;
@@ -17,7 +18,7 @@ public interface Machine {
 
     @NotNull CLINT getCLINT();
 
-    @NotNull Hart getHart(final int id);
+    @NotNull Hart getHart(int id);
 
     @NotNull Stream<Hart> getHarts();
 
@@ -31,12 +32,30 @@ public interface Machine {
      *
      * @param out output print stream
      */
-    void dump(final @NotNull PrintStream out);
+    void dump(@NotNull PrintStream out);
+
+    void tick();
+
+    /**
+     * proceed execution for one step.
+     */
+    void step(int id);
 
     /**
      * proceed execution.
      */
-    void step();
+    void spin(int id);
+
+    /**
+     * pause execution.
+     */
+    void pause(int id);
+
+    void insertBreakpoint(long address, @NotNull IntConsumer callback);
+
+    void removeBreakpoint(long address);
+
+    boolean hitBreakpoint(int id, long address);
 
     /**
      * acquire a read/write lock for the specified address
@@ -44,14 +63,14 @@ public interface Machine {
      * @param address the address
      * @return the lock object
      */
-    @NotNull Object acquireLock(final long address);
+    @NotNull Object acquireLock(long address);
 
     /**
      * set the entry address.
      *
      * @param address entry address
      */
-    void setEntry(final long address);
+    void setEntry(long address);
 
     /**
      * load a stream into memory.
@@ -59,7 +78,7 @@ public interface Machine {
      * @param stream input stream
      * @throws IOException if any
      */
-    void loadDirect(final @NotNull IOStream stream, final long address, final long size, final long allocate)
+    void loadDirect(@NotNull IOStream stream, long address, long size, long allocate)
             throws IOException;
 
     /**
@@ -70,7 +89,7 @@ public interface Machine {
      * @param size    destination size
      * @throws IOException if any
      */
-    void loadSegment(final @NotNull IOStream stream, final long address, final long size, final long allocate)
+    void loadSegment(@NotNull IOStream stream, long address, long size, long allocate)
             throws IOException;
 
     /**
@@ -79,7 +98,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lb(final long address) {
+    default int lb(long address) {
         return (int) signExtend(read(address, 1, false), 8);
     }
 
@@ -89,7 +108,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lbu(final long address) {
+    default int lbu(long address) {
         return (int) read(address, 1, false);
     }
 
@@ -99,7 +118,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lh(final long address) {
+    default int lh(long address) {
         return (int) signExtend(read(address, 2, false), 16);
     }
 
@@ -109,7 +128,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lhu(final long address) {
+    default int lhu(long address) {
         return (int) read(address, 2, false);
     }
 
@@ -119,7 +138,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lw(final long address) {
+    default int lw(long address) {
         return (int) signExtend(read(address, 4, false), 32);
     }
 
@@ -129,7 +148,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lwu(final long address) {
+    default int lwu(long address) {
         return (int) read(address, 4, false);
     }
 
@@ -139,7 +158,7 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default long ld(final long address) {
+    default long ld(long address) {
         return read(address, 8, false);
     }
 
@@ -149,7 +168,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    default void sb(final long address, final byte value) {
+    default void sb(long address, byte value) {
         write(address, 1, value, false);
     }
 
@@ -159,7 +178,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    default void sh(final long address, final short value) {
+    default void sh(long address, short value) {
         write(address, 2, value, false);
     }
 
@@ -169,7 +188,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    default void sw(final long address, final int value) {
+    default void sw(long address, int value) {
         write(address, 4, value, false);
     }
 
@@ -179,7 +198,7 @@ public interface Machine {
      * @param address destination address
      * @param value   source value
      */
-    default void sd(final long address, final long value) {
+    default void sd(long address, long value) {
         write(address, 8, value, false);
     }
 
@@ -191,7 +210,14 @@ public interface Machine {
      * @param unsafe  ignore errors
      * @return N-byte value at source address
      */
-    long read(final long address, final int size, final boolean unsafe);
+    long read(long address, int size, boolean unsafe);
+
+    void read(
+            long address,
+            byte @NotNull [] buffer,
+            int offset,
+            int length
+    );
 
     /**
      * write a N-byte value.
@@ -201,7 +227,14 @@ public interface Machine {
      * @param value   N-byte source value
      * @param unsafe  ignore errors
      */
-    void write(final long address, final int size, final long value, boolean unsafe);
+    void write(long address, int size, long value, boolean unsafe);
+
+    void write(
+            long address,
+            byte @NotNull [] buffer,
+            int offset,
+            int length
+    );
 
     /**
      * fetch the 4-byte value at pc.
@@ -210,5 +243,5 @@ public interface Machine {
      * @param unsafe return 0 instead of error
      * @return instruction at pc, or 0 if error and unsafe
      */
-    int fetch(final long pc, final boolean unsafe);
+    int fetch(long pc, boolean unsafe);
 }

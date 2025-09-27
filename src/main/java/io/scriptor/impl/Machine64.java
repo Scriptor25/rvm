@@ -13,6 +13,7 @@ import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.IntConsumer;
 import java.util.stream.Stream;
 
 public final class Machine64 implements Machine {
@@ -21,15 +22,21 @@ public final class Machine64 implements Machine {
     private final SymbolTable symbols = new SymbolTable();
     private final long dram = 0x80000000L;
     private final LongByteBuffer memory;
-    private long entry;
     private final CLINT clint;
     private final Hart[] harts;
 
-    public Machine64(final long memory, final int harts) {
+    private long entry;
+
+    private boolean once;
+
+    private long activeBreakpoint = ~0L;
+    private final Map<Long, IntConsumer> breakpoints = new ConcurrentHashMap<>();
+
+    public Machine64(final long memory, final int hartCount) {
         this.memory = new LongByteBuffer(0x1000, memory);
-        this.clint = new CLINT(this, harts);
-        this.harts = new Hart[harts];
-        for (int id = 0; id < harts; ++id) {
+        this.clint = new CLINT(this, hartCount);
+        this.harts = new Hart[hartCount];
+        for (int id = 0; id < hartCount; ++id) {
             this.harts[id] = new Hart64(this, id);
         }
     }
@@ -56,6 +63,8 @@ public final class Machine64 implements Machine {
 
     @Override
     public void reset() {
+        once = false;
+
         clint.reset();
         for (final var hart : harts) {
             hart.reset(entry);
@@ -72,13 +81,92 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public void step() {
+    public synchronized void tick() {
+        if (Arrays.stream(harts).noneMatch(Hart::active)) {
+            return;
+        }
+
         clint.step();
 
-        for (final var hart : harts)
-            hart.step();
+        Arrays.stream(harts)
+              .filter(Hart::active)
+              .forEach(hart -> {
+                  hart.step();
+                  if (once) {
+                      hart.active(false);
+                  }
+              });
+
+        once = false;
     }
 
+    @Override
+    public synchronized void step(final int id) {
+        if (Arrays.stream(harts).anyMatch(Hart::active))
+            throw new IllegalStateException();
+
+        once = true;
+
+        if (id >= 0) {
+            harts[id].active(true);
+            return;
+        }
+
+        for (final var hart : harts) {
+            hart.active(true);
+        }
+    }
+
+    @Override
+    public synchronized void spin(final int id) {
+        once = false;
+
+        if (id >= 0) {
+            harts[id].active(true);
+            return;
+        }
+
+        for (final var hart : harts) {
+            hart.active(true);
+        }
+    }
+
+    @Override
+    public synchronized void pause(final int id) {
+        once = false;
+
+        if (id >= 0) {
+            harts[id].active(false);
+            return;
+        }
+
+        for (final var hart : harts) {
+            hart.active(false);
+        }
+    }
+
+    @Override
+    public void insertBreakpoint(final long address, final @NotNull IntConsumer callback) {
+        breakpoints.put(address, callback);
+    }
+
+    @Override
+    public void removeBreakpoint(final long address) {
+        breakpoints.remove(address);
+    }
+
+    @Override
+    public boolean hitBreakpoint(int id, final long address) {
+        if (address == activeBreakpoint || !breakpoints.containsKey(address)) {
+            return false;
+        }
+
+        activeBreakpoint = address;
+        breakpoints.get(address).accept(id);
+        return true;
+    }
+
+    @Override
     public @NotNull Object acquireLock(final long address) {
         return locks.computeIfAbsent(address, _ -> new Object());
     }
@@ -128,7 +216,7 @@ public final class Machine64 implements Machine {
 
     @Override
     public long read(final long address, final int size, final boolean unsafe) {
-        if (dram <= address && address + size < dram + memory.capacity()) {
+        if (dram <= address && address + size <= dram + memory.capacity()) {
             final var bytes = new byte[size];
             memory.get(address - dram, bytes, 0, size);
 
@@ -186,8 +274,25 @@ public final class Machine64 implements Machine {
     }
 
     @Override
+    public void read(long address, final byte @NotNull [] buffer, int offset, int length) {
+        address -= dram;
+
+        if (address < 0) {
+            offset = (int) -address;
+            length -= offset;
+            address = 0;
+        }
+
+        if (address + length > memory.capacity()) {
+            length = (int) (memory.capacity() - address);
+        }
+
+        memory.get(address, buffer, offset, length);
+    }
+
+    @Override
     public void write(final long address, final int size, final long value, final boolean unsafe) {
-        if (dram <= address && address + size < dram + memory.capacity()) {
+        if (dram <= address && address + size <= dram + memory.capacity()) {
             final var bytes = new byte[size];
             for (int i = 0; i < size; ++i) {
                 bytes[i] = (byte) ((value >> (i << 3)) & 0xFF);
@@ -232,6 +337,23 @@ public final class Machine64 implements Machine {
     }
 
     @Override
+    public void write(long address, final byte @NotNull [] buffer, int offset, int length) {
+        address -= dram;
+
+        if (address < 0) {
+            offset = (int) -address;
+            length -= offset;
+            address = 0;
+        }
+
+        if (address + length > memory.capacity()) {
+            length = (int) (memory.capacity() - address);
+        }
+
+        memory.put(address, buffer, offset, length);
+    }
+
+    @Override
     public int fetch(final long pc, final boolean unsafe) {
         if (dram <= pc && pc + 4 < dram + memory.capacity()) {
             final var bytes = new byte[4];
@@ -251,11 +373,5 @@ public final class Machine64 implements Machine {
 
         Log.warn("fetch pc=%016x", pc);
         throw new TrapException(1, pc);
-    }
-
-    private String readString(final long addr, final int size) {
-        final var bytes = new byte[size];
-        memory.get(addr, bytes, 0, size);
-        return new String(bytes);
     }
 }
