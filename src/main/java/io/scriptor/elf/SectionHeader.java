@@ -1,9 +1,9 @@
 package io.scriptor.elf;
 
-import io.scriptor.io.IOStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.InputStream;
 
 /**
  * @param name      An offset to a string in the .shstrtab section that represents the name of this section.
@@ -33,7 +33,7 @@ public record SectionHeader(
         long entsize
 ) {
 
-    public static @NotNull SectionHeader read(final @NotNull Identity identity, final @NotNull IOStream stream)
+    public static @NotNull SectionHeader read(final @NotNull Identity identity, final @NotNull InputStream stream)
             throws IOException {
         final var name      = identity.readInt(stream);
         final var type      = identity.readInt(stream);

@@ -22,7 +22,6 @@ public final class Hart64 implements Hart {
     private long pc;
     private int priv;
     private boolean wfi;
-    private boolean active;
 
     public Hart64(final @NotNull Machine machine, final int id) {
         this.machine = machine;
@@ -36,12 +35,12 @@ public final class Hart64 implements Hart {
         out.printf("stack trace (pc=%016x, ra=%016x, fp=%016x):%n", pc, ra, fp);
 
         {
-            final var symbol = machine.getSymbols().resolve(pc);
+            final var symbol = machine.symbols().resolve(pc);
             out.printf(" %016x : %s%n", pc, symbol);
         }
 
         while (fp != 0L) {
-            final var symbol = machine.getSymbols().resolve(ra);
+            final var symbol = machine.symbols().resolve(ra);
             out.printf(" %016x : %s%n", ra, symbol);
 
             final var prev_fp = machine.read(fp, 8, true);
@@ -63,7 +62,6 @@ public final class Hart64 implements Hart {
 
         priv = CSR_M;
         wfi = false;
-        active = false;
 
         // machine isa
         csrFile.putd(misa,
@@ -172,10 +170,6 @@ public final class Hart64 implements Hart {
 
     @Override
     public void step() {
-        if (machine.hitBreakpoint(id, pc)) {
-            return;
-        }
-
         try {
             final var instruction = machine.fetch(pc, false);
             final var definition  = Registry.get(64, instruction);
@@ -219,7 +213,7 @@ public final class Hart64 implements Hart {
     }
 
     private void interrupt() {
-        final var clint = machine.getCLINT();
+        final var clint = machine.clint();
 
         final var mtimecmp = clint.mtimecmp(id);
         final var mtime    = clint.mtime();
@@ -248,6 +242,11 @@ public final class Hart64 implements Hart {
         switch (definition.mnemonic()) {
             case "fence.i", "c.nop" -> {
                 // noop
+            }
+
+            case "ebreak", "c.ebreak" -> {
+                next = pc;
+                machine.breakpoint(id);
             }
 
             case "addi" -> {
@@ -965,16 +964,6 @@ public final class Hart64 implements Hart {
     @Override
     public void pc(final long pc) {
         this.pc = pc;
-    }
-
-    @Override
-    public boolean active() {
-        return active;
-    }
-
-    @Override
-    public void active(final boolean active) {
-        this.active = active;
     }
 
     @Override

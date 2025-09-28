@@ -4,28 +4,26 @@ import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.ServerSocket;
-import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
 
 public class GDBStub implements Runnable, Closeable {
 
     private static @NotNull String toHexString(final long value) {
         final var builder = new StringBuilder();
         for (int i = 0; i < 8; ++i) {
-            final var b = (value >> (i << 3)) & 0xff;
+            final var b = (value >> (i << 3)) & 0xFF;
             builder.append("%02x".formatted(b));
         }
         return builder.toString();
     }
 
-    private static long toLong(final @NotNull String str) {
+    private static long toLong(final @NotNull String string) {
         var value = 0L;
         for (int i = 0; i < 8; ++i) {
-            final var b = Long.parseUnsignedLong(str.substring(i << 1, (i + 1) << 1), 0x10);
+            final var b = Long.parseUnsignedLong(string.substring(i << 1, (i + 1) << 1), 0x10);
             value |= (b << (i << 3));
         }
         return value;
@@ -34,48 +32,61 @@ public class GDBStub implements Runnable, Closeable {
     private static @NotNull String toHexString(final byte @NotNull [] data) {
         final var builder = new StringBuilder();
         for (final var b : data) {
-            builder.append("%02x".formatted(b & 0xff));
+            builder.append("%02x".formatted(b & 0xFF));
         }
         return builder.toString();
     }
 
-    private static byte @NotNull [] toBytes(final @NotNull String str) {
-        final var data = new byte[str.length() / 2];
-        for (int i = 0, j = 0; i < data.length; ++i, j += 2) {
-            data[i] = (byte) Integer.parseInt(str.substring(j, j + 2), 0x10);
+    private static byte @NotNull [] toBytes(final byte @NotNull [] buffer, final @NotNull String string) {
+        for (int i = 0, j = 0; i < buffer.length; ++i, j += 2) {
+            buffer[i] = Byte.parseByte(string.substring(j, j + 2), 0x10);
         }
-        return data;
+        return buffer;
     }
 
     private final Machine machine;
 
     private final ServerSocket server;
-    private final Socket client;
-    private final InputStream in;
-    private final OutputStream out;
+    private InputStream in;
+    private OutputStream out;
 
-    private int gThread = 0;
-    private int cThread = -1;
+    private int gId = 0;
+
+    private final Map<Long, Long> breakpoints = new HashMap<>();
 
     public GDBStub(final @NotNull Machine machine, final int port) throws IOException {
         this.machine = machine;
 
+        machine.breakpoint(id -> {
+            try {
+                machine.pause();
+                final var payload = "T%02xcore:%x;".formatted(0x05, id);
+                writePacket(payload);
+            } catch (final IOException e) {
+                Log.warn("gdb: %s", e);
+            }
+        });
+
         server = new ServerSocket(port);
-        client = server.accept();
-        in = client.getInputStream();
-        out = client.getOutputStream();
     }
 
     @Override
     public void run() {
-        try {
-            while (client.isConnected() && !client.isClosed()) {
-                final var request  = readPacket();
-                final var response = handle(request);
-                writePacket(response);
+        while (true) {
+            try (final var client = server.accept()) {
+                while (client.isConnected()) {
+                    in = client.getInputStream();
+                    out = client.getOutputStream();
+
+                    final var request = readPacket();
+                    Log.info("--> %s", request);
+                    final var response = handle(request);
+                    Log.info("<-- %s", response);
+                    writePacket(response);
+                }
+            } catch (final IOException e) {
+                Log.warn("gdb: %s", e);
             }
-        } catch (final IOException e) {
-            Log.warn("gdb: %s", e);
         }
     }
 
@@ -84,7 +95,8 @@ public class GDBStub implements Runnable, Closeable {
         server.close();
     }
 
-    private @NotNull String readPacket() throws IOException {
+    private @NotNull String readPacket()
+            throws IOException {
         int b;
         do {
             b = in.read();
@@ -95,7 +107,7 @@ public class GDBStub implements Runnable, Closeable {
         int computed = 0;
         while ((b = in.read()) != '#') {
             payload.append((char) b);
-            computed = (computed + b) & 0xff;
+            computed = (computed + b) & 0xFF;
         }
 
         final var checksum = Integer.parseUnsignedInt("%c%c".formatted(in.read(), in.read()), 0x10);
@@ -111,7 +123,7 @@ public class GDBStub implements Runnable, Closeable {
     private void writePacket(final @NotNull String payload) throws IOException {
         var checksum = 0;
         for (final var b : payload.getBytes())
-            checksum = (checksum + b) & 0xff;
+            checksum = (checksum + b) & 0xFF;
 
         final var packet = "$%s#%02x".formatted(payload, checksum);
         out.write(packet.getBytes());
@@ -129,11 +141,19 @@ public class GDBStub implements Runnable, Closeable {
                 yield "S00";
             }
             case 'c' -> {
-                machine.spin(cThread);
+                machine.spin();
+                yield "OK";
+            }
+            case 's' -> {
+                machine.step();
+                yield "OK";
+            }
+            case 'r', 'R' -> {
+                machine.reset();
                 yield "OK";
             }
             case 'g' -> {
-                final var hart    = machine.getHart(gThread);
+                final var hart    = machine.hart(gId);
                 final var gprFile = hart.gprFile();
                 final var pc      = hart.pc();
 
@@ -147,7 +167,7 @@ public class GDBStub implements Runnable, Closeable {
                 yield out.toString();
             }
             case 'G' -> {
-                final var hart    = machine.getHart(gThread);
+                final var hart    = machine.hart(gId);
                 final var gprFile = hart.gprFile();
 
                 int p = 1;
@@ -171,26 +191,20 @@ public class GDBStub implements Runnable, Closeable {
                 final var op = payload.charAt(1);
                 final var id = Integer.parseInt(payload.substring(2), 0x10);
 
-                yield switch (op) {
-                    case 'g' -> {
-                        gThread = id;
-                        yield "OK";
-                    }
-                    case 'c' -> {
-                        cThread = id;
-                        yield "OK";
-                    }
-                    default -> "";
-                };
+                if (op == 'g') {
+                    gId = id;
+                    yield "OK";
+                }
+
+                yield "";
             }
-            case 'k' -> throw new RuntimeException("GDB client requested to kill process");
             case 'm' -> {
                 final var parts   = payload.substring(1).split(",");
                 final var address = Long.parseUnsignedLong(parts[0], 0x10);
                 final var length  = Integer.parseUnsignedInt(parts[1], 0x10);
 
                 final var data = new byte[length];
-                machine.read(address, data, 0, length);
+                machine.direct(false, address, data);
                 yield toHexString(data);
             }
             case 'M' -> {
@@ -198,19 +212,11 @@ public class GDBStub implements Runnable, Closeable {
                 final var address = Long.parseUnsignedLong(parts[0], 0x10);
                 final var length  = Integer.parseUnsignedInt(parts[1], 0x10);
 
-                final var str  = parts[2];
-                final var data = toBytes(str);
-
-                machine.write(address, data, 0, length);
-                yield "OK";
-            }
-            case 'r', 'R' -> {
-                machine.reset();
-                yield "OK";
-            }
-            case 's' -> {
-                machine.step(cThread);
-                yield "OK";
+                final var data = toBytes(new byte[length], parts[2]);
+                if (machine.direct(true, address, data)) {
+                    yield "OK";
+                }
+                yield "E01";
             }
             // break/watchpoint type:
             //  0 -> software breakpoint
@@ -219,50 +225,84 @@ public class GDBStub implements Runnable, Closeable {
             //  3 -> read watchpoint
             //  4 -> access watchpoint
             case 'z' -> { // remove breakpoint
-                final var parts = payload.substring(1).split(",");
-                final var type  = parts[0];
-                final var addr  = Long.parseUnsignedLong(parts[1], 0x10);
-                final var kind  = parts[2];
+                final var parts   = payload.substring(1).split(",");
+                final var type    = Integer.parseUnsignedInt(parts[0], 10);
+                final var address = Long.parseUnsignedLong(parts[1], 0x10);
+                final var length  = Integer.parseUnsignedInt(parts[2], 10);
 
                 yield switch (type) {
-                    case "0" -> {
-                        machine.removeBreakpoint(addr);
+                    case 0 -> {
+                        final var data = breakpoints.get(address);
+                        machine.write(address, length, data, true);
+                        breakpoints.remove(address);
                         yield "OK";
                     }
                     default -> {
-                        Log.warn("unsupported break- or watchpoint type: '%s'".formatted(type));
+                        Log.warn("unsupported break- or watchpoint type: '%d'".formatted(type));
                         yield "";
                     }
                 };
             }
             case 'Z' -> { // insert breakpoint
-                final var parts = payload.substring(1).split(",");
-                final var type  = parts[0];
-                final var addr  = Long.parseUnsignedLong(parts[1], 0x10);
-                final var kind  = parts[2];
+                final var parts   = payload.substring(1).split(",");
+                final var type    = Integer.parseUnsignedInt(parts[0], 10);
+                final var address = Long.parseUnsignedLong(parts[1], 0x10);
+                final var length  = Integer.parseUnsignedInt(parts[2], 10);
 
                 yield switch (type) {
-                    case "0" -> {
-                        machine.insertBreakpoint(addr, thread -> {
-                            try {
-                                machine.pause(-1);
-                                writePacket("T%02xthread:%x;".formatted(0x05, thread));
-                            } catch (final IOException e) {
-                                Log.warn("gdb: %s", e);
-                            }
-                        });
+                    case 0 -> {
+                        final var data = machine.read(address, length, true);
+                        machine.write(address, length, length == 4 ? 0x100073 : 0x9002, true);
+                        breakpoints.put(address, data);
                         yield "OK";
                     }
                     default -> {
-                        Log.warn("unsupported break- or watchpoint type: '%s'".formatted(type));
+                        Log.warn("unsupported break- or watchpoint type: '%d'".formatted(type));
                         yield "";
                     }
                 };
             }
-            default -> {
-                Log.warn("unsupported gdb payload: '%s'", payload);
-                yield "";
-            }
+            case 'q' -> switch (payload) {
+                case "qC" -> "QC-1";
+                case "qfThreadInfo", "qsThreadInfo" -> "l";
+                case "qOffsets" -> "Text=%1$08x;Data=%1$08x;Bss=%1$08x".formatted(0x80000000);
+                default -> {
+                    if (payload.startsWith("qSupported")) {
+                        yield "swbreak+;qXfer:features:read+";
+                    }
+                    if (payload.startsWith("qXfer")) {
+                        final var parts  = payload.split("[:,]");
+                        final var object = parts[1];
+                        final var annex  = parts[3];
+                        final var offset = Integer.parseUnsignedInt(parts[4], 0x10);
+                        final var length = Integer.parseUnsignedInt(parts[5], 0x10);
+                        Log.info("object=%s, annex=%s, offset=%d, length=%d", object, annex, offset, length);
+                        yield switch (object) {
+                            case "features" -> {
+                                try (final var stream = ClassLoader.getSystemResourceAsStream(annex)) {
+                                    if (stream == null) {
+                                        throw new FileNotFoundException(annex);
+                                    }
+                                    final var skip = stream.skip(offset);
+                                    if (skip < offset) {
+                                        yield "l";
+                                    }
+                                    final var data = new byte[length];
+                                    final var read = stream.read(data, 0, length);
+                                    yield "%c%s".formatted(read < length ? 'l' : 'm', new String(data, 0, read));
+                                } catch (final IOException e) {
+                                    Log.warn("failed to open resource stream: %s", e);
+                                    yield "";
+                                }
+                            }
+                            default -> "";
+                        };
+                    }
+                    yield "";
+                }
+            };
+            case 'k' -> throw new RuntimeException("GDB client requested to kill the process");
+            default -> "";
         };
     }
 }

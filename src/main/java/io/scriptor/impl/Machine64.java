@@ -1,8 +1,6 @@
 package io.scriptor.impl;
 
 import io.scriptor.elf.SymbolTable;
-import io.scriptor.io.IOStream;
-import io.scriptor.io.LongByteBuffer;
 import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
@@ -10,6 +8,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,53 +20,56 @@ import java.util.stream.Stream;
 public final class Machine64 implements Machine {
 
     private final Map<Long, Object> locks = new ConcurrentHashMap<>();
+
+    private final long DRAM_BASE = 0x80000000L;
+
     private final SymbolTable symbols = new SymbolTable();
-    private final long dram = 0x80000000L;
-    private final LongByteBuffer memory;
+    private final ByteBuffer memory;
     private final CLINT clint;
     private final Hart[] harts;
 
     private long entry;
 
     private boolean once;
+    private boolean active;
+    private IntConsumer breakpoint;
 
-    private long activeBreakpoint = ~0L;
-    private final Map<Long, IntConsumer> breakpoints = new ConcurrentHashMap<>();
-
-    public Machine64(final long memory, final int hartCount) {
-        this.memory = new LongByteBuffer(0x1000, memory);
-        this.clint = new CLINT(this, hartCount);
-        this.harts = new Hart[hartCount];
-        for (int id = 0; id < hartCount; ++id) {
+    public Machine64(final int capacity, final @NotNull ByteOrder order, final int count) {
+        this.memory = ByteBuffer.allocateDirect(capacity).order(order);
+        this.clint = new CLINT(this, count);
+        this.harts = new Hart[count];
+        for (int id = 0; id < count; ++id) {
             this.harts[id] = new Hart64(this, id);
         }
     }
 
     @Override
-    public @NotNull SymbolTable getSymbols() {
+    public @NotNull SymbolTable symbols() {
         return symbols;
     }
 
     @Override
-    public @NotNull CLINT getCLINT() {
+    public @NotNull CLINT clint() {
         return clint;
     }
 
     @Override
-    public @NotNull Hart getHart(final int id) {
+    public @NotNull Hart hart(final int id) {
         return harts[id];
     }
 
     @Override
-    public @NotNull Stream<Hart> getHarts() {
+    public @NotNull Stream<Hart> harts() {
         return Arrays.stream(harts);
     }
 
     @Override
     public void reset() {
         once = false;
+        active = false;
 
         clint.reset();
+
         for (final var hart : harts) {
             hart.reset(entry);
         }
@@ -75,95 +79,53 @@ public final class Machine64 implements Machine {
     public void dump(final @NotNull PrintStream out) {
         clint.dump(out);
         for (int id = 0; id < harts.length; ++id) {
-            out.printf("cpu@%d:%n", id);
+            out.printf("hart #%x:%n", id);
             harts[id].dump(out);
         }
     }
 
     @Override
     public synchronized void tick() {
-        if (Arrays.stream(harts).noneMatch(Hart::active)) {
+        if (!active) {
             return;
         }
 
         clint.step();
+        harts().forEach(Hart::step);
 
-        Arrays.stream(harts)
-              .filter(Hart::active)
-              .forEach(hart -> {
-                  hart.step();
-                  if (once) {
-                      hart.active(false);
-                  }
-              });
-
-        once = false;
+        if (once) {
+            active = false;
+        }
     }
 
     @Override
-    public synchronized void step(final int id) {
-        if (Arrays.stream(harts).anyMatch(Hart::active))
-            throw new IllegalStateException();
-
+    public synchronized void step() {
         once = true;
-
-        if (id >= 0) {
-            harts[id].active(true);
-            return;
-        }
-
-        for (final var hart : harts) {
-            hart.active(true);
-        }
+        active = true;
     }
 
     @Override
-    public synchronized void spin(final int id) {
+    public synchronized void spin() {
         once = false;
-
-        if (id >= 0) {
-            harts[id].active(true);
-            return;
-        }
-
-        for (final var hart : harts) {
-            hart.active(true);
-        }
+        active = true;
     }
 
     @Override
-    public synchronized void pause(final int id) {
+    public synchronized void pause() {
         once = false;
-
-        if (id >= 0) {
-            harts[id].active(false);
-            return;
-        }
-
-        for (final var hart : harts) {
-            hart.active(false);
-        }
+        active = false;
     }
 
     @Override
-    public void insertBreakpoint(final long address, final @NotNull IntConsumer callback) {
-        breakpoints.put(address, callback);
+    public void breakpoint(final @NotNull IntConsumer breakpoint) {
+        this.breakpoint = breakpoint;
     }
 
     @Override
-    public void removeBreakpoint(final long address) {
-        breakpoints.remove(address);
-    }
-
-    @Override
-    public boolean hitBreakpoint(int id, final long address) {
-        if (address == activeBreakpoint || !breakpoints.containsKey(address)) {
-            return false;
+    public void breakpoint(final int id) {
+        if (breakpoint != null) {
+            breakpoint.accept(id);
         }
-
-        activeBreakpoint = address;
-        breakpoints.get(address).accept(id);
-        return true;
     }
 
     @Override
@@ -172,60 +134,62 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public void setEntry(final long entry) {
-        if (dram <= entry && entry < dram + memory.capacity()) {
+    public void entry(final long entry) {
+        if (DRAM_BASE <= entry && entry < DRAM_BASE + memory.capacity()) {
             this.entry = entry;
             return;
         }
 
-        throw new IllegalArgumentException("entry=%016x".formatted(entry));
+        throw new IllegalArgumentException("set entry=%016x".formatted(entry));
     }
 
     @Override
-    public void loadDirect(final @NotNull IOStream stream, final long address, final long size, final long allocate)
-            throws IOException {
-        final var remainder = allocate - size;
-
-        if (0L <= address && address + allocate < memory.capacity()) {
-            stream.read(memory, address, size);
-            memory.fill(address + size, remainder, (byte) 0);
-            return;
-        }
-
-        throw new IllegalArgumentException("address=%016x, size=%x, allocate=%x".formatted(address, size, allocate));
-    }
-
-    @Override
-    public void loadSegment(
-            final @NotNull IOStream stream,
+    public void segment(
+            final @NotNull FileChannel stream,
             final long address,
-            final long size,
-            final long allocate
+            final int size,
+            final int allocate
     ) throws IOException {
         final var remainder = allocate - size;
+        final var begin     = (int) (address - DRAM_BASE);
+        final var end       = begin + allocate;
 
-        if (dram <= address && address + allocate < dram + memory.capacity()) {
-            final var dst = address - dram;
-            stream.read(memory, dst, size);
-            memory.fill(dst + size, remainder, (byte) 0);
+        if (0L <= begin && end <= memory.capacity()) {
+            stream.read(memory.slice(begin, size).order(memory.order()));
+            memory.put(begin + size, new byte[remainder]);
             return;
         }
 
-        throw new IllegalArgumentException("address=%016x, size=%x, allocate=%x".formatted(address, size, allocate));
+        throw new IllegalArgumentException("segment address=%016x, size=%x, allocate=%x"
+                                                   .formatted(address, size, allocate));
+    }
+
+    @Override
+    public int fetch(final long pc, final boolean unsafe) {
+        if (DRAM_BASE <= pc && pc + 4 <= DRAM_BASE + memory.capacity()) {
+            final var base = (int) (pc - DRAM_BASE);
+            return memory.getInt(base);
+        }
+
+        if (unsafe) {
+            return 0;
+        }
+
+        Log.warn("fetch pc=%016x", pc);
+        throw new TrapException(1, pc);
     }
 
     @Override
     public long read(final long address, final int size, final boolean unsafe) {
-        if (dram <= address && address + size <= dram + memory.capacity()) {
-            final var bytes = new byte[size];
-            memory.get(address - dram, bytes, 0, size);
-
-            var value = 0L;
-            for (int i = 0; i < size; ++i) {
-                value |= (bytes[i] & 0xFFL) << (i << 3);
-            }
-
-            return value;
+        if (DRAM_BASE <= address && address + size <= DRAM_BASE + memory.capacity()) {
+            final var base = (int) (address - DRAM_BASE);
+            return switch (size) {
+                case 1 -> (long) memory.get(base) & 0xFFL;
+                case 2 -> (long) memory.getShort(base) & 0xFFFFL;
+                case 4 -> (long) memory.getInt(base) & 0xFFFFFFFFL;
+                case 8 -> memory.getLong(base);
+                default -> throw new IllegalArgumentException("read size=%x".formatted(size));
+            };
         }
 
         if (unsafe) {
@@ -269,36 +233,21 @@ public final class Machine64 implements Machine {
             }
         }
 
-        Log.warn("read [%016x:%016x]".formatted(address, address + size - 1));
+        Log.warn("read address=%016x, size=%x".formatted(address, size));
         throw new TrapException(5, address);
     }
 
     @Override
-    public void read(long address, final byte @NotNull [] buffer, int offset, int length) {
-        address -= dram;
-
-        if (address < 0) {
-            offset = (int) -address;
-            length -= offset;
-            address = 0;
-        }
-
-        if (address + length > memory.capacity()) {
-            length = (int) (memory.capacity() - address);
-        }
-
-        memory.get(address, buffer, offset, length);
-    }
-
-    @Override
     public void write(final long address, final int size, final long value, final boolean unsafe) {
-        if (dram <= address && address + size <= dram + memory.capacity()) {
-            final var bytes = new byte[size];
-            for (int i = 0; i < size; ++i) {
-                bytes[i] = (byte) ((value >> (i << 3)) & 0xFF);
+        if (DRAM_BASE <= address && address + size <= DRAM_BASE + memory.capacity()) {
+            final var base = (int) (address - DRAM_BASE);
+            switch (size) {
+                case 1 -> memory.put(base, (byte) (value & 0xFFL));
+                case 2 -> memory.putShort(base, (short) (value & 0xFFFFL));
+                case 4 -> memory.putInt(base, (int) (value & 0xFFFFFFFFL));
+                case 8 -> memory.putLong(base, value);
+                default -> throw new IllegalArgumentException("write size=%x".formatted(size));
             }
-
-            memory.put(address - dram, bytes, 0, size);
             return;
         }
 
@@ -332,46 +281,27 @@ public final class Machine64 implements Machine {
             return;
         }
 
-        Log.warn("store [%016x:%016x] = %x".formatted(address, address + size - 1, value));
+        Log.warn("write address=%016x, size=%x, value=%x".formatted(address, size, value));
         throw new TrapException(7, address);
     }
 
     @Override
-    public void write(long address, final byte @NotNull [] buffer, int offset, int length) {
-        address -= dram;
-
-        if (address < 0) {
-            offset = (int) -address;
-            length -= offset;
-            address = 0;
-        }
-
-        if (address + length > memory.capacity()) {
-            length = (int) (memory.capacity() - address);
-        }
-
-        memory.put(address, buffer, offset, length);
-    }
-
-    @Override
-    public int fetch(final long pc, final boolean unsafe) {
-        if (dram <= pc && pc + 4 < dram + memory.capacity()) {
-            final var bytes = new byte[4];
-            memory.get(pc - dram, bytes, 0, 4);
-
-            var value = 0;
-            for (int i = 0; i < 4; ++i) {
-                value |= (bytes[i] & 0xFF) << (i << 3);
+    public boolean direct(final boolean write, final long address, final byte @NotNull [] buffer) {
+        if (DRAM_BASE <= address && address + buffer.length <= DRAM_BASE + memory.capacity()) {
+            final var base = (int) (address - DRAM_BASE);
+            if (write) {
+                memory.put(base, buffer, 0, buffer.length);
+            } else {
+                memory.get(base, buffer, 0, buffer.length);
             }
-
-            return value;
+            return true;
         }
 
-        if (unsafe) {
-            return 0;
-        }
-
-        Log.warn("fetch pc=%016x", pc);
-        throw new TrapException(1, pc);
+        Log.warn("direct read/write out of bounds: address=%016x, length=%x, base=%016x, capacity=%x",
+                 address,
+                 buffer.length,
+                 DRAM_BASE,
+                 memory.capacity());
+        return false;
     }
 }

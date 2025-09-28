@@ -1,9 +1,9 @@
 package io.scriptor.elf;
 
-import io.scriptor.io.IOStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.InputStream;
 
 /**
  * @param type      Identifies object file type.
@@ -42,7 +42,7 @@ public record Header(
         short shstrndx
 ) {
 
-    public static @NotNull Header read(final @NotNull Identity identity, final @NotNull IOStream stream)
+    public static @NotNull Header read(final @NotNull Identity identity, final @NotNull InputStream stream)
             throws IOException {
         final var type      = identity.readShort(stream);
         final var machine   = identity.readShort(stream);

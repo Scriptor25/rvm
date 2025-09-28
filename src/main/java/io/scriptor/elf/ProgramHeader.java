@@ -1,9 +1,9 @@
 package io.scriptor.elf;
 
-import io.scriptor.io.IOStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.InputStream;
 
 import static io.scriptor.elf.ELF.ELF32;
 import static io.scriptor.elf.ELF.ELF64;
@@ -32,7 +32,7 @@ public record ProgramHeader(
         long align
 ) {
 
-    public static @NotNull ProgramHeader read(final @NotNull Identity identity, final @NotNull IOStream stream)
+    public static @NotNull ProgramHeader read(final @NotNull Identity identity, final @NotNull InputStream stream)
             throws IOException {
         final var type    = identity.readInt(stream);
         final var flags64 = identity.class_() == ELF64 ? identity.readInt(stream) : 0;

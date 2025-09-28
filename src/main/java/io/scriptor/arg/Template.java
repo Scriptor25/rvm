@@ -46,7 +46,7 @@ public record Template<T extends Payload>(
                            Pattern.compile("^(?:--memory|-m)(=|\\s+)?(?:(\\d+)([KMG]))?$"),
                            matcher -> matcher.group(1) == null,
                            matcher -> {
-                               final var value = Long.parseUnsignedLong(matcher.group(2), 10);
+                               final var value = Integer.parseUnsignedInt(matcher.group(2), 10);
                                final var unit  = matcher.group(3);
                                final var size = switch (unit) {
                                    case "K" -> KiB(value);

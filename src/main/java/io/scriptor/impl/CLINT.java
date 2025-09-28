@@ -52,7 +52,7 @@ public final class CLINT {
             if (softwarePending)
                 pending |= (1L << 3);
 
-            final var hart = machine.getHart(id);
+            final var hart = machine.hart(id);
             hart.csrFile().putd(mip, CSR_M, pending);
             if (pending != 0 && hart.wfi()) {
                 hart.wake();

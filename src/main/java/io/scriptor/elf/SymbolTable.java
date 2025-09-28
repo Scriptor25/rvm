@@ -3,6 +3,7 @@ package io.scriptor.elf;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Iterator;
+import java.util.Map;
 import java.util.TreeMap;
 
 public final class SymbolTable implements Iterable<Symbol> {
@@ -30,6 +31,16 @@ public final class SymbolTable implements Iterable<Symbol> {
 
     public void put(final long addr, final @NotNull String name) {
         map.put(addr, name);
+    }
+
+    public long get(final @NotNull String name) {
+        return map.entrySet()
+                  .stream()
+                  .filter(entry -> entry.getValue().equals(name))
+                  .map(Map.Entry::getKey)
+                  .mapToLong(Long::longValue)
+                  .findAny()
+                  .orElse(~0L);
     }
 
     @Override

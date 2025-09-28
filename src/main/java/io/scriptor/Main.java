@@ -10,16 +10,14 @@ import io.scriptor.elf.ProgramHeader;
 import io.scriptor.elf.SectionHeader;
 import io.scriptor.gdb.GDBStub;
 import io.scriptor.impl.Machine64;
-import io.scriptor.io.FileStream;
-import io.scriptor.io.IOStream;
 import io.scriptor.isa.Registry;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -38,11 +36,10 @@ public final class Main {
     // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
     // https://wiki.osdev.org/RISC-V_Bare_Bones
 
-    // rvm
-    //  --file, -f=<filename[:base]>
-    //  --memory, -m=<size[:unit]>
+    public static void main(final @NotNull String @NotNull [] args) throws InterruptedException {
 
-    public static void main(final @NotNull String @NotNull [] args) {
+        final var logThread = new Thread(Log::handle);
+        logThread.start();
 
         final var payloadMap = Template.parse(args);
 
@@ -50,6 +47,17 @@ public final class Main {
         final var registerPayloads = payloadMap.getAll(TEMPLATE_REGISTER, RegisterPayload.class);
         final var memoryPayload = payloadMap.get(TEMPLATE_MEMORY, MemoryPayload.class)
                                             .orElseGet(() -> new MemoryPayload(MiB(32)));
+
+        run(loadPayloads, registerPayloads, memoryPayload);
+
+        logThread.interrupt();
+    }
+
+    private static void run(
+            final @NotNull List<LoadPayload> loadPayloads,
+            final @NotNull List<RegisterPayload> registerPayloads,
+            final @NotNull MemoryPayload memoryPayload
+    ) {
 
         final List<String> isa = new ArrayList<>();
         isa.add("types");
@@ -61,25 +69,29 @@ public final class Main {
                   .filter(not(String::isEmpty))
                   .filter(line -> line.endsWith(".isa"))
                   .forEach(isa::add);
-        }))
+        })) {
             return;
+        }
 
         final var registry = Registry.getInstance();
-
-        for (final var name : isa)
-            if (read(name, registry::parse))
+        for (final var name : isa) {
+            if (read(name, registry::parse)) {
                 return;
+            }
+        }
 
-        final Machine machine = new Machine64(memoryPayload.size(), 1);
+        final Machine machine = new Machine64(memoryPayload.size(), ByteOrder.LITTLE_ENDIAN, 1);
 
-        for (final var payload : loadPayloads)
-            if (load(machine, payload.filename(), payload.offset()))
+        for (final var payload : loadPayloads) {
+            if (load(machine, payload.filename(), payload.offset())) {
                 return;
+            }
+        }
 
         machine.reset();
 
         for (final var payload : registerPayloads) {
-            machine.getHarts().forEach(hart -> hart.gprFile().putd(payload.register(), payload.value()));
+            machine.harts().forEach(hart -> hart.gprFile().putd(payload.register(), payload.value()));
         }
 
         try (final var gdb = new GDBStub(machine, 1234)) {
@@ -95,12 +107,7 @@ public final class Main {
                 Log.warn("machine exception: %s", e);
             }
 
-            try {
-                gdbThread.join();
-            } catch (final InterruptedException e) {
-                Log.warn("gdb thread interrupted: %s", e);
-            }
-
+            gdbThread.interrupt();
         } catch (final IOException e) {
             Log.warn("failed to create gdb thread: %s", e);
         }
@@ -111,8 +118,10 @@ public final class Main {
             final @NotNull String filename,
             final long offset
     ) {
-        try (final var stream = new FileStream(filename, false)) {
-            final var identity = Identity.read(stream);
+        try (final var stream = new FileInputStream(filename)) {
+            final var buffer = ByteBuffer.allocateDirect(0x10);
+            stream.getChannel().read(buffer);
+            final var identity = Identity.read(buffer.flip());
 
             final var elf = Arrays.compare(identity.magic(), new byte[] { 0x7F, 0x45, 0x4C, 0x46 }) == 0;
 
@@ -122,18 +131,18 @@ public final class Main {
                 // System.out.printf("identity: %s%n", identity);
                 // System.out.printf("header:   %s%n", header);
 
-                machine.setEntry(header.entry() + offset);
+                machine.entry(header.entry() + offset);
 
                 final var phtab = new ProgramHeader[header.phnum()];
                 final var shtab = new SectionHeader[header.shnum()];
 
                 for (int i = 0; i < header.phnum(); ++i) {
-                    stream.seek(header.phoff() + i * header.phentsize());
+                    stream.getChannel().position(header.phoff() + i * header.phentsize());
                     phtab[i] = ProgramHeader.read(identity, stream);
                 }
 
                 for (int i = 0; i < header.shnum(); ++i) {
-                    stream.seek(header.shoff() + i * header.shentsize());
+                    stream.getChannel().position(header.shoff() + i * header.shentsize());
                     shtab[i] = SectionHeader.read(identity, stream);
                 }
 
@@ -141,7 +150,8 @@ public final class Main {
 
                 SectionHeader symtab = null, dynsym = null, strtab = null, dynstr = null;
                 for (final var sh : shtab) {
-                    final var name = readString(stream.seek(shstrtab.offset() + sh.name()));
+                    stream.getChannel().position(shstrtab.offset() + sh.name());
+                    final var name = readString(stream);
                     switch (name) {
                         case ".symtab" -> symtab = sh;
                         case ".dynsym" -> dynsym = sh;
@@ -150,7 +160,7 @@ public final class Main {
                     }
                 }
 
-                final var symbols = machine.getSymbols();
+                final var symbols = machine.symbols();
                 if (symtab != null && strtab != null) {
                     readSymbols(identity, stream, symtab, strtab, symbols, offset);
                 }
@@ -168,22 +178,25 @@ public final class Main {
                     // print(stream.seek(ph.offset()), ph.offset(), ph.filesz());
 
                     if (ph.type() == 0x01) {
-                        machine.loadSegment(stream.seek(ph.offset()),
-                                            ph.paddr() + offset,
-                                            ph.filesz(),
-                                            ph.memsz());
+                        final var channel = stream.getChannel();
+                        machine.segment(channel.position(ph.offset()),
+                                        ph.paddr() + offset,
+                                        (int) ph.filesz(),
+                                        (int) ph.memsz());
                     }
                 }
 
-                // for (final var sh : shtab) {
-                //     final var name = readString(stream.seek(shstrtab.offset() + sh.name()));
-                //     System.out.printf("section header '%s': %s%n", name, sh);
-                //     print(stream.seek(sh.offset()), sh.offset(), sh.size());
-                // }
+                /*for (final var sh : shtab) {
+                    stream.getChannel().position(shstrtab.offset() + sh.name());
+                    final var name = readString(stream);
+                    System.out.printf("section header '%s': %s%n", name, sh);
+                    print(stream.seek(sh.offset()), sh.offset(), sh.size());
+                }*/
             } else {
                 // print(stream.seek(0L), 0, stream.size());
 
-                machine.loadSegment(stream.seek(0L), offset, stream.size(), stream.size());
+                final var channel = stream.getChannel();
+                machine.segment(channel.position(0L), offset, (int) channel.size(), (int) channel.size());
             }
             return false;
         } catch (final IOException e) {
@@ -192,7 +205,8 @@ public final class Main {
         }
     }
 
-    private static void print(final @NotNull IOStream stream, final long offset, final long length) throws IOException {
+    private static void print(final @NotNull InputStream stream, final long offset, final long length)
+            throws IOException {
         if (length == 0) {
             System.out.println("<empty>");
             return;
@@ -208,7 +222,7 @@ public final class Main {
             final var chunk = (int) Math.min(length - i, CHUNK);
 
             final var bytes = new byte[chunk];
-            final var count = (int) stream.read(bytes);
+            final var count = stream.read(bytes);
 
             if (count <= 0)
                 break;

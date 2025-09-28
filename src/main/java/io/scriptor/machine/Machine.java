@@ -2,11 +2,11 @@ package io.scriptor.machine;
 
 import io.scriptor.elf.SymbolTable;
 import io.scriptor.impl.CLINT;
-import io.scriptor.io.IOStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.channels.FileChannel;
 import java.util.function.IntConsumer;
 import java.util.stream.Stream;
 
@@ -14,13 +14,13 @@ import static io.scriptor.util.ByteUtil.signExtend;
 
 public interface Machine {
 
-    @NotNull SymbolTable getSymbols();
+    @NotNull SymbolTable symbols();
 
-    @NotNull CLINT getCLINT();
+    @NotNull CLINT clint();
 
-    @NotNull Hart getHart(int id);
+    @NotNull Hart hart(int id);
 
-    @NotNull Stream<Hart> getHarts();
+    @NotNull Stream<Hart> harts();
 
     /**
      * reset the machine state.
@@ -39,23 +39,21 @@ public interface Machine {
     /**
      * proceed execution for one step.
      */
-    void step(int id);
+    void step();
 
     /**
      * proceed execution.
      */
-    void spin(int id);
+    void spin();
 
     /**
      * pause execution.
      */
-    void pause(int id);
+    void pause();
 
-    void insertBreakpoint(long address, @NotNull IntConsumer callback);
+    void breakpoint(@NotNull IntConsumer breakpoint);
 
-    void removeBreakpoint(long address);
-
-    boolean hitBreakpoint(int id, long address);
+    void breakpoint(int id);
 
     /**
      * acquire a read/write lock for the specified address
@@ -70,16 +68,7 @@ public interface Machine {
      *
      * @param address entry address
      */
-    void setEntry(long address);
-
-    /**
-     * load a stream into memory.
-     *
-     * @param stream input stream
-     * @throws IOException if any
-     */
-    void loadDirect(@NotNull IOStream stream, long address, long size, long allocate)
-            throws IOException;
+    void entry(long address);
 
     /**
      * load a segment from a stream into memory.
@@ -89,7 +78,7 @@ public interface Machine {
      * @param size    destination size
      * @throws IOException if any
      */
-    void loadSegment(@NotNull IOStream stream, long address, long size, long allocate)
+    void segment(@NotNull FileChannel stream, long address, int size, int allocate)
             throws IOException;
 
     /**
@@ -203,6 +192,15 @@ public interface Machine {
     }
 
     /**
+     * fetch the 4-byte value at pc.
+     *
+     * @param pc     program counter
+     * @param unsafe return 0 instead of error
+     * @return instruction at pc, or 0 if error and unsafe
+     */
+    int fetch(long pc, boolean unsafe);
+
+    /**
      * read a N-byte value.
      *
      * @param address source address
@@ -211,13 +209,6 @@ public interface Machine {
      * @return N-byte value at source address
      */
     long read(long address, int size, boolean unsafe);
-
-    void read(
-            long address,
-            byte @NotNull [] buffer,
-            int offset,
-            int length
-    );
 
     /**
      * write a N-byte value.
@@ -229,19 +220,9 @@ public interface Machine {
      */
     void write(long address, int size, long value, boolean unsafe);
 
-    void write(
+    boolean direct(
+            boolean write,
             long address,
-            byte @NotNull [] buffer,
-            int offset,
-            int length
+            byte @NotNull [] buffer
     );
-
-    /**
-     * fetch the 4-byte value at pc.
-     *
-     * @param pc     program counter
-     * @param unsafe return 0 instead of error
-     * @return instruction at pc, or 0 if error and unsafe
-     */
-    int fetch(long pc, boolean unsafe);
 }

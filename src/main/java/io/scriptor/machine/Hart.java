@@ -23,10 +23,6 @@ public interface Hart {
 
     void pc(final long pc);
 
-    boolean active();
-
-    void active(final boolean active);
-
     /**
      * get the harts gpr file
      *

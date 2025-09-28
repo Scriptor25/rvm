@@ -1,9 +1,10 @@
 package io.scriptor.elf;
 
-import io.scriptor.io.IOStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
 
 import static io.scriptor.elf.ELF.*;
 import static io.scriptor.util.ByteUtil.*;
@@ -27,19 +28,22 @@ public record Identity(
         byte abiversion
 ) {
 
-    public static @NotNull Identity read(final @NotNull IOStream stream) throws IOException {
+    public static @NotNull Identity read(final @NotNull ByteBuffer buffer) throws IOException {
         final var magic = new byte[4];
-        stream.read(magic);
-        final var class_     = stream.read();
-        final var data       = stream.read();
-        final var version    = stream.read();
-        final var osabi      = stream.read();
-        final var abiversion = stream.read();
-        stream.read(0x07);
+        buffer.get(magic);
+
+        final var class_     = buffer.get();
+        final var data       = buffer.get();
+        final var version    = buffer.get();
+        final var osabi      = buffer.get();
+        final var abiversion = buffer.get();
+
+        // 7 bytes padding
+
         return new Identity(magic, class_, data, version, osabi, abiversion);
     }
 
-    public short readShort(final @NotNull IOStream stream) throws IOException {
+    public short readShort(final @NotNull InputStream stream) throws IOException {
         return switch (data) {
             case LE -> readShortLE(stream);
             case BE -> readShortBE(stream);
@@ -47,7 +51,7 @@ public record Identity(
         };
     }
 
-    public int readInt(final @NotNull IOStream stream) throws IOException {
+    public int readInt(final @NotNull InputStream stream) throws IOException {
         return switch (data) {
             case LE -> readIntLE(stream);
             case BE -> readIntBE(stream);
@@ -55,7 +59,7 @@ public record Identity(
         };
     }
 
-    public long readLong(final @NotNull IOStream stream) throws IOException {
+    public long readLong(final @NotNull InputStream stream) throws IOException {
         return switch (data) {
             case LE -> readLongLE(stream);
             case BE -> readLongBE(stream);
@@ -63,7 +67,7 @@ public record Identity(
         };
     }
 
-    public long readOffset(final @NotNull IOStream stream) throws IOException {
+    public long readOffset(final @NotNull InputStream stream) throws IOException {
         return switch (class_) {
             case ELF32 -> readInt(stream);
             case ELF64 -> readLong(stream);

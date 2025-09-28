@@ -5,15 +5,15 @@ public final class Unit {
     private Unit() {
     }
 
-    public static long KiB(final long n) {
-        return n * 1024L;
+    public static int KiB(final int n) {
+        return n << 0x0A;
     }
 
-    public static long MiB(final long n) {
-        return n * 1024L * 1024L;
+    public static int MiB(final int n) {
+        return n << 0x14;
     }
 
-    public static long GiB(final long n) {
-        return n * 1024L * 1024L * 1024L;
+    public static int GiB(final int n) {
+        return n << 0x1E;
     }
 }
