@@ -176,6 +176,7 @@ public final class Hart64 implements Hart {
             pc = execute(instruction, definition);
         } catch (final TrapException e) {
             handle(e.getTrapCause(), e.getTrapValue());
+            machine.trap(id);
         }
 
         interrupt();

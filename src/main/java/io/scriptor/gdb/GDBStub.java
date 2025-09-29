@@ -8,16 +8,29 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.IntConsumer;
+import java.util.function.LongConsumer;
+
+import static io.scriptor.isa.CSR.*;
 
 public class GDBStub implements Runnable, Closeable {
 
-    private static @NotNull String toHexString(final long value) {
+    private static @NotNull String toHexString(final long value, final int n) {
         final var builder = new StringBuilder();
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < n; ++i) {
             final var b = (value >> (i << 3)) & 0xFF;
             builder.append("%02x".formatted(b));
         }
         return builder.toString();
+    }
+
+    private static int toInteger(final @NotNull String string) {
+        var value = 0;
+        for (int i = 0; i < 4; ++i) {
+            final var b = Integer.parseUnsignedInt(string.substring(i << 1, (i + 1) << 1), 0x10);
+            value |= (b << (i << 3));
+        }
+        return value;
     }
 
     private static long toLong(final @NotNull String string) {
@@ -44,6 +57,22 @@ public class GDBStub implements Runnable, Closeable {
         return buffer;
     }
 
+    private static int extractw(final @NotNull String payload, final int p, final @NotNull IntConsumer consumer) {
+        final var string = payload.substring(p, p + 0x08);
+        if (!string.equals("xxxxxxxx")) {
+            consumer.accept(toInteger(string));
+        }
+        return p + 0x08;
+    }
+
+    private static int extractd(final @NotNull String payload, final int p, final @NotNull LongConsumer consumer) {
+        final var string = payload.substring(p, p + 0x10);
+        if (!string.equals("xxxxxxxxxxxxxxxx")) {
+            consumer.accept(toLong(string));
+        }
+        return p + 0x10;
+    }
+
     private final Machine machine;
 
     private final ServerSocket server;
@@ -57,14 +86,13 @@ public class GDBStub implements Runnable, Closeable {
     public GDBStub(final @NotNull Machine machine, final int port) throws IOException {
         this.machine = machine;
 
-        machine.breakpoint(id -> {
-            try {
-                machine.pause();
-                final var payload = "T%02xcore:%x;".formatted(0x05, id);
-                writePacket(payload);
-            } catch (final IOException e) {
-                Log.warn("gdb: %s", e);
-            }
+        machine.onBreakpoint(id -> {
+            machine.pause();
+            stop(id, 0x05);
+        });
+        machine.onTrap(id -> {
+            machine.pause();
+            stop(id, 0x05);
         });
 
         server = new ServerSocket(port);
@@ -74,50 +102,69 @@ public class GDBStub implements Runnable, Closeable {
     public void run() {
         while (true) {
             try (final var client = server.accept()) {
-                while (client.isConnected()) {
-                    in = client.getInputStream();
-                    out = client.getOutputStream();
+                in = client.getInputStream();
+                out = client.getOutputStream();
 
-                    final var request = readPacket();
-                    Log.info("--> %s", request);
-                    final var response = handle(request);
-                    Log.info("<-- %s", response);
-                    writePacket(response);
+                for (int b; client.isConnected() && !client.isClosed() && (b = in.read()) >= 0x00; ) {
+                    switch (b) {
+                        case '+' -> {
+                            // acknowledge
+                        }
+                        case '-' -> {
+                            // resend
+                        }
+                        case '$' -> {
+                            // payload
+                            final var payload = new StringBuilder();
+
+                            int computed = 0;
+                            while ((b = in.read()) != '#') {
+                                payload.append((char) b);
+                                computed = (computed + b) & 0xFF;
+                            }
+
+                            final var checksum = Integer.parseUnsignedInt("%c%c".formatted(in.read(), in.read()),
+                                                                          0x10);
+
+                            if (checksum != computed)
+                                throw new IOException("checksum mismatch: %02x (computed) != %02x (checksum)"
+                                                              .formatted(computed, checksum));
+
+                            out.write('+');
+
+                            final var request = payload.toString();
+                            Log.info("--> %s", request);
+                            final var response = handle(request);
+                            Log.info("<-- %s", response);
+                            writePacket(response);
+                        }
+                        case 0x03 -> {
+                            // interrupt
+                            machine.pause();
+                            writePacket("S02");
+                        }
+                        default -> Log.info("unhandled request byte: %02x (%c)", b, b <= 0x20 ? ' ' : (char) b);
+                    }
                 }
             } catch (final IOException e) {
                 Log.warn("gdb: %s", e);
+            } catch (final InterruptedException e) {
+                break;
             }
+        }
+    }
+
+    public void stop(final int id, final int code) {
+        try {
+            writePacket("T%02xcore:%x;".formatted(code, id));
+        } catch (final IOException e) {
+            Log.warn("gdb: %s", e);
         }
     }
 
     @Override
     public void close() throws IOException {
         server.close();
-    }
-
-    private @NotNull String readPacket()
-            throws IOException {
-        int b;
-        do {
-            b = in.read();
-        } while (b != '$');
-
-        final var payload = new StringBuilder();
-
-        int computed = 0;
-        while ((b = in.read()) != '#') {
-            payload.append((char) b);
-            computed = (computed + b) & 0xFF;
-        }
-
-        final var checksum = Integer.parseUnsignedInt("%c%c".formatted(in.read(), in.read()), 0x10);
-
-        if (checksum != computed)
-            throw new IOException("checksum mismatch: %02x (computed) != %02x (checksum)"
-                                          .formatted(computed, checksum));
-
-        out.write('+');
-        return payload.toString();
     }
 
     private void writePacket(final @NotNull String payload) throws IOException {
@@ -130,7 +177,7 @@ public class GDBStub implements Runnable, Closeable {
         out.flush();
     }
 
-    private @NotNull String handle(final @NotNull String payload) {
+    private @NotNull String handle(final @NotNull String payload) throws InterruptedException {
         return switch (payload.charAt(0)) {
             case '?' -> {
                 // S05 -> SIGTRAP
@@ -138,7 +185,7 @@ public class GDBStub implements Runnable, Closeable {
                 // S04 -> SIGILL
                 // S09 -> SIGKILL
                 // S00 -> no signal
-                yield "S00";
+                yield "S05";
             }
             case 'c' -> {
                 machine.spin();
@@ -155,37 +202,279 @@ public class GDBStub implements Runnable, Closeable {
             case 'g' -> {
                 final var hart    = machine.hart(gId);
                 final var gprFile = hart.gprFile();
+                final var fprFile = hart.fprFile();
+                final var csrFile = hart.csrFile();
                 final var pc      = hart.pc();
 
-                final var out = new StringBuilder();
-                for (int reg = 0; reg < 32; ++reg) {
-                    out.append(toHexString(gprFile.getd(reg)));
+                final var response = new StringBuilder();
+
+                // GPR
+
+                for (int i = 0; i < 32; ++i) {
+                    response.append(toHexString(gprFile.getd(i), 8));
                 }
 
-                out.append(toHexString(pc));
+                response.append(toHexString(pc, 8));
 
-                yield out.toString();
+                // FPR
+
+                for (int i = 0; i < 32; ++i) {
+                    response.append(toHexString(fprFile.getdr(i), 8));
+                }
+
+                response.append(toHexString(csrFile.getw(fcsr), 4));
+
+                // CSR
+
+                response.append(toHexString(csrFile.getd(mstatus), 8));
+                response.append(toHexString(csrFile.getd(misa), 8));
+                response.append(toHexString(csrFile.getd(mie), 8));
+                response.append(toHexString(csrFile.getd(mtvec), 8));
+                response.append(toHexString(csrFile.getd(mscratch), 8));
+                response.append(toHexString(csrFile.getd(mepc), 8));
+                response.append(toHexString(csrFile.getd(mcause), 8));
+                response.append(toHexString(csrFile.getd(mtval), 8));
+                response.append(toHexString(csrFile.getd(mip), 8));
+                response.append(toHexString(csrFile.getd(cycle), 8));
+                response.append(toHexString(csrFile.getd(time), 8));
+                response.append(toHexString(csrFile.getd(instret), 8));
+                response.append(toHexString(csrFile.getd(sstatus), 8));
+                response.append(toHexString(csrFile.getd(sie), 8));
+                response.append(toHexString(csrFile.getd(stvec), 8));
+                response.append(toHexString(csrFile.getd(sscratch), 8));
+                response.append(toHexString(csrFile.getd(sepc), 8));
+                response.append(toHexString(csrFile.getd(scause), 8));
+                response.append(toHexString(csrFile.getd(stval), 8));
+                response.append(toHexString(csrFile.getd(sip), 8));
+
+                yield response.toString();
             }
             case 'G' -> {
                 final var hart    = machine.hart(gId);
                 final var gprFile = hart.gprFile();
+                final var fprFile = hart.fprFile();
+                final var csrFile = hart.csrFile();
 
                 int p = 1;
+
+                // GPR
+
                 for (int i = 0; i < 32; ++i) {
-                    final var str = payload.substring(p, p += 0x10);
-                    if (!str.equals("xxxxxxxxxxxxxxxx")) {
-                        gprFile.putd(i, toLong(str));
-                    }
+                    final var reg = i;
+                    p = extractd(payload, p, x -> gprFile.putd(reg, x));
                 }
 
-                {
-                    final var str = payload.substring(p, p += 0x10);
-                    if (!str.equals("xxxxxxxxxxxxxxxx")) {
-                        hart.pc(toLong(str));
-                    }
+                p = extractd(payload, p, hart::pc);
+
+                // FPR
+
+                for (int i = 0; i < 32; ++i) {
+                    final var reg = i;
+                    p = extractd(payload, p, x -> fprFile.putdr(reg, x));
                 }
+
+                p = extractw(payload, p, x -> csrFile.putw(fcsr, x));
+
+                // CSR
+
+                p = extractd(payload, p, x -> csrFile.putd(mstatus, x));
+                p = extractd(payload, p, x -> csrFile.putd(misa, x));
+                p = extractd(payload, p, x -> csrFile.putd(mie, x));
+                p = extractd(payload, p, x -> csrFile.putd(mtvec, x));
+                p = extractd(payload, p, x -> csrFile.putd(mscratch, x));
+                p = extractd(payload, p, x -> csrFile.putd(mepc, x));
+                p = extractd(payload, p, x -> csrFile.putd(mcause, x));
+                p = extractd(payload, p, x -> csrFile.putd(mtval, x));
+                p = extractd(payload, p, x -> csrFile.putd(mip, x));
+                p = extractd(payload, p, x -> csrFile.putd(cycle, x));
+                p = extractd(payload, p, x -> csrFile.putd(time, x));
+                p = extractd(payload, p, x -> csrFile.putd(instret, x));
+                p = extractd(payload, p, x -> csrFile.putd(sstatus, x));
+                p = extractd(payload, p, x -> csrFile.putd(sie, x));
+                p = extractd(payload, p, x -> csrFile.putd(stvec, x));
+                p = extractd(payload, p, x -> csrFile.putd(sscratch, x));
+                p = extractd(payload, p, x -> csrFile.putd(sepc, x));
+                p = extractd(payload, p, x -> csrFile.putd(scause, x));
+                p = extractd(payload, p, x -> csrFile.putd(stval, x));
+                p = extractd(payload, p, x -> csrFile.putd(sip, x));
 
                 yield "OK";
+            }
+            case 'p' -> {
+                final var hart    = machine.hart(gId);
+                final var gprFile = hart.gprFile();
+                final var fprFile = hart.fprFile();
+                final var csrFile = hart.csrFile();
+                final var pc      = hart.pc();
+
+                final var n = Integer.parseUnsignedInt(payload.substring(1), 0x10);
+
+                // GPR
+
+                if (0 <= n && n <= 31) {
+                    yield toHexString(gprFile.getd(n), 8);
+                }
+
+                if (n == 32) {
+                    yield toHexString(pc, 8);
+                }
+
+                // FPR
+
+                if (33 <= n && n <= 64) {
+                    yield toHexString(fprFile.getdr(n - 33), 8);
+                }
+
+                if (n == 65) {
+                    yield toHexString(csrFile.getw(fcsr), 4);
+                }
+
+                // CSR
+
+                yield switch (n) {
+                    case 66 -> toHexString(csrFile.getd(mstatus), 8);
+                    case 67 -> toHexString(csrFile.getd(misa), 8);
+                    case 68 -> toHexString(csrFile.getd(mie), 8);
+                    case 69 -> toHexString(csrFile.getd(mtvec), 8);
+                    case 70 -> toHexString(csrFile.getd(mscratch), 8);
+                    case 71 -> toHexString(csrFile.getd(mepc), 8);
+                    case 72 -> toHexString(csrFile.getd(mcause), 8);
+                    case 73 -> toHexString(csrFile.getd(mtval), 8);
+                    case 74 -> toHexString(csrFile.getd(mip), 8);
+                    case 75 -> toHexString(csrFile.getd(cycle), 8);
+                    case 76 -> toHexString(csrFile.getd(time), 8);
+                    case 77 -> toHexString(csrFile.getd(instret), 8);
+                    case 78 -> toHexString(csrFile.getd(sstatus), 8);
+                    case 79 -> toHexString(csrFile.getd(sie), 8);
+                    case 80 -> toHexString(csrFile.getd(stvec), 8);
+                    case 81 -> toHexString(csrFile.getd(sscratch), 8);
+                    case 82 -> toHexString(csrFile.getd(sepc), 8);
+                    case 83 -> toHexString(csrFile.getd(scause), 8);
+                    case 84 -> toHexString(csrFile.getd(stval), 8);
+                    case 85 -> toHexString(csrFile.getd(sip), 8);
+                    default -> "";
+                };
+            }
+            case 'P' -> {
+                final var hart    = machine.hart(gId);
+                final var gprFile = hart.gprFile();
+                final var fprFile = hart.fprFile();
+                final var csrFile = hart.csrFile();
+
+                final var parts = payload.substring(1).split("=");
+
+                final var n     = Integer.parseUnsignedInt(parts[0], 0x10);
+                final var value = parts[1];
+
+                // GPR
+
+                if (0 <= n && n <= 31) {
+                    gprFile.putd(n, toLong(value));
+                    yield "OK";
+                }
+
+                if (n == 32) {
+                    hart.pc(toLong(value));
+                    yield "OK";
+                }
+
+                // FPR
+
+                if (33 <= n && n <= 64) {
+                    fprFile.putdr(n - 33, toLong(value));
+                    yield "OK";
+                }
+
+                if (n == 65) {
+                    csrFile.putw(fcsr, toInteger(value));
+                    yield "OK";
+                }
+
+                // CSR
+
+                yield switch (n) {
+                    case 66 -> {
+                        csrFile.putd(mstatus, toLong(value));
+                        yield "OK";
+                    }
+                    case 67 -> {
+                        csrFile.putd(misa, toLong(value));
+                        yield "OK";
+                    }
+                    case 68 -> {
+                        csrFile.putd(mie, toLong(value));
+                        yield "OK";
+                    }
+                    case 69 -> {
+                        csrFile.putd(mtvec, toLong(value));
+                        yield "OK";
+                    }
+                    case 70 -> {
+                        csrFile.putd(mscratch, toLong(value));
+                        yield "OK";
+                    }
+                    case 71 -> {
+                        csrFile.putd(mepc, toLong(value));
+                        yield "OK";
+                    }
+                    case 72 -> {
+                        csrFile.putd(mcause, toLong(value));
+                        yield "OK";
+                    }
+                    case 73 -> {
+                        csrFile.putd(mtval, toLong(value));
+                        yield "OK";
+                    }
+                    case 74 -> {
+                        csrFile.putd(mip, toLong(value));
+                        yield "OK";
+                    }
+                    case 75 -> {
+                        csrFile.putd(cycle, toLong(value));
+                        yield "OK";
+                    }
+                    case 76 -> {
+                        csrFile.putd(time, toLong(value));
+                        yield "OK";
+                    }
+                    case 77 -> {
+                        csrFile.putd(instret, toLong(value));
+                        yield "OK";
+                    }
+                    case 78 -> {
+                        csrFile.putd(sstatus, toLong(value));
+                        yield "OK";
+                    }
+                    case 79 -> {
+                        csrFile.putd(sie, toLong(value));
+                        yield "OK";
+                    }
+                    case 80 -> {
+                        csrFile.putd(stvec, toLong(value));
+                        yield "OK";
+                    }
+                    case 81 -> {
+                        csrFile.putd(sscratch, toLong(value));
+                        yield "OK";
+                    }
+                    case 82 -> {
+                        csrFile.putd(sepc, toLong(value));
+                        yield "OK";
+                    }
+                    case 83 -> {
+                        csrFile.putd(scause, toLong(value));
+                        yield "OK";
+                    }
+                    case 84 -> {
+                        csrFile.putd(stval, toLong(value));
+                        yield "OK";
+                    }
+                    case 85 -> {
+                        csrFile.putd(sip, toLong(value));
+                        yield "OK";
+                    }
+                    default -> "";
+                };
             }
             case 'H' -> {
                 final var op = payload.charAt(1);
@@ -204,7 +493,7 @@ public class GDBStub implements Runnable, Closeable {
                 final var length  = Integer.parseUnsignedInt(parts[1], 0x10);
 
                 final var data = new byte[length];
-                machine.direct(false, address, data);
+                machine.direct(address, data, false);
                 yield toHexString(data);
             }
             case 'M' -> {
@@ -213,7 +502,7 @@ public class GDBStub implements Runnable, Closeable {
                 final var length  = Integer.parseUnsignedInt(parts[1], 0x10);
 
                 final var data = toBytes(new byte[length], parts[2]);
-                if (machine.direct(true, address, data)) {
+                if (machine.direct(address, data, true)) {
                     yield "OK";
                 }
                 yield "E01";
@@ -232,6 +521,9 @@ public class GDBStub implements Runnable, Closeable {
 
                 yield switch (type) {
                     case 0 -> {
+                        if (!breakpoints.containsKey(address)) {
+                            yield "E00";
+                        }
                         final var data = breakpoints.get(address);
                         machine.write(address, length, data, true);
                         breakpoints.remove(address);
@@ -265,7 +557,7 @@ public class GDBStub implements Runnable, Closeable {
             case 'q' -> switch (payload) {
                 case "qC" -> "QC-1";
                 case "qfThreadInfo", "qsThreadInfo" -> "l";
-                case "qOffsets" -> "Text=%1$08x;Data=%1$08x;Bss=%1$08x".formatted(0x80000000);
+                case "qOffsets" -> "Text=%1$08x;Data=%1$08x;Bss=%1$08x".formatted(machine.offset());
                 default -> {
                     if (payload.startsWith("qSupported")) {
                         yield "swbreak+;qXfer:features:read+";
@@ -301,7 +593,7 @@ public class GDBStub implements Runnable, Closeable {
                     yield "";
                 }
             };
-            case 'k' -> throw new RuntimeException("GDB client requested to kill the process");
+            case 'k' -> throw new InterruptedException("GDB client requested to kill the process");
             default -> "";
         };
     }

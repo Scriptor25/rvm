@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 import static io.scriptor.elf.ELF.*;
 import static io.scriptor.util.ByteUtil.*;
@@ -71,6 +72,14 @@ public record Identity(
         return switch (class_) {
             case ELF32 -> readInt(stream);
             case ELF64 -> readLong(stream);
+            default -> throw new IllegalStateException();
+        };
+    }
+
+    public @NotNull ByteOrder order() {
+        return switch (data) {
+            case LE -> ByteOrder.LITTLE_ENDIAN;
+            case BE -> ByteOrder.BIG_ENDIAN;
             default -> throw new IllegalStateException();
         };
     }

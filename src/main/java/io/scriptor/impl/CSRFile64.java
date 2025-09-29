@@ -41,15 +41,29 @@ public final class CSRFile64 implements CSRFile {
     }
 
     @Override
-    public int getw(final int addr, final int priv) {
-        throw new UnsupportedOperationException();
+    public int getw(final int addr) {
+        return (int) getd(addr);
     }
 
     @Override
-    public void putw(final int addr, final int priv, final int val) {
-        throw new UnsupportedOperationException();
+    public int getw(final int addr, final int priv) {
+        return (int) getd(addr, priv);
     }
 
+    @Override
+    public int getwu(int addr) {
+        return (int) (getd(addr) & 0xFFFFFFFFL);
+    }
+
+    @Override
+    public int getwu(final int addr, final int priv) {
+        return (int) (getd(addr, priv) & 0xFFFFFFFFL);
+    }
+
+    @Override
+    public long getd(final int addr) {
+        return values[addr];
+    }
 
     @Override
     public long getd(final int addr, final int priv) {
@@ -64,6 +78,32 @@ public final class CSRFile64 implements CSRFile {
         }
 
         return values[addr];
+    }
+
+    @Override
+    public void putw(final int addr, final int val) {
+        putd(addr, val);
+    }
+
+    @Override
+    public void putw(final int addr, final int priv, final int val) {
+        putd(addr, priv, val);
+    }
+
+    @Override
+    public void putwu(final int addr, final int val) {
+        putd(addr, Integer.toUnsignedLong(val));
+    }
+
+    @Override
+    public void putwu(final int addr, final int priv, final int val) {
+        putd(addr, priv, Integer.toUnsignedLong(val));
+    }
+
+    @Override
+    public void putd(final int addr, final long val) {
+        values[addr] = val;
+        present[addr] = true;
     }
 
     @Override
@@ -84,26 +124,5 @@ public final class CSRFile64 implements CSRFile {
         }
 
         values[addr] = val;
-    }
-
-    @Override
-    public void putw(final int addr, final int val) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void putd(final int addr, final long val) {
-        values[addr] = val;
-        present[addr] = true;
-    }
-
-    @Override
-    public int getw(final int addr) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public long getd(final int addr) {
-        return values[addr];
     }
 }

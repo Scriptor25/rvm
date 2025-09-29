@@ -2,11 +2,12 @@ package io.scriptor.machine;
 
 import io.scriptor.elf.SymbolTable;
 import io.scriptor.impl.CLINT;
+import io.scriptor.util.ExtendedInputStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.channels.FileChannel;
+import java.nio.ByteOrder;
 import java.util.function.IntConsumer;
 import java.util.stream.Stream;
 
@@ -34,6 +35,8 @@ public interface Machine {
      */
     void dump(@NotNull PrintStream out);
 
+    void dump(@NotNull PrintStream out, long address, long size);
+
     void tick();
 
     /**
@@ -51,9 +54,13 @@ public interface Machine {
      */
     void pause();
 
-    void breakpoint(@NotNull IntConsumer breakpoint);
+    void onBreakpoint(@NotNull IntConsumer handler);
 
     void breakpoint(int id);
+
+    void onTrap(@NotNull IntConsumer handler);
+
+    void trap(int id);
 
     /**
      * acquire a read/write lock for the specified address
@@ -70,6 +77,12 @@ public interface Machine {
      */
     void entry(long address);
 
+    void offset(long offset);
+
+    long offset();
+
+    void order(@NotNull ByteOrder order);
+
     /**
      * load a segment from a stream into memory.
      *
@@ -78,7 +91,7 @@ public interface Machine {
      * @param size    destination size
      * @throws IOException if any
      */
-    void segment(@NotNull FileChannel stream, long address, int size, int allocate)
+    void segment(@NotNull ExtendedInputStream stream, long address, long size, long allocate)
             throws IOException;
 
     /**
@@ -220,9 +233,5 @@ public interface Machine {
      */
     void write(long address, int size, long value, boolean unsafe);
 
-    boolean direct(
-            boolean write,
-            long address,
-            byte @NotNull [] buffer
-    );
+    boolean direct(long address, byte @NotNull [] buffer, boolean write);
 }

@@ -10,6 +10,8 @@ public interface CSRFile {
 
     void dump(final @NotNull PrintStream out);
 
+    int getw(final int addr);
+
     /**
      * read a 4-byte value from a control/status register.
      *
@@ -17,6 +19,22 @@ public interface CSRFile {
      * @param priv privilege level
      */
     int getw(final int addr, final int priv);
+
+    int getwu(final int addr);
+
+    int getwu(final int addr, final int priv);
+
+    long getd(final int addr);
+
+    /**
+     * read an 8-byte value from a control/status register.
+     *
+     * @param addr source register
+     * @param priv privilege level
+     */
+    long getd(final int addr, int priv);
+
+    void putw(final int addr, final int val);
 
     /**
      * write a 4-byte value to a control/status register.
@@ -27,13 +45,11 @@ public interface CSRFile {
      */
     void putw(final int addr, final int priv, final int val);
 
-    /**
-     * read an 8-byte value from a control/status register.
-     *
-     * @param addr source register
-     * @param priv privilege level
-     */
-    long getd(final int addr, int priv);
+    void putwu(final int addr, final int val);
+
+    void putwu(final int addr, final int priv, final int val);
+
+    void putd(final int addr, final long val);
 
     /**
      * write an 8-byte value to a control/status register.
@@ -43,12 +59,4 @@ public interface CSRFile {
      * @param val  source value
      */
     void putd(final int addr, final int priv, final long val);
-
-    void putw(final int addr, final int val);
-
-    void putd(final int addr, final long val);
-
-    int getw(final int addr);
-
-    long getd(final int addr);
 }

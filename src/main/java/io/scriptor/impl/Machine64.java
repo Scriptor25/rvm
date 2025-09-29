@@ -3,6 +3,7 @@ package io.scriptor.impl;
 import io.scriptor.elf.SymbolTable;
 import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
+import io.scriptor.util.ExtendedInputStream;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
@@ -10,7 +11,6 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,10 +29,13 @@ public final class Machine64 implements Machine {
     private final Hart[] harts;
 
     private long entry;
+    private long offset;
 
     private boolean once;
     private boolean active;
-    private IntConsumer breakpoint;
+
+    private IntConsumer breakpointHandler;
+    private IntConsumer trapHandler;
 
     public Machine64(final int capacity, final @NotNull ByteOrder order, final int count) {
         this.memory = ByteBuffer.allocateDirect(capacity).order(order);
@@ -85,6 +88,69 @@ public final class Machine64 implements Machine {
     }
 
     @Override
+    public void dump(final @NotNull PrintStream out, final long address, final long size) {
+        if (size == 0) {
+            out.println("<empty>");
+            return;
+        }
+
+        final var CHUNK = 0x20;
+
+        var allZero      = false;
+        var allZeroBegin = 0L;
+
+        for (long i = 0; i < size; i += CHUNK) {
+
+            final var chunk = (int) Math.min(size - i, CHUNK);
+            if (chunk <= 0)
+                break;
+
+            final var buffer = new byte[chunk];
+            if (!direct(address + i, buffer, false))
+                break;
+
+            boolean allZeroP = true;
+            for (int j = 0; j < chunk; ++j)
+                if (buffer[j] != 0) {
+                    allZeroP = false;
+                    break;
+                }
+
+            if (allZero && !allZeroP) {
+                allZero = false;
+                out.printf("%016x - %016x%n", allZeroBegin, i - 1);
+            } else if (!allZero && allZeroP) {
+                allZero = true;
+                allZeroBegin = i;
+                continue;
+            } else if (allZero) {
+                continue;
+            }
+
+            out.printf("%016x |", address + i);
+
+            for (int j = 0; j < chunk; ++j) {
+                out.printf(" %02x", buffer[j]);
+            }
+            for (int j = chunk; j < CHUNK; ++j) {
+                out.print(" 00");
+            }
+
+            out.print(" | ");
+
+            for (int j = 0; j < chunk; ++j) {
+                out.print(buffer[j] >= 0x20 ? (char) buffer[j] : '.');
+            }
+            for (int j = chunk; j < CHUNK; ++j) {
+                out.print('.');
+            }
+
+            out.println();
+        }
+        out.println("(END)");
+    }
+
+    @Override
     public synchronized void tick() {
         if (!active) {
             return;
@@ -117,14 +183,26 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public void breakpoint(final @NotNull IntConsumer breakpoint) {
-        this.breakpoint = breakpoint;
+    public void onBreakpoint(final @NotNull IntConsumer handler) {
+        this.breakpointHandler = handler;
     }
 
     @Override
     public void breakpoint(final int id) {
-        if (breakpoint != null) {
-            breakpoint.accept(id);
+        if (breakpointHandler != null) {
+            breakpointHandler.accept(id);
+        }
+    }
+
+    @Override
+    public void onTrap(final @NotNull IntConsumer handler) {
+        this.trapHandler = handler;
+    }
+
+    @Override
+    public void trap(final int id) {
+        if (trapHandler != null) {
+            trapHandler.accept(id);
         }
     }
 
@@ -144,19 +222,40 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public void segment(
-            final @NotNull FileChannel stream,
-            final long address,
-            final int size,
-            final int allocate
-    ) throws IOException {
-        final var remainder = allocate - size;
-        final var begin     = (int) (address - DRAM_BASE);
-        final var end       = begin + allocate;
+    public void offset(final long offset) {
+        this.offset = offset;
+    }
 
-        if (0L <= begin && end <= memory.capacity()) {
-            stream.read(memory.slice(begin, size).order(memory.order()));
-            memory.put(begin + size, new byte[remainder]);
+    @Override
+    public long offset() {
+        return offset;
+    }
+
+    @Override
+    public void order(final @NotNull ByteOrder order) {
+        memory.order(order);
+    }
+
+    @Override
+    public void segment(
+            final @NotNull ExtendedInputStream stream,
+            final long address,
+            final long size,
+            final long allocate
+    ) throws IOException {
+        final var sizeInt     = (int) size;
+        final var allocateInt = (int) allocate;
+
+        if (sizeInt != size || allocateInt != allocate) {
+            throw new IllegalArgumentException();
+        }
+
+        final var begin = (int) (address - DRAM_BASE);
+        final var end   = begin + allocateInt;
+
+        if (0 <= begin && end <= memory.capacity()) {
+            stream.read(memory.slice(begin, sizeInt).order(memory.order()));
+            memory.put(begin + sizeInt, new byte[allocateInt - sizeInt]);
             return;
         }
 
@@ -286,7 +385,7 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public boolean direct(final boolean write, final long address, final byte @NotNull [] buffer) {
+    public boolean direct(final long address, final byte @NotNull [] buffer, final boolean write) {
         if (DRAM_BASE <= address && address + buffer.length <= DRAM_BASE + memory.capacity()) {
             final var base = (int) (address - DRAM_BASE);
             if (write) {

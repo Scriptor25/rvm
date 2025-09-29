@@ -28,20 +28,22 @@ public final class GPRFile64 implements GPRFile {
 
     @Override
     public int getw(final int reg) {
-        if (reg == 0) {
-            return 0;
-        }
+        return (int) getd(reg);
+    }
 
-        return (int) (values[reg] & 0xFFFFFFFFL);
+    @Override
+    public int getwu(final int reg) {
+        return (int) (getd(reg) & 0xFFFFFFFFL);
     }
 
     @Override
     public void putw(final int reg, final int val) {
-        if (reg == 0) {
-            return;
-        }
+        putd(reg, val);
+    }
 
-        values[reg] = Integer.toUnsignedLong(val);
+    @Override
+    public void putwu(final int reg, final int val) {
+        putd(reg, Integer.toUnsignedLong(val));
     }
 
     @Override
@@ -49,7 +51,6 @@ public final class GPRFile64 implements GPRFile {
         if (reg == 0) {
             return 0L;
         }
-
         return values[reg];
     }
 
@@ -58,7 +59,6 @@ public final class GPRFile64 implements GPRFile {
         if (reg == 0) {
             return;
         }
-
         values[reg] = val;
     }
 }

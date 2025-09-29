@@ -1,8 +1,8 @@
 package io.scriptor.elf;
 
+import io.scriptor.util.ExtendedInputStream;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 
 import static io.scriptor.util.ByteUtil.readString;
@@ -46,23 +46,23 @@ public interface ELF {
 
     static void readSymbols(
             final @NotNull Identity identity,
-            final @NotNull FileInputStream stream,
+            final @NotNull ExtendedInputStream stream,
             final @NotNull SectionHeader symtab,
             final @NotNull SectionHeader strtab,
             final @NotNull SymbolTable symbols,
             final long offset
     ) throws IOException {
         for (long i = 0L; i < symtab.size(); i += symtab.entsize()) {
-            stream.getChannel().position(symtab.offset() + i);
+            stream.seek(symtab.offset() + i);
 
             final var name  = identity.readInt(stream);
             final var info  = stream.read();
             final var other = stream.read();
-            final var shndx = identity.readShort(stream) & 0xFFFF;
+            final var shndx = identity.readShort(stream);
             final var value = identity.readLong(stream);
             final var size  = identity.readLong(stream);
 
-            stream.getChannel().position(strtab.offset() + name);
+            stream.seek(strtab.offset() + name);
 
             final var string = readString(stream);
             if (string.isBlank()) {
