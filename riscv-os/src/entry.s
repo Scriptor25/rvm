@@ -2,6 +2,8 @@
 
 .option norvc
 
+/* do not touch a0, contains pointer to fdt! */
+
 .type start, @function
 .global start
 start:

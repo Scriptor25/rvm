@@ -645,6 +645,41 @@ public final class Hart64 implements Hart {
 
                 gprFile.putd(rd, Long.divideUnsigned(lhs, rhs));
             }
+            case "rem" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+
+                final var lhs = gprFile.getd(rs1);
+                final var rhs = gprFile.getd(rs2);
+
+                if (rhs == 0L) {
+                    gprFile.putd(rd, lhs);
+                    break;
+                }
+
+                if (lhs == Long.MIN_VALUE && rhs == -1L) {
+                    gprFile.putd(rd, 0L);
+                    break;
+                }
+
+                gprFile.putd(rd, lhs % rhs);
+            }
+            case "remu" -> {
+                final var rd  = definition.get("rd", instruction);
+                final var rs1 = definition.get("rs1", instruction);
+                final var rs2 = definition.get("rs2", instruction);
+
+                final var lhs = gprFile.getd(rs1);
+                final var rhs = gprFile.getd(rs2);
+
+                if (rhs == 0L) {
+                    gprFile.putd(rd, lhs);
+                    break;
+                }
+
+                gprFile.putd(rd, Long.remainderUnsigned(lhs, rhs));
+            }
 
             case "csrrw" -> {
                 final var rd  = definition.get("rd", instruction);

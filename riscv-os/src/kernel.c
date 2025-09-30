@@ -1,110 +1,121 @@
-#include <stdint.h>
+#include <common.h>
+#include <fdt.h>
 #include <stddef.h>
+#include <stdint.h>
 
-#define UART_RX  ((volatile unsigned char*) 0x10000000)
-#define UART_LSR ((volatile unsigned char*) 0x10000005)
-
-#define UART_DR_BIT 0x01
-
-void putc(char c)
+void kmain(void* fdt)
 {
-    *UART_RX = c;
-    return;
-}
+    char buffer[256], c, *bp;
+    const char *line, *token;
+    int tokenlen;
 
-unsigned char getc()
-{
-    while (!(*UART_LSR & UART_DR_BIT));
-    return *UART_RX;
-}
+    int node = -1, prop = -1, nextnode, nextprop;
 
-void puts(const char* str)
-{
-	while (*str)
-	    putc(*str++);
-	return;
-}
+    kputs("Hello from kernel!\r\n");
+    while (1)
+    {
+        kputs("> ");
 
-int strcmp(const char* a, const char* b)
-{
-    int i = 0;
-    for (; a[i] && b[i] && a[i] == b[i]; ++i);
-    if (a[i] != b[i])
-        return a[i] - b[i];
-    return 0;
-}
-
-int strlen(const char* str)
-{
-    int length = 0;
-    for (; *str; ++str, ++length);
-    return length;
-}
-
-char* trim(char* buffer, int length)
-{
-    int begin = 0, end = length;
-
-    for (; begin < length; ++begin)
-        if (!buffer[begin] || buffer[begin] > 0x20)
-            break;
-
-    for (; end > 0; --end)
-        if (buffer[end - 1] > 0x20)
-            break;
-
-    buffer[end] = 0;
-    return &buffer[begin];
-}
-
-void kmain(void)
-{
-    char buffer[256], c, *pointer;
-
-	puts("Hello from kernel!\r\n");
-	while (1)
-	{
-        puts("> ");
-
-        pointer = buffer;
-        *pointer = 0;
-
-        c = getc();
-        while (!(c == '\0' || c == '\r' || c == '\n'))
+        bp = buffer;
+        do
         {
-            if (c >= 0x20)
+            c = kgetc();
+            kputc(c);
+
+            (*bp++) = c;
+        } while (!(c == '\0' || c == '\r' || c == '\n'));
+        *bp = 0;
+
+        line = kstrnext(buffer, &token, &tokenlen);
+
+        if (kstrcmpn("exit", 4, token, tokenlen) == 0)
+        {
+            kputs("Stopping kernel...\r\n");
+            break;
+        }
+        else if (kstrcmpn("hello", 5, token, tokenlen) == 0)
+        {
+            kputs("Hello world!\r\n");
+        }
+        else if (kstrcmpn("panic", 5, token, tokenlen) == 0)
+        {
+            *((volatile char*) ~0) = 0;
+        }
+        else if (kstrcmpn("fdt", 3, token, tokenlen) == 0)
+        {
+            line = kstrnext(line, &token, &tokenlen);
+
+            if (kstrcmpn("node", 4, token, tokenlen) == 0)
             {
-                (*pointer++) = c;
+                line = kstrnext(line, &token, &tokenlen);
+
+                nextnode = fdt_find_node(fdt, token, tokenlen);
+                if (nextnode < 0)
+                {
+                    kprintf("failed to select node '%.*s'\r\n", tokenlen, token);
+                }
+                else
+                {
+                    node = nextnode;
+
+                    kprintf("selected node '%.*s' (offset %#x)\r\n", tokenlen, token, node);
+                }
             }
-            putc(c);
-            c = getc();
-        }
-        *pointer = 0;
+            else if (kstrcmpn("prop", 4, token, tokenlen) == 0)
+            {
+                if (node < 0)
+                {
+                    kputs("no node selected\r\n");
+                }
+                else
+                {
+                    line = kstrnext(line, &token, &tokenlen);
 
-        puts("\r\n");
+                    nextprop = fdt_find_prop(fdt, node, token, tokenlen);
+                    if (nextprop < 0)
+                    {
+                        kprintf("failed to select prop '%.*s'\r\n", tokenlen, token);
+                    }
+                    else
+                    {
+                        prop = nextprop;
 
-        char* command = trim(buffer, 256);
+                        const char* nname = FDT_NODE_NAME(fdt, node);
+                        const char* pname = FDT_PROP_NAME(fdt, prop);
 
-        if (strcmp(command, "exit") == 0)
-        {
-            puts("Stopping kernel...\r\n");
-            break;
+                        uint32_t plen = FDT_PROP_LEN(fdt, prop);
+                        if (plen)
+                        {
+                            const char* pvalue = FDT_PROP_VALUE(fdt, prop);
+
+                            kprintf("%s.%s = [", nname, pname);
+                            for (uint32_t i = 0; i < plen; ++i)
+                            {
+                                if (i)
+                                {
+                                    kputs(", ");
+                                }
+                                kprintf("%02x", pvalue[i]);
+                            }
+                            kputs("]\r\n");
+                        }
+                        else
+                        {
+                            kprintf("%s.%s\r\n", nname, pname);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                kprintf("undefined command 'fdt %.*s'\r\n", tokenlen, token);
+            }
         }
-        else if (strcmp(command, "hello") == 0)
+        else
         {
-            puts("Hello world!\r\n");
-        }
-        else if (strcmp(command, "panic") == 0)
-        {
-            *((char*)~0) = 'P';
-        }
-        else if (strlen(command))
-        {
-            puts("undefined command '");
-            puts(command);
-            puts("'\r\n");
+            kprintf("undefined command '%.*s'\r\n", tokenlen, token);
         }
     }
 
-	return;
+    return;
 }

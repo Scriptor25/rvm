@@ -1,3 +1,5 @@
+rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
+
 CROSS_COMPILE = riscv64-linux-gnu-
 
 AS = $(CROSS_COMPILE)as
@@ -7,7 +9,7 @@ LD = $(CROSS_COMPILE)ld
 SRC_DIR = src
 BIN_DIR = bin
 
-SRC = $(SRC_DIR)/entry.s $(SRC_DIR)/kernel.c
+SRC = $(call rwildcard,$(SRC_DIR),*.s) $(call rwildcard,$(SRC_DIR),*.c)
 BIN = $(SRC:$(SRC_DIR)/%=$(BIN_DIR)/%.o)
 
 LDS = $(SRC_DIR)/linker.ld
@@ -15,7 +17,7 @@ LDS = $(SRC_DIR)/linker.ld
 ELF = $(BIN_DIR)/kernel.elf
 
 AS_FLAGS = -march=rv64gc -mabi=lp64d -g
-CC_FLAGS = -Wall -Wextra -mcmodel=medany -ffreestanding -march=rv64gc -mabi=lp64d -g
+CC_FLAGS = -I include -Wall -Wextra -mcmodel=medany -ffreestanding -march=rv64gc -mabi=lp64d -g
 LD_FLAGS = -nostdlib -g
 
 .PHONY: all clean build
