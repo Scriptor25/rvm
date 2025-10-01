@@ -67,7 +67,7 @@ public final class Registry {
             Pattern.compile("^(\\w+(?:\\.\\w+)*)\\s*\\[([^]]+)](?:\\?(\\d+))?\\s*(?:\\((\\w+)\\))?(.*)$");
 
     private final Map<String, Type> types = new HashMap<>();
-    private final DirectList<Instruction> instructions = new DirectList<>(Instruction.class);
+    private final DirectList<Instruction> instructions = new DirectList<>();
 
     private Registry() {
     }

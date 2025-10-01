@@ -29,7 +29,7 @@ public final class Resource {
             consumer.accept(stream);
             return false;
         } catch (final IOException e) {
-            Log.warn("failed to read resource name '%s': %s", name, e);
+            Log.error("failed to read resource name '%s': %s", name, e);
             return true;
         }
     }

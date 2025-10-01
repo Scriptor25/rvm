@@ -40,7 +40,7 @@ public final class Main {
 
     public static void main(final @NotNull String @NotNull [] args) {
 
-        final var logThread = new Thread(Log::handle);
+        final var logThread = new Thread(Log::handle, "rvm-log");
         logThread.start();
 
         try {
@@ -109,26 +109,26 @@ public final class Main {
 
         if (debug) {
             try (final var gdb = new GDBStub(machine, 1234)) {
-                final var gdbThread = new Thread(gdb);
+                final var gdbThread = new Thread(gdb, "rvm-gdb");
                 gdbThread.start();
 
                 while (gdbThread.isAlive()) {
                     try {
                         machine.tick();
                     } catch (final InterruptedException e) {
-                        Log.warn("main thread interrupted: %s", e);
+                        Log.error("main thread interrupted: %s", e);
                         break;
                     } catch (final Exception e) {
                         machine.dump(System.err);
                         machine.pause();
-                        Log.warn("machine exception: %s", e);
+                        Log.error("machine exception: %s", e);
                         gdb.stop(-1, 0x00);
                     }
                 }
 
                 gdbThread.interrupt();
             } catch (final IOException e) {
-                Log.warn("failed to create gdb thread: %s", e);
+                Log.error("failed to create gdb thread: %s", e);
             }
             return;
         }
@@ -140,7 +140,7 @@ public final class Main {
             }
         } catch (final Exception e) {
             machine.dump(System.err);
-            Log.warn("machine exception: %s", e);
+            Log.error("machine exception: %s", e);
         }
     }
 
@@ -230,7 +230,7 @@ public final class Main {
             }
             return false;
         } catch (final IOException e) {
-            Log.warn("failed to load file '%s' (offset %x): %s", filename, offset, e);
+            Log.error("failed to load file '%s' (offset %x): %s", filename, offset, e);
             return true;
         }
     }

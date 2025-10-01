@@ -4,8 +4,15 @@ import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.*;
-import java.net.ServerSocket;
+import java.io.Closeable;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.IntConsumer;
@@ -75,9 +82,10 @@ public class GDBStub implements Runnable, Closeable {
 
     private final Machine machine;
 
-    private final ServerSocket server;
-    private InputStream in;
-    private OutputStream out;
+    private final ServerSocketChannel channel;
+    private final Selector selector;
+
+    private SocketChannel client;
 
     private int gId = 0;
 
@@ -95,60 +103,33 @@ public class GDBStub implements Runnable, Closeable {
             stop(id, 0x05);
         });
 
-        server = new ServerSocket(port);
+        channel = ServerSocketChannel.open();
+        channel.configureBlocking(false);
+        channel.bind(new InetSocketAddress(port));
+
+        selector = Selector.open();
+        channel.register(selector, SelectionKey.OP_ACCEPT);
     }
 
     @Override
     public void run() {
         while (true) {
-            try (final var client = server.accept()) {
-                in = client.getInputStream();
-                out = client.getOutputStream();
+            try {
+                selector.select();
 
-                for (int b; client.isConnected() && !client.isClosed() && (b = in.read()) >= 0x00; ) {
-                    switch (b) {
-                        case '+' -> {
-                            // acknowledge
-                        }
-                        case '-' -> {
-                            // resend
-                        }
-                        case '$' -> {
-                            // payload
-                            final var payload = new StringBuilder();
+                for (var it = selector.selectedKeys().iterator(); it.hasNext(); ) {
+                    final var key = it.next();
+                    it.remove();
 
-                            int computed = 0;
-                            while ((b = in.read()) != '#') {
-                                payload.append((char) b);
-                                computed = (computed + b) & 0xFF;
-                            }
-
-                            final var checksum = Integer.parseUnsignedInt("%c%c".formatted(in.read(), in.read()),
-                                                                          0x10);
-
-                            if (checksum != computed)
-                                throw new IOException("checksum mismatch: %02x (computed) != %02x (checksum)"
-                                                              .formatted(computed, checksum));
-
-                            out.write('+');
-                            out.flush();
-
-                            final var request = payload.toString();
-                            Log.info("--> %s", request);
-                            final var response = handle(request);
-                            Log.info("<-- %s", response);
-                            writePacket(response);
-                        }
-                        case 0x03 -> {
-                            // interrupt
-                            machine.pause();
-                            writePacket("S02");
-                        }
-                        default -> Log.info("unhandled request byte: %02x (%c)", b, b <= 0x20 ? ' ' : (char) b);
+                    if (key.isAcceptable()) {
+                        handleAccept(key);
+                        continue;
                     }
+
+                    handleRead(key);
                 }
             } catch (final IOException e) {
-                Log.warn("gdb exception: %s", e);
+                Log.error("gdb error: %s", e);
             } catch (final InterruptedException e) {
                 Log.warn("gdb thread interrupted: %s", e);
                 Thread.currentThread().interrupt();
@@ -158,25 +139,124 @@ public class GDBStub implements Runnable, Closeable {
 
     public void stop(final int id, final int code) {
         try {
-            writePacket("T%02xcore:%x;".formatted(code, id));
+            writePacket(client, "T%02xcore:%x;".formatted(code, id));
         } catch (final IOException e) {
-            Log.warn("gdb: %s", e);
+            Log.error("gdb: %s", e);
         }
     }
 
     @Override
     public void close() throws IOException {
-        server.close();
+        channel.close();
     }
 
-    private void writePacket(final @NotNull String payload) throws IOException {
+    private void handleAccept(final @NotNull SelectionKey key) throws IOException {
+        client = channel.accept();
+        client.configureBlocking(false);
+        client.register(selector, SelectionKey.OP_READ, new ClientState());
+        Log.info("gdb: accepted connection from %s", client.getRemoteAddress());
+    }
+
+    private void handleRead(final @NotNull SelectionKey key) throws IOException, InterruptedException {
+        final var client = (SocketChannel) key.channel();
+        final var state  = (ClientState) key.attachment();
+
+        final var read = client.read(state.buffer);
+        if (read < 0) {
+            client.close();
+            return;
+        }
+
+        state.buffer.flip();
+        while (state.buffer.hasRemaining()) {
+            final var b = state.buffer.get() & 0xFF;
+            process(b, client, state);
+        }
+        state.buffer.compact();
+    }
+
+    private void process(int b, final @NotNull SocketChannel client, final @NotNull ClientState state)
+            throws IOException, InterruptedException {
+
+        if (state.append) {
+            if (b == '#') {
+                state.checksum &= 0xFF;
+                state.append = false;
+                state.end = true;
+                state.packetChecksum.setLength(0);
+                return;
+            }
+
+            state.packet.append((char) b);
+            state.checksum = state.checksum + b;
+            return;
+        }
+
+        if (state.end) {
+            state.packetChecksum.append((char) b);
+            if (state.packetChecksum.length() != 2) {
+                return;
+            }
+
+            state.end = false;
+
+            final var checksum = Integer.parseUnsignedInt(state.packetChecksum.toString(), 0x10);
+            if (checksum != state.checksum)
+                throw new IOException("checksum mismatch: %02x != %02x".formatted(checksum, state.checksum));
+
+            writeRaw(client, "+");
+
+            final var request = state.packet.toString();
+            Log.info("--> %s", request);
+            final var response = handle(request);
+            Log.info("<-- %s", response);
+            writePacket(client, response);
+            return;
+        }
+
+        if (b == '+') {
+            // acknowledge
+            return;
+        }
+
+        if (b == '-') {
+            // resend
+            return;
+        }
+
+        if (b == 0x03) {
+            // interrupt
+            machine.pause();
+            writePacket(client, "S02");
+            return;
+        }
+
+        if (b == '$') {
+            // payload begin
+            state.append = true;
+            state.checksum = 0;
+            state.packet.setLength(0);
+            return;
+        }
+
+        Log.info("unhandled request byte: %02x (%c)", b, b <= 0x20 ? ' ' : (char) b);
+    }
+
+    private void writeRaw(final @NotNull SocketChannel client, final @NotNull String data) throws IOException {
+        final var bytes  = data.getBytes();
+        final var buffer = ByteBuffer.wrap(bytes);
+        client.write(buffer);
+    }
+
+    private void writePacket(final @NotNull SocketChannel client, final @NotNull String payload) throws IOException {
         var checksum = 0;
-        for (final var b : payload.getBytes())
+        for (final var b : payload.getBytes()) {
             checksum = (checksum + b) & 0xFF;
+        }
 
         final var packet = "$%s#%02x".formatted(payload, checksum);
-        out.write(packet.getBytes());
-        out.flush();
+        final var buffer = ByteBuffer.wrap(packet.getBytes());
+        client.write(buffer);
     }
 
     private @NotNull String handle(final @NotNull String payload) throws InterruptedException {
@@ -570,7 +650,9 @@ public class GDBStub implements Runnable, Closeable {
                         final var annex  = parts[3];
                         final var offset = Integer.parseUnsignedInt(parts[4], 0x10);
                         final var length = Integer.parseUnsignedInt(parts[5], 0x10);
+
                         Log.info("object=%s, annex=%s, offset=%d, length=%d", object, annex, offset, length);
+
                         yield switch (object) {
                             case "features" -> {
                                 try (final var stream = ClassLoader.getSystemResourceAsStream(annex)) {
@@ -585,7 +667,7 @@ public class GDBStub implements Runnable, Closeable {
                                     final var read = stream.read(data, 0, length);
                                     yield "%c%s".formatted(read < length ? 'l' : 'm', new String(data, 0, read));
                                 } catch (final IOException e) {
-                                    Log.warn("failed to open resource stream: %s", e);
+                                    Log.error("failed to open resource stream: %s", e);
                                     yield "";
                                 }
                             }

@@ -9,6 +9,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public final class Log {
 
+    private static final boolean INFO = true;
+
     private static final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
 
     public static void handle() {
@@ -22,8 +24,10 @@ public final class Log {
     }
 
     public static void info(final @NotNull String message, final @NotNull Object... args) {
-        prepare(args);
-        queue.add(("[ info ] " + message).formatted(args));
+        if (INFO) {
+            prepare(args);
+            queue.add(("[ info ] " + message).formatted(args));
+        }
     }
 
     public static void warn(final @NotNull String message, final @NotNull Object... args) {

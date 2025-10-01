@@ -2,31 +2,26 @@ package io.scriptor.util;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 public final class DirectList<T> implements Collection<T> {
 
-    private T @NotNull [] buffer;
+    private Object @NotNull [] buffer = new Object[10];
     private int size = 0;
-
-    @SuppressWarnings("unchecked")
-    public DirectList(final @NotNull Class<T> type) {
-        buffer = (T[]) Array.newInstance(type, 10);
-    }
 
     @Override
     public int size() {
         return size;
     }
 
+    @SuppressWarnings("unchecked")
     public T get(final int index) {
         if (index < 0 || index >= size) {
             throw new IndexOutOfBoundsException();
         }
-        return buffer[index];
+        return (T) buffer[index];
     }
 
     @Override
@@ -56,8 +51,9 @@ public final class DirectList<T> implements Collection<T> {
             }
 
             @Override
+            @SuppressWarnings("unchecked")
             public T next() {
-                return buffer[index++];
+                return (T) buffer[index++];
             }
         };
     }
@@ -192,9 +188,10 @@ public final class DirectList<T> implements Collection<T> {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public void forEach(final @NotNull Consumer<? super T> action) {
         for (int i = 0; i < size; ++i) {
-            action.accept(buffer[i]);
+            action.accept((T) buffer[i]);
         }
     }
 }

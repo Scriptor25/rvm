@@ -287,7 +287,7 @@ public final class Machine64 implements Machine {
             return 0;
         }
 
-        Log.warn("fetch pc=%016x", pc);
+        Log.error("fetch pc=%016x", pc);
         throw new TrapException(1, pc);
     }
 
@@ -330,7 +330,7 @@ public final class Machine64 implements Machine {
             try {
                 return ((long) System.in.read()) & 0xFFL;
             } catch (final IOException e) {
-                Log.warn("uart rx read: %s", e);
+                Log.error("read stdin: %s", e);
                 return 0L;
             }
         }
@@ -340,12 +340,12 @@ public final class Machine64 implements Machine {
             try {
                 return System.in.available() > 0 ? 1L : 0L;
             } catch (final IOException e) {
-                Log.warn("uart lsr read: %s", e);
+                Log.error("read stdin: %s", e);
                 return 0L;
             }
         }
 
-        Log.warn("read address=%016x, size=%x".formatted(address, size));
+        Log.error("read address=%016x, size=%x".formatted(address, size));
         throw new TrapException(5, address);
     }
 
@@ -389,11 +389,11 @@ public final class Machine64 implements Machine {
 
         // uart rx
         if (address == 0x10000000L && size == 1) {
-            System.out.print((char) (value & 0xFF));
+            System.out.write((int) (value & 0xFFL));
             return;
         }
 
-        Log.warn("write address=%016x, size=%x, value=%x".formatted(address, size, value));
+        Log.error("write address=%016x, size=%x, value=%x".formatted(address, size, value));
         throw new TrapException(7, address);
     }
 
