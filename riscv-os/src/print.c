@@ -30,11 +30,11 @@ void kprintf(const char* format, ...)
 #define LENGTH_LONG      0x03
 #define LENGTH_LONG_LONG 0x04
 
-static void kprints(const char* str, int flags, int width, int precision)
+static void kprints(const char* str, const int flags, const int width, const int precision)
 {
-    int left_justify = flags & FLAG_LEFT_JUSTIFY;
+    auto const left_justify = flags & FLAG_LEFT_JUSTIFY;
 
-    int n = 0;
+    auto n = 0;
 
     int len;
     if (precision)
@@ -48,14 +48,13 @@ static void kprints(const char* str, int flags, int width, int precision)
 
     if (!left_justify)
     {
-        int rem = width - len;
-        for (; n < rem; ++n)
+        for (auto const rem = width - len; n < rem; ++n)
         {
             kputc(' ');
         }
     }
 
-    for (const char* p = str; *p && (!precision || (p - str) < precision); ++p, ++n)
+    for (auto p = str; *p && (!precision || p - str < precision); ++p, ++n)
     {
         kputc(*p);
     }
@@ -66,21 +65,21 @@ static void kprints(const char* str, int flags, int width, int precision)
     }
 }
 
-static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, int flags, int width, int precision)
+static void kprinti(uint64_t value, const int signed_, const uint64_t base, const int uppercase, const int flags, const int width, const int precision)
 {
-    int left_justify = flags & FLAG_LEFT_JUSTIFY;
-    int force_sign = flags & FLAG_FORCE_SIGN;
-    int blank_space = flags & FLAG_BLANK_SPACE;
-    int use_prefix = flags & FLAG_USE_PREFIX;
-    int pad_zero = flags & FLAG_PAD_ZERO;
+    auto const left_justify = flags & FLAG_LEFT_JUSTIFY;
+    auto const force_sign = flags & FLAG_FORCE_SIGN;
+    auto const blank_space = flags & FLAG_BLANK_SPACE;
+    auto const use_prefix = flags & FLAG_USE_PREFIX;
+    auto const pad_zero = flags & FLAG_PAD_ZERO;
 
     char buffer[0x100];
-    int bp = 0x100;
+    auto bp = 0x100;
 
-    int sign = 0;
+    auto sign = 0;
     if (signed_)
     {
-        int64_t svalue = value;
+        auto const svalue = (int64_t) value;
         sign = svalue < 0;
     }
 
@@ -89,16 +88,16 @@ static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, i
         value = -value;
     }
 
-    while (((0x100 - bp) < precision) || value)
+    while (0x100 - bp < precision || value)
     {
-        uint64_t rem = value % base;
+        auto const rem = value % base;
         value /= base;
-        buffer[--bp] = (rem < 10 ? ('0' + rem) : (uppercase ? ('A' + rem - 10) : ('a' + rem - 10)));
+        buffer[--bp] = rem < 10 ? '0' + rem : uppercase ? 'A' + rem - 10 : 'a' + rem - 10;
     }
 
     if (pad_zero)
     {
-        while ((0x100 - bp) < width)
+        while (0x100 - bp < width)
         {
             buffer[--bp] = '0';
         }
@@ -112,8 +111,10 @@ static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, i
             buffer[--bp] = '0';
             break;
         case 0x10:
-            buffer[--bp] = (uppercase ? 'X' : 'x');
+            buffer[--bp] = uppercase ? 'X' : 'x';
             buffer[--bp] = '0';
+            break;
+        default:
             break;
         }
     }
@@ -131,11 +132,10 @@ static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, i
         buffer[--bp] = ' ';
     }
 
-    int n = 0;
+    auto n = 0;
     if (!left_justify)
     {
-        int rem = width - (0x100 - bp);
-        for (; n < rem; ++n)
+        for (auto const rem = width - (0x100 - bp); n < rem; ++n)
         {
             kputc(' ');
         }
@@ -154,11 +154,9 @@ static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, i
 
 void vkprintf(const char* format, va_list ap)
 {
-    const char* fp = format;
+    auto fp = format;
 
-    int state = STATE_NONE;
-
-    int flags, width, precision, length;
+    int state = STATE_NONE, flags, width, precision, length;
 
     while (*fp)
     {
@@ -411,7 +409,7 @@ void vkprintf(const char* format, va_list ap)
             case 'p':
             {
                 fp++;
-                kprinti((uint64_t) (uintptr_t) va_arg(ap, void*), 0, 0x10, 0, flags, width, precision);
+                kprinti((uintptr_t) va_arg(ap, void*), 0, 0x10, 0, flags, width, precision);
                 break;
             }
             default:

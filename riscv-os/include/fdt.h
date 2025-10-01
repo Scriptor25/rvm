@@ -41,11 +41,9 @@
 #define FDT_TOKEN_NOP        ((uint32_t) 0x00000004)
 #define FDT_TOKEN_END        ((uint32_t) 0x00000009)
 
-static inline uint32_t htobe32(void* p)
-{
-    uint8_t* x = p;
-    return (uint32_t) x[0] << 0x18 | (uint32_t) x[1] << 0x10 | (uint32_t) x[2] << 0x08 | (uint32_t) x[3];
-}
+#define ALIGN32(X) (((X) + 0b11) & ~0b11)
+
+uint32_t htobe32(const void* p);
 
 void fdt_walk(void* fdt);
 

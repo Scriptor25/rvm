@@ -1,9 +1,8 @@
 #include <common.h>
 
-void kputc(char c)
+void kputc(const char c)
 {
     *UART_RX = c;
-    return;
 }
 
 unsigned char kgetc()
@@ -17,7 +16,6 @@ void kputs(const char* str)
 {
     while (*str)
         kputc(*str++);
-    return;
 }
 
 int kstrcmp(const char* lhs, const char* rhs)
@@ -32,14 +30,14 @@ int kstrcmp(const char* lhs, const char* rhs)
     return 0;
 }
 
-int kstrcmpn(const char* lhs, int lhs_len, const char* rhs, int rhs_len)
+int kstrcmpn(const char* lhs, const int lhs_len, const char* rhs, const int rhs_len)
 {
     if (lhs_len != rhs_len)
     {
         return lhs_len - rhs_len;
     }
 
-    for (int n = 0; n < lhs_len; ++n)
+    for (auto n = 0; n < lhs_len; ++n)
     {
         if (lhs[n] != rhs[n])
         {
@@ -51,7 +49,7 @@ int kstrcmpn(const char* lhs, int lhs_len, const char* rhs, int rhs_len)
 
 int kstrlen(const char* str)
 {
-    int length = 0;
+    auto length = 0;
     for (; *str; ++str, ++length)
         ;
     return length;
@@ -65,7 +63,7 @@ const char* kstrnext(const char* buffer, const char** pointer, int* length)
     *pointer = buffer;
     while (*buffer && *buffer > 0x20)
         buffer++;
-    *length = (buffer - *pointer);
+    *length = (int) (buffer - *pointer);
 
     return buffer;
 }
