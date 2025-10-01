@@ -4,20 +4,20 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public final class Log {
 
-    private static final Queue<String> queue = new ConcurrentLinkedQueue<>();
+    private static final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
 
     public static void handle() {
-        while (!Thread.interrupted()) {
-            while (!queue.isEmpty()) {
-                System.err.println(queue.poll());
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                System.err.println(queue.take());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
-
-            Thread.onSpinWait();
         }
     }
 

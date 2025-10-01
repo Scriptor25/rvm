@@ -131,7 +131,7 @@ public final class Hart64 implements Hart {
 
             final var display = new StringBuilder();
             display.append(definition.mnemonic());
-            for (final var operand : definition.operands().values()) {
+            for (final var operand : definition.operands()) {
                 display.append(", ")
                        .append(operand.label())
                        .append('=')
@@ -230,6 +230,8 @@ public final class Hart64 implements Hart {
         }
     }
 
+    private final int[] values = new int[3];
+
     @Override
     public long execute(final int instruction, final @NotNull Instruction definition) {
         if (wfi) {
@@ -251,172 +253,218 @@ public final class Hart64 implements Hart {
             }
 
             case "addi" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) + signExtend(imm, 12));
             }
 
             case "slti" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) < signExtend(imm, 12) ? 1L : 0L);
             }
             case "sltiu" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, Long.compareUnsigned(gprFile.getd(rs1), imm) < 0 ? 1L : 0L);
             }
 
             case "slt" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) < gprFile.getd(rs2) ? 1L : 0L);
             }
             case "sltu" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, Long.compareUnsigned(gprFile.getd(rs1), gprFile.getd(rs2)) < 0 ? 1L : 0L);
             }
 
             case "xori" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) ^ signExtend(imm, 12));
             }
             case "ori" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) | signExtend(imm, 12));
             }
             case "andi" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) & signExtend(imm, 12));
             }
 
             case "xor" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) ^ gprFile.getd(rs2));
             }
             case "or" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) | gprFile.getd(rs2));
             }
             case "and" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) & gprFile.getd(rs2));
             }
 
             case "slli", "c.slli" -> {
-                final var rd    = definition.get("rd", instruction);
-                final var rs1   = definition.get("rs1", instruction);
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "shamt");
+
+                final var rd    = values[0];
+                final var rs1   = values[1];
+                final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) << shamt);
             }
             case "srli" -> {
-                final var rd    = definition.get("rd", instruction);
-                final var rs1   = definition.get("rs1", instruction);
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "shamt");
+
+                final var rd    = values[0];
+                final var rs1   = values[1];
+                final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) >>> shamt);
             }
             case "srai" -> {
-                final var rd    = definition.get("rd", instruction);
-                final var rs1   = definition.get("rs1", instruction);
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "shamt");
+
+                final var rd    = values[0];
+                final var rs1   = values[1];
+                final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) >> shamt);
             }
 
             case "addiw" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getw(rs1) + signExtend(imm, 12));
             }
 
             case "slliw" -> {
-                final var rd    = definition.get("rd", instruction);
-                final var rs1   = definition.get("rs1", instruction);
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "shamt");
+
+                final var rd    = values[0];
+                final var rs1   = values[1];
+                final var shamt = values[2];
 
                 gprFile.putd(rd, (long) gprFile.getw(rs1) << shamt);
             }
             case "srliw" -> {
-                final var rd    = definition.get("rd", instruction);
-                final var rs1   = definition.get("rs1", instruction);
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "shamt");
+
+                final var rd    = values[0];
+                final var rs1   = values[1];
+                final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getw(rs1) >>> shamt);
             }
             case "sraiw" -> {
-                final var rd    = definition.get("rd", instruction);
-                final var rs1   = definition.get("rs1", instruction);
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "shamt");
+
+                final var rd    = values[0];
+                final var rs1   = values[1];
+                final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getw(rs1) >> shamt);
             }
 
             case "add", "c.add" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) + gprFile.getd(rs2));
             }
             case "addw" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getw(rs1) + gprFile.getw(rs2));
             }
 
             case "sub" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) - gprFile.getd(rs2));
             }
             case "subw" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, gprFile.getw(rs1) - gprFile.getw(rs2));
             }
 
             case "jal" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "imm");
+
+                final var rd  = values[0];
+                final var imm = values[1];
 
                 next = pc + signExtend(imm, 21);
 
@@ -424,9 +472,11 @@ public final class Hart64 implements Hart {
             }
 
             case "jalr" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 next = gprFile.getd(rs1) + signExtend(imm, 12);
 
@@ -434,67 +484,83 @@ public final class Hart64 implements Hart {
             }
 
             case "lui" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "imm");
+
+                final var rd  = values[0];
+                final var imm = values[1];
 
                 gprFile.putd(rd, imm);
             }
             case "auipc" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "imm");
+
+                final var rd  = values[0];
+                final var imm = values[1];
 
                 gprFile.putd(rd, pc + imm);
             }
 
             case "beq" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 if (gprFile.getd(rs1) == gprFile.getd(rs2)) {
                     next = pc + signExtend(imm, 13);
                 }
             }
             case "bne" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 if (gprFile.getd(rs1) != gprFile.getd(rs2)) {
                     next = pc + signExtend(imm, 13);
                 }
             }
             case "blt" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 if (gprFile.getd(rs1) < gprFile.getd(rs2)) {
                     next = pc + signExtend(imm, 13);
                 }
             }
             case "bge" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 if (gprFile.getd(rs1) >= gprFile.getd(rs2)) {
                     next = pc + signExtend(imm, 13);
                 }
             }
             case "bltu" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 if (Long.compareUnsigned(gprFile.getd(rs1), gprFile.getd(rs2)) < 0) {
                     next = pc + signExtend(imm, 13);
                 }
             }
             case "bgeu" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 if (Long.compareUnsigned(gprFile.getd(rs1), gprFile.getd(rs2)) >= 0) {
                     next = pc + signExtend(imm, 13);
@@ -502,63 +568,77 @@ public final class Hart64 implements Hart {
             }
 
             case "lb" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 gprFile.putd(rd, machine.lb(address));
             }
             case "lh" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 gprFile.putd(rd, machine.lh(address));
             }
             case "lw" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 gprFile.putd(rd, machine.lw(address));
             }
             case "ld" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 gprFile.putd(rd, machine.ld(address));
             }
             case "lbu" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 gprFile.putd(rd, machine.lbu(address));
             }
             case "lhu" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 gprFile.putd(rd, machine.lhu(address));
             }
             case "lwu" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
@@ -566,36 +646,44 @@ public final class Hart64 implements Hart {
             }
 
             case "sb" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 machine.sb(address, (byte) gprFile.getd(rs2));
             }
             case "sh" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 machine.sh(address, (short) gprFile.getd(rs2));
             }
             case "sw" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
                 machine.sw(address, gprFile.getw(rs2));
             }
             case "sd" -> {
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1", "rs2", "imm");
+
+                final var rs1 = values[0];
+                final var rs2 = values[1];
+                final var imm = values[2];
 
                 final var address = gprFile.getd(rs1) + signExtend(imm, 12);
 
@@ -603,17 +691,21 @@ public final class Hart64 implements Hart {
             }
 
             case "mulw" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 gprFile.putd(rd, (long) gprFile.getw(rs1) * gprFile.getw(rs2));
             }
 
             case "div" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 final var lhs = gprFile.getd(rs1);
                 final var rhs = gprFile.getd(rs2);
@@ -631,9 +723,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, lhs / rhs);
             }
             case "divu" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 final var lhs = gprFile.getd(rs1);
                 final var rhs = gprFile.getd(rs2);
@@ -646,9 +740,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, Long.divideUnsigned(lhs, rhs));
             }
             case "rem" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 final var lhs = gprFile.getd(rs1);
                 final var rhs = gprFile.getd(rs2);
@@ -666,9 +762,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, lhs % rhs);
             }
             case "remu" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 final var lhs = gprFile.getd(rs1);
                 final var rhs = gprFile.getd(rs2);
@@ -682,9 +780,11 @@ public final class Hart64 implements Hart {
             }
 
             case "csrrw" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var csr = definition.get("csr", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "csr");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var csr = values[2];
 
                 if (rd == 0) {
                     csrFile.putd(csr, priv, gprFile.getd(rs1));
@@ -696,9 +796,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, value);
             }
             case "csrrwi" -> {
-                final var rd   = definition.get("rd", instruction);
-                final var uimm = definition.get("uimm", instruction);
-                final var csr  = definition.get("csr", instruction);
+                definition.decode(instruction, values, "rd", "uimm", "csr");
+
+                final var rd   = values[0];
+                final var uimm = values[1];
+                final var csr  = values[2];
 
                 if (rd == 0) {
                     csrFile.putd(csr, priv, uimm);
@@ -710,9 +812,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, value);
             }
             case "csrrs" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var csr = definition.get("csr", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "csr");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var csr = values[2];
 
                 final var value = csrFile.getd(csr, priv);
                 if (rs1 != 0) {
@@ -722,9 +826,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, value);
             }
             case "csrrsi" -> {
-                final var rd   = definition.get("rd", instruction);
-                final var uimm = definition.get("uimm", instruction);
-                final var csr  = definition.get("csr", instruction);
+                definition.decode(instruction, values, "rd", "uimm", "csr");
+
+                final var rd   = values[0];
+                final var uimm = values[1];
+                final var csr  = values[2];
 
                 final var value = csrFile.getd(csr, priv);
                 if (uimm != 0) {
@@ -733,9 +839,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, value);
             }
             case "csrrc" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var csr = definition.get("csr", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "csr");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var csr = values[2];
 
                 final var value = csrFile.getd(csr, priv);
                 if (rs1 != 0) {
@@ -745,9 +853,11 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, value);
             }
             case "csrrci" -> {
-                final var rd   = definition.get("rd", instruction);
-                final var uimm = definition.get("uimm", instruction);
-                final var csr  = definition.get("csr", instruction);
+                definition.decode(instruction, values, "rd", "uimm", "csr");
+
+                final var rd   = values[0];
+                final var uimm = values[1];
+                final var csr  = values[2];
 
                 final var value = csrFile.getd(csr, priv);
                 if (uimm != 0) {
@@ -757,9 +867,11 @@ public final class Hart64 implements Hart {
             }
 
             case "amoswap.w" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
 
                 final var address = gprFile.getd(rs1);
                 final var aligned = address & ~0x3L;
@@ -779,159 +891,203 @@ public final class Hart64 implements Hart {
             }
 
             case "c.addi" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) + signExtend(imm, 6));
             }
             case "c.addiw" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs1 = definition.get("rs1", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getw(rs1) + signExtend(imm, 6));
             }
             case "c.addi4spn" -> {
-                final var rd   = definition.get("rdp", instruction) + 0x8;
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rdp", "uimm");
+
+                final var rd   = values[0] + 0x8;
+                final var uimm = values[1];
 
                 gprFile.putd(rd, gprFile.getd(0x2) + uimm);
             }
             case "c.li" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "imm");
+
+                final var rd  = values[0];
+                final var imm = values[1];
 
                 gprFile.putd(rd, signExtend(imm, 6));
             }
             case "c.addi16sp" -> {
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "imm");
+
+                final var imm = values[0];
 
                 gprFile.putd(0x2, gprFile.getd(0x2) + signExtend(imm, 10));
             }
             case "c.lui" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rd", "imm");
+
+                final var rd  = values[0];
+                final var imm = values[1];
 
                 gprFile.putd(rd, signExtend(imm, 18));
             }
             case "c.and" -> {
-                final var rd  = definition.get("rdp", instruction) + 0x8;
-                final var rs1 = definition.get("rs1p", instruction) + 0x8;
-                final var rs2 = definition.get("rs2p", instruction) + 0x8;
+                definition.decode(instruction, values, "rdp", "rs1p", "rs2p");
+
+                final var rd  = values[0] + 0x8;
+                final var rs1 = values[1] + 0x8;
+                final var rs2 = values[2] + 0x8;
 
                 gprFile.putd(rd, gprFile.getd(rs1) & gprFile.getd(rs2));
             }
             case "c.andi" -> {
-                final var rd   = definition.get("rdp", instruction) + 0x8;
-                final var rs1  = definition.get("rs1p", instruction) + 0x8;
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rdp", "rs1p", "uimm");
+
+                final var rd   = values[0] + 0x8;
+                final var rs1  = values[1] + 0x8;
+                final var uimm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) & signExtend(uimm, 6));
             }
             case "c.j" -> {
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "imm");
+
+                final var imm = values[0];
 
                 next = pc + signExtend(imm, 12);
             }
             case "c.beqz" -> {
-                final var rs1 = definition.get("rs1p", instruction) + 0x8;
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1p", "imm");
+
+                final var rs1 = values[0] + 0x8;
+                final var imm = values[1];
 
                 if (gprFile.getd(rs1) == 0L) {
                     next = pc + signExtend(imm, 9);
                 }
             }
             case "c.bnez" -> {
-                final var rs1 = definition.get("rs1p", instruction) + 0x8;
-                final var imm = definition.get("imm", instruction);
+                definition.decode(instruction, values, "rs1p", "imm");
+
+                final var rs1 = values[0] + 0x8;
+                final var imm = values[1];
 
                 if (gprFile.getd(rs1) != 0L) {
                     next = pc + signExtend(imm, 9);
                 }
             }
             case "c.lwsp" -> {
-                final var rd   = definition.get("rd", instruction);
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rd", "uimm");
+
+                final var rd   = values[0];
+                final var uimm = values[1];
 
                 final var address = gprFile.getd(0x2) + uimm;
 
                 gprFile.putd(rd, machine.lw(address));
             }
             case "c.ldsp" -> {
-                final var rd   = definition.get("rd", instruction);
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rd", "uimm");
+
+                final var rd   = values[0];
+                final var uimm = values[1];
 
                 final var address = gprFile.getd(0x2) + uimm;
 
                 gprFile.putd(rd, machine.ld(address));
             }
             case "c.jr" -> {
-                final var rs1 = definition.get("rs1", instruction);
+                definition.decode(instruction, values, "rs1");
+
+                final var rs1 = values[0];
 
                 next = gprFile.getd(rs1);
             }
             case "c.mv" -> {
-                final var rd  = definition.get("rd", instruction);
-                final var rs2 = definition.get("rs2", instruction);
+                definition.decode(instruction, values, "rd", "rs2");
+
+                final var rd  = values[0];
+                final var rs2 = values[1];
 
                 gprFile.putd(rd, gprFile.getd(rs2));
             }
             case "c.sdsp" -> {
-                final var rs2  = definition.get("rs2", instruction);
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rs2", "uimm");
+
+                final var rs2  = values[0];
+                final var uimm = values[1];
 
                 final var address = gprFile.getd(0x2) + uimm;
 
                 machine.sd(address, gprFile.getd(rs2));
             }
             case "c.or" -> {
-                final var rd  = definition.get("rdp", instruction) + 0x8;
-                final var rs1 = definition.get("rs1p", instruction) + 0x8;
-                final var rs2 = definition.get("rs2p", instruction) + 0x8;
+                definition.decode(instruction, values, "rdp", "rs1p", "rs2p");
+
+                final var rd  = values[0] + 0x8;
+                final var rs1 = values[1] + 0x8;
+                final var rs2 = values[2] + 0x8;
 
                 gprFile.putd(rd, gprFile.getd(rs1) | gprFile.getd(rs2));
             }
             case "c.lw" -> {
-                final var rd   = definition.get("rdp", instruction) + 0x8;
-                final var rs1  = definition.get("rs1p", instruction) + 0x8;
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rdp", "rs1p", "uimm");
+
+                final var rd   = values[0] + 0x8;
+                final var rs1  = values[1] + 0x8;
+                final var uimm = values[2];
 
                 final var address = gprFile.getd(rs1) + uimm;
 
                 gprFile.putd(rd, machine.lw(address));
             }
             case "c.ld" -> {
-                final var rd   = definition.get("rdp", instruction) + 0x8;
-                final var rs1  = definition.get("rs1p", instruction) + 0x8;
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rdp", "rs1p", "uimm");
+
+                final var rd   = values[0] + 0x8;
+                final var rs1  = values[1] + 0x8;
+                final var uimm = values[2];
 
                 final var address = gprFile.getd(rs1) + uimm;
 
                 gprFile.putd(rd, machine.ld(address));
             }
             case "c.sw" -> {
-                final var rs1  = definition.get("rs1p", instruction) + 0x8;
-                final var rs2  = definition.get("rs2p", instruction) + 0x8;
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rs1p", "rs2p", "uimm");
+
+                final var rs1  = values[0] + 0x8;
+                final var rs2  = values[1] + 0x8;
+                final var uimm = values[2];
 
                 final var address = gprFile.getd(rs1) + uimm;
 
                 machine.sw(address, gprFile.getw(rs2));
             }
             case "c.sd" -> {
-                final var rs1  = definition.get("rs1p", instruction) + 0x8;
-                final var rs2  = definition.get("rs2p", instruction) + 0x8;
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rs1p", "rs2p", "uimm");
+
+                final var rs1  = values[0] + 0x8;
+                final var rs2  = values[1] + 0x8;
+                final var uimm = values[2];
 
                 final var address = gprFile.getd(rs1) + uimm;
 
                 machine.sd(address, gprFile.getd(rs2));
             }
             case "c.fld" -> {
-                final var rd   = definition.get("rdp", instruction) + 0x8;
-                final var rs1  = definition.get("rs1p", instruction) + 0x8;
-                final var uimm = definition.get("uimm", instruction);
+                definition.decode(instruction, values, "rdp", "rs1p", "uimm");
+
+                final var rd   = values[0] + 0x8;
+                final var rs1  = values[1] + 0x8;
+                final var uimm = values[2];
 
                 final var address = gprFile.getd(rs1) + uimm;
 
@@ -939,39 +1095,49 @@ public final class Hart64 implements Hart {
             }
 
             case "c.addw" -> {
-                final var rd  = definition.get("rdp", instruction) + 0x8;
-                final var rs1 = definition.get("rs1p", instruction) + 0x8;
-                final var rs2 = definition.get("rs2p", instruction) + 0x8;
+                definition.decode(instruction, values, "rdp", "rs1p", "rs2p");
+
+                final var rd  = values[0] + 0x8;
+                final var rs1 = values[1] + 0x8;
+                final var rs2 = values[2] + 0x8;
 
                 gprFile.putd(rd, gprFile.getw(rs1) + gprFile.getw(rs2));
             }
             case "c.subw" -> {
-                final var rd  = definition.get("rdp", instruction) + 0x8;
-                final var rs1 = definition.get("rs1p", instruction) + 0x8;
-                final var rs2 = definition.get("rs2p", instruction) + 0x8;
+                definition.decode(instruction, values, "rdp", "rs1p", "rs2p");
+
+                final var rd  = values[0] + 0x8;
+                final var rs1 = values[1] + 0x8;
+                final var rs2 = values[2] + 0x8;
 
                 gprFile.putd(rd, gprFile.getw(rs1) - gprFile.getw(rs2));
             }
 
             case "c.sub" -> {
-                final var rd  = definition.get("rdp", instruction) + 0x8;
-                final var rs1 = definition.get("rs1p", instruction) + 0x8;
-                final var rs2 = definition.get("rs2p", instruction) + 0x8;
+                definition.decode(instruction, values, "rdp", "rs1p", "rs2p");
+
+                final var rd  = values[0] + 0x8;
+                final var rs1 = values[1] + 0x8;
+                final var rs2 = values[2] + 0x8;
 
                 gprFile.putd(rd, gprFile.getd(rs1) - gprFile.getd(rs2));
             }
 
             case "c.srli" -> {
-                final var rd    = definition.get("rdp", instruction) + 0x8;
-                final var rs1   = definition.get("rs1p", instruction) + 0x8;
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rdp", "rs1p", "shamt");
+
+                final var rd    = values[0] + 0x8;
+                final var rs1   = values[1] + 0x8;
+                final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) >>> shamt);
             }
             case "c.srai" -> {
-                final var rd    = definition.get("rdp", instruction) + 0x8;
-                final var rs1   = definition.get("rs1p", instruction) + 0x8;
-                final var shamt = definition.get("shamt", instruction);
+                definition.decode(instruction, values, "rdp", "rs1p", "shamt");
+
+                final var rd    = values[0] + 0x8;
+                final var rs1   = values[1] + 0x8;
+                final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) >> shamt);
             }

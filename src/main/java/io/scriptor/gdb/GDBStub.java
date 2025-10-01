@@ -131,6 +131,7 @@ public class GDBStub implements Runnable, Closeable {
                                                               .formatted(computed, checksum));
 
                             out.write('+');
+                            out.flush();
 
                             final var request = payload.toString();
                             Log.info("--> %s", request);
@@ -147,9 +148,10 @@ public class GDBStub implements Runnable, Closeable {
                     }
                 }
             } catch (final IOException e) {
-                Log.warn("gdb: %s", e);
+                Log.warn("gdb exception: %s", e);
             } catch (final InterruptedException e) {
-                break;
+                Log.warn("gdb thread interrupted: %s", e);
+                Thread.currentThread().interrupt();
             }
         }
     }
@@ -195,7 +197,7 @@ public class GDBStub implements Runnable, Closeable {
                 machine.step();
                 yield "OK";
             }
-            case 'r', 'R' -> {
+            case 'D' -> {
                 machine.reset();
                 yield "OK";
             }

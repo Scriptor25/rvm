@@ -1,15 +1,14 @@
 package io.scriptor.isa;
 
+import io.scriptor.util.DirectList;
+import io.scriptor.util.IntSet;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,29 +23,38 @@ public final class Registry {
     }
 
     public static boolean has(final int mode, final int value) {
-        return instance.instructions.values()
-                                    .stream()
-                                    .filter(instruction -> instruction.restriction() == 0 || instruction.restriction() == mode)
-                                    .anyMatch(instruction -> instruction.test(value));
+        final var size = instance.instructions.size();
+        for (int i = 0; i < size; ++i) {
+            final var instruction = instance.instructions.get(i);
+            if ((instruction.restriction() == 0 || instruction.restriction() == mode) && instruction.test(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static @NotNull Instruction get(final int mode, final int value) {
-        final var definitions = instance.instructions.values()
-                                                     .stream()
-                                                     .filter(instruction -> instruction.restriction() == 0 || instruction.restriction() == mode)
-                                                     .filter(instruction -> instruction.test(value))
-                                                     .toList();
 
-        if (definitions.isEmpty()) {
-            throw new IllegalStateException("no definition for instruction %08x"
-                                                    .formatted(value));
-        }
-        if (definitions.size() > 1) {
-            throw new IllegalStateException("ambiguous definitions for instruction %08x: %s"
-                                                    .formatted(value, definitions));
+        Instruction candidate = null;
+
+        final var size = instance.instructions.size();
+        for (int i = 0; i < size; ++i) {
+            final var instruction = instance.instructions.get(i);
+            if ((instruction.restriction() != 0 && instruction.restriction() != mode) || !instruction.test(value)) {
+                continue;
+            }
+            if (candidate != null) {
+                throw new IllegalStateException("ambiguous candidates for instruction %08x: %s and %s"
+                                                        .formatted(value, candidate, instruction));
+            }
+            candidate = instruction;
         }
 
-        return definitions.getFirst();
+        if (candidate == null) {
+            throw new IllegalStateException("no candidate for instruction %08x".formatted(value));
+        }
+
+        return candidate;
     }
 
     private static final Pattern OPERAND_PATTERN =
@@ -59,7 +67,7 @@ public final class Registry {
             Pattern.compile("^(\\w+(?:\\.\\w+)*)\\s*\\[([^]]+)](?:\\?(\\d+))?\\s*(?:\\((\\w+)\\))?(.*)$");
 
     private final Map<String, Type> types = new HashMap<>();
-    private final Map<String, Instruction> instructions = new HashMap<>();
+    private final DirectList<Instruction> instructions = new DirectList<>(Instruction.class);
 
     private Registry() {
     }
@@ -85,7 +93,7 @@ public final class Registry {
         final var mInstruction = INSTRUCTION_PATTERN.matcher(line);
         if (mInstruction.matches()) {
             final var instruction = parseInstruction(types, mInstruction);
-            instructions.put(instruction.mnemonic(), instruction);
+            instructions.add(instruction);
             return;
         }
 
@@ -98,10 +106,9 @@ public final class Registry {
             throw new IllegalArgumentException("invalid operand token '%s'".formatted(token));
         }
 
-        final var operand = new Operand(mOperand.group(1), new ArrayList<>(), new HashSet<>());
-
-        final var segments = mOperand.group(2).split("\\|");
-        for (final var segment : segments) {
+        final var           strings  = mOperand.group(2).split("\\|");
+        final List<Segment> segments = new ArrayList<>();
+        for (final var segment : strings) {
             final var mSegment = SEGMENT_PATTERN.matcher(segment);
             if (!mSegment.matches()) {
                 throw new IllegalArgumentException();
@@ -111,8 +118,10 @@ public final class Registry {
             final var lo    = mSegment.group(2) != null ? Integer.parseUnsignedInt(mSegment.group(2)) : hi;
             final var shift = mSegment.group(3) != null ? Integer.parseUnsignedInt(mSegment.group(3)) : 0;
 
-            operand.segments().add(new Segment(hi, lo, shift));
+            segments.add(new Segment(hi, lo, shift));
         }
+
+        final var operand = new Operand(mOperand.group(1), segments.toArray(Segment[]::new), new IntSet());
 
         if (mOperand.group(3) != null) {
             final var values = mOperand.group(3).trim().split(",");
@@ -128,52 +137,25 @@ public final class Registry {
     }
 
     private static @NotNull Type parseType(final @NotNull Matcher mType) {
-        final var type = new Type(mType.group(1), new HashMap<>());
+        final List<Operand> operands = new ArrayList<>();
 
         for (final var token : mType.group(2).trim().split("\\s+")) {
             if (token.isBlank()) {
                 continue;
             }
-
-            final var operand = parseOperand(token);
-            type.operands().put(operand.label(), operand);
+            operands.add(parseOperand(token));
         }
 
-        return type;
+        return new Type(mType.group(1), operands.toArray(Operand[]::new));
     }
 
     private static @NotNull Instruction parseInstruction(
             final @NotNull Map<String, Type> types,
             final @NotNull Matcher mInstruction
     ) {
-        final var instruction = parseInstructionEntry(mInstruction);
-
-        if (mInstruction.group(4) != null) {
-            final var typename = mInstruction.group(4).trim();
-            if (!types.containsKey(typename))
-                throw new IllegalArgumentException("invalid typename '%s'".formatted(typename));
-            final var type = types.get(typename);
-            instruction.operands().putAll(type.operands());
-        }
-
-        if (mInstruction.group(5) != null) {
-            for (final var token : mInstruction.group(5).trim().split("\\s+")) {
-                if (token.isBlank()) {
-                    continue;
-                }
-
-                final var operand = parseOperand(token);
-                instruction.operands().put(operand.label(), operand);
-            }
-        }
-
-        return instruction;
-    }
-
-    private static @NotNull Instruction parseInstructionEntry(final @NotNull Matcher mInstruction) {
         final var value = mInstruction.group(2).trim().replaceAll("\\s+", "");
 
-        final var ilen = (value.length() + 7) / 8;
+        final var ilen = (value.length() + 0b111) >> 3;
 
         int mask = 0, bits = 0;
         for (int i = 0; i < value.length(); ++i) {
@@ -193,6 +175,26 @@ public final class Registry {
             restriction = 0;
         }
 
-        return new Instruction(mInstruction.group(1), ilen, mask, bits, restriction, new HashMap<>());
+        final List<Operand> operands = new ArrayList<>();
+
+        if (mInstruction.group(4) != null) {
+            final var typename = mInstruction.group(4).trim();
+            if (!types.containsKey(typename))
+                throw new IllegalArgumentException("invalid typename '%s'".formatted(typename));
+
+            final var type = types.get(typename);
+            operands.addAll(Arrays.asList(type.operands()));
+        }
+
+        if (mInstruction.group(5) != null) {
+            for (final var token : mInstruction.group(5).trim().split("\\s+")) {
+                if (token.isBlank()) {
+                    continue;
+                }
+                operands.add(parseOperand(token));
+            }
+        }
+
+        return new Instruction(mInstruction.group(1), ilen, mask, bits, restriction, operands.toArray(Operand[]::new));
     }
 }

@@ -101,11 +101,11 @@ public final class Main {
             }
         }
 
-        machine.reset();
-
         for (final var payload : registers) {
-            machine.harts().forEach(hart -> hart.gprFile().putd(payload.register(), payload.value()));
+            machine.register(payload.register(), payload.value());
         }
+
+        machine.reset();
 
         if (debug) {
             try (final var gdb = new GDBStub(machine, 1234)) {
@@ -115,11 +115,14 @@ public final class Main {
                 while (gdbThread.isAlive()) {
                     try {
                         machine.tick();
+                    } catch (final InterruptedException e) {
+                        Log.warn("main thread interrupted: %s", e);
+                        break;
                     } catch (final Exception e) {
                         machine.dump(System.err);
                         machine.pause();
-                        gdb.stop(-1, 0x00);
                         Log.warn("machine exception: %s", e);
+                        gdb.stop(-1, 0x00);
                     }
                 }
 

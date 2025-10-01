@@ -2,9 +2,7 @@ package io.scriptor.isa;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Map;
-
-public record Type(@NotNull String label, @NotNull Map<String, Operand> operands) {
+public record Type(@NotNull String label, @NotNull Operand[] operands) {
 
     @Override
     public @NotNull String toString() {

@@ -12,6 +12,7 @@ import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntConsumer;
@@ -28,6 +29,7 @@ public final class Machine64 implements Machine {
     private final CLINT clint;
     private final Hart[] harts;
 
+    private final Map<Integer, Long> registers = new HashMap<>();
     private long entry;
     private long offset;
 
@@ -75,6 +77,7 @@ public final class Machine64 implements Machine {
 
         for (final var hart : harts) {
             hart.reset(entry);
+            registers.forEach((register, value) -> hart.gprFile().putd(register, value));
         }
     }
 
@@ -151,13 +154,16 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public synchronized void tick() {
+    public synchronized void tick() throws InterruptedException {
         if (!active) {
+            wait();
             return;
         }
 
         clint.step();
-        harts().forEach(Hart::step);
+        for (final var hart : harts) {
+            hart.step();
+        }
 
         if (once) {
             active = false;
@@ -168,16 +174,18 @@ public final class Machine64 implements Machine {
     public synchronized void step() {
         once = true;
         active = true;
+        notify();
     }
 
     @Override
     public synchronized void spin() {
         once = false;
         active = true;
+        notify();
     }
 
     @Override
-    public synchronized void pause() {
+    public void pause() {
         once = false;
         active = false;
     }
@@ -219,6 +227,11 @@ public final class Machine64 implements Machine {
         }
 
         throw new IllegalArgumentException("set entry=%016x".formatted(entry));
+    }
+
+    @Override
+    public void register(final int register, final long value) {
+        registers.put(register, value);
     }
 
     @Override

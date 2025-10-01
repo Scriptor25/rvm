@@ -37,7 +37,7 @@ public interface Machine {
 
     void dump(@NotNull PrintStream out, long address, long size);
 
-    void tick();
+    void tick() throws InterruptedException;
 
     /**
      * proceed execution for one step.
@@ -76,6 +76,8 @@ public interface Machine {
      * @param address entry address
      */
     void entry(long address);
+
+    void register(int register, long value);
 
     void offset(long offset);
 

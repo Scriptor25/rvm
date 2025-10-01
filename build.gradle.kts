@@ -33,6 +33,14 @@ application {
 
 graalvmNative {
     toolchainDetection = true
+
+    binaries {
+        named("main") {
+            resources {
+                includedPatterns = listOf(".*")
+            }
+        }
+    }
 }
 
 val generateResourceDescriptor by tasks.registering {
@@ -64,6 +72,10 @@ val generateResourceDescriptor by tasks.registering {
     }
 }
 
-tasks.named<Jar>("jar") {
+tasks.named("jar") {
+    dependsOn(generateResourceDescriptor)
+}
+
+tasks.named("nativeCompile") {
     dependsOn(generateResourceDescriptor)
 }
