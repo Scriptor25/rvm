@@ -9,7 +9,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public final class Log {
 
-    private static final boolean INFO = true;
+    private static final boolean INFO = false;
 
     private static final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
 

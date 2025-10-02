@@ -95,8 +95,12 @@ public class GDBStub implements Runnable, Closeable {
         this.machine = machine;
 
         machine.onBreakpoint(id -> {
+            final var injected = breakpoints.containsKey(machine.hart(id).pc());
+
             machine.pause();
             stop(id, 0x05);
+
+            return injected;
         });
         machine.onTrap(id -> {
             machine.pause();
@@ -204,11 +208,13 @@ public class GDBStub implements Runnable, Closeable {
             if (checksum != state.checksum)
                 throw new IOException("checksum mismatch: %02x != %02x".formatted(checksum, state.checksum));
 
-            writeRaw(client, "+");
+            if (!state.noack) {
+                writeRaw(client, "+");
+            }
 
             final var request = state.packet.toString();
             Log.info("--> %s", request);
-            final var response = handle(request);
+            final var response = handle(request, state);
             Log.info("<-- %s", response);
             writePacket(client, response);
             return;
@@ -259,7 +265,10 @@ public class GDBStub implements Runnable, Closeable {
         client.write(buffer);
     }
 
-    private @NotNull String handle(final @NotNull String payload) throws InterruptedException {
+    private @NotNull String handle(
+            final @NotNull String payload,
+            final @NotNull ClientState state
+    ) throws InterruptedException {
         return switch (payload.charAt(0)) {
             case '?' -> {
                 // S05 -> SIGTRAP
@@ -304,30 +313,30 @@ public class GDBStub implements Runnable, Closeable {
                     response.append(toHexString(fprFile.getdr(i), 8));
                 }
 
-                response.append(toHexString(csrFile.getw(fcsr), 4));
+                response.append(toHexString(csrFile.getw(fcsr, CSR_M), 4));
 
                 // CSR
 
-                response.append(toHexString(csrFile.getd(mstatus), 8));
-                response.append(toHexString(csrFile.getd(misa), 8));
-                response.append(toHexString(csrFile.getd(mie), 8));
-                response.append(toHexString(csrFile.getd(mtvec), 8));
-                response.append(toHexString(csrFile.getd(mscratch), 8));
-                response.append(toHexString(csrFile.getd(mepc), 8));
-                response.append(toHexString(csrFile.getd(mcause), 8));
-                response.append(toHexString(csrFile.getd(mtval), 8));
-                response.append(toHexString(csrFile.getd(mip), 8));
-                response.append(toHexString(csrFile.getd(cycle), 8));
-                response.append(toHexString(csrFile.getd(time), 8));
-                response.append(toHexString(csrFile.getd(instret), 8));
-                response.append(toHexString(csrFile.getd(sstatus), 8));
-                response.append(toHexString(csrFile.getd(sie), 8));
-                response.append(toHexString(csrFile.getd(stvec), 8));
-                response.append(toHexString(csrFile.getd(sscratch), 8));
-                response.append(toHexString(csrFile.getd(sepc), 8));
-                response.append(toHexString(csrFile.getd(scause), 8));
-                response.append(toHexString(csrFile.getd(stval), 8));
-                response.append(toHexString(csrFile.getd(sip), 8));
+                response.append(toHexString(csrFile.getd(mstatus, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(misa, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(mie, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(mtvec, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(mscratch, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(mepc, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(mcause, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(mtval, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(mip, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(cycle, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(time, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(instret, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(sstatus, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(sie, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(stvec, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(sscratch, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(sepc, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(scause, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(stval, CSR_M), 8));
+                response.append(toHexString(csrFile.getd(sip, CSR_M), 8));
 
                 yield response.toString();
             }
@@ -355,30 +364,30 @@ public class GDBStub implements Runnable, Closeable {
                     p = extractd(payload, p, x -> fprFile.putdr(reg, x));
                 }
 
-                p = extractw(payload, p, x -> csrFile.putw(fcsr, x));
+                p = extractw(payload, p, x -> csrFile.putw(fcsr, CSR_M, x));
 
                 // CSR
 
-                p = extractd(payload, p, x -> csrFile.putd(mstatus, x));
-                p = extractd(payload, p, x -> csrFile.putd(misa, x));
-                p = extractd(payload, p, x -> csrFile.putd(mie, x));
-                p = extractd(payload, p, x -> csrFile.putd(mtvec, x));
-                p = extractd(payload, p, x -> csrFile.putd(mscratch, x));
-                p = extractd(payload, p, x -> csrFile.putd(mepc, x));
-                p = extractd(payload, p, x -> csrFile.putd(mcause, x));
-                p = extractd(payload, p, x -> csrFile.putd(mtval, x));
-                p = extractd(payload, p, x -> csrFile.putd(mip, x));
-                p = extractd(payload, p, x -> csrFile.putd(cycle, x));
-                p = extractd(payload, p, x -> csrFile.putd(time, x));
-                p = extractd(payload, p, x -> csrFile.putd(instret, x));
-                p = extractd(payload, p, x -> csrFile.putd(sstatus, x));
-                p = extractd(payload, p, x -> csrFile.putd(sie, x));
-                p = extractd(payload, p, x -> csrFile.putd(stvec, x));
-                p = extractd(payload, p, x -> csrFile.putd(sscratch, x));
-                p = extractd(payload, p, x -> csrFile.putd(sepc, x));
-                p = extractd(payload, p, x -> csrFile.putd(scause, x));
-                p = extractd(payload, p, x -> csrFile.putd(stval, x));
-                p = extractd(payload, p, x -> csrFile.putd(sip, x));
+                p = extractd(payload, p, x -> csrFile.putd(mstatus, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(misa, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(mie, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(mtvec, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(mscratch, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(mepc, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(mcause, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(mtval, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(mip, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(cycle, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(time, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(instret, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(sstatus, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(sie, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(stvec, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(sscratch, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(sepc, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(scause, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(stval, CSR_M, x));
+                p = extractd(payload, p, x -> csrFile.putd(sip, CSR_M, x));
 
                 yield "OK";
             }
@@ -408,32 +417,32 @@ public class GDBStub implements Runnable, Closeable {
                 }
 
                 if (n == 65) {
-                    yield toHexString(csrFile.getw(fcsr), 4);
+                    yield toHexString(csrFile.getw(fcsr, CSR_M), 4);
                 }
 
                 // CSR
 
                 yield switch (n) {
-                    case 66 -> toHexString(csrFile.getd(mstatus), 8);
-                    case 67 -> toHexString(csrFile.getd(misa), 8);
-                    case 68 -> toHexString(csrFile.getd(mie), 8);
-                    case 69 -> toHexString(csrFile.getd(mtvec), 8);
-                    case 70 -> toHexString(csrFile.getd(mscratch), 8);
-                    case 71 -> toHexString(csrFile.getd(mepc), 8);
-                    case 72 -> toHexString(csrFile.getd(mcause), 8);
-                    case 73 -> toHexString(csrFile.getd(mtval), 8);
-                    case 74 -> toHexString(csrFile.getd(mip), 8);
-                    case 75 -> toHexString(csrFile.getd(cycle), 8);
-                    case 76 -> toHexString(csrFile.getd(time), 8);
-                    case 77 -> toHexString(csrFile.getd(instret), 8);
-                    case 78 -> toHexString(csrFile.getd(sstatus), 8);
-                    case 79 -> toHexString(csrFile.getd(sie), 8);
-                    case 80 -> toHexString(csrFile.getd(stvec), 8);
-                    case 81 -> toHexString(csrFile.getd(sscratch), 8);
-                    case 82 -> toHexString(csrFile.getd(sepc), 8);
-                    case 83 -> toHexString(csrFile.getd(scause), 8);
-                    case 84 -> toHexString(csrFile.getd(stval), 8);
-                    case 85 -> toHexString(csrFile.getd(sip), 8);
+                    case 66 -> toHexString(csrFile.getd(mstatus, CSR_M), 8);
+                    case 67 -> toHexString(csrFile.getd(misa, CSR_M), 8);
+                    case 68 -> toHexString(csrFile.getd(mie, CSR_M), 8);
+                    case 69 -> toHexString(csrFile.getd(mtvec, CSR_M), 8);
+                    case 70 -> toHexString(csrFile.getd(mscratch, CSR_M), 8);
+                    case 71 -> toHexString(csrFile.getd(mepc, CSR_M), 8);
+                    case 72 -> toHexString(csrFile.getd(mcause, CSR_M), 8);
+                    case 73 -> toHexString(csrFile.getd(mtval, CSR_M), 8);
+                    case 74 -> toHexString(csrFile.getd(mip, CSR_M), 8);
+                    case 75 -> toHexString(csrFile.getd(cycle, CSR_M), 8);
+                    case 76 -> toHexString(csrFile.getd(time, CSR_M), 8);
+                    case 77 -> toHexString(csrFile.getd(instret, CSR_M), 8);
+                    case 78 -> toHexString(csrFile.getd(sstatus, CSR_M), 8);
+                    case 79 -> toHexString(csrFile.getd(sie, CSR_M), 8);
+                    case 80 -> toHexString(csrFile.getd(stvec, CSR_M), 8);
+                    case 81 -> toHexString(csrFile.getd(sscratch, CSR_M), 8);
+                    case 82 -> toHexString(csrFile.getd(sepc, CSR_M), 8);
+                    case 83 -> toHexString(csrFile.getd(scause, CSR_M), 8);
+                    case 84 -> toHexString(csrFile.getd(stval, CSR_M), 8);
+                    case 85 -> toHexString(csrFile.getd(sip, CSR_M), 8);
                     default -> "";
                 };
             }
@@ -468,7 +477,7 @@ public class GDBStub implements Runnable, Closeable {
                 }
 
                 if (n == 65) {
-                    csrFile.putw(fcsr, toInteger(value));
+                    csrFile.putw(fcsr, CSR_M, toInteger(value));
                     yield "OK";
                 }
 
@@ -476,83 +485,83 @@ public class GDBStub implements Runnable, Closeable {
 
                 yield switch (n) {
                     case 66 -> {
-                        csrFile.putd(mstatus, toLong(value));
+                        csrFile.putd(mstatus, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 67 -> {
-                        csrFile.putd(misa, toLong(value));
+                        csrFile.putd(misa, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 68 -> {
-                        csrFile.putd(mie, toLong(value));
+                        csrFile.putd(mie, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 69 -> {
-                        csrFile.putd(mtvec, toLong(value));
+                        csrFile.putd(mtvec, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 70 -> {
-                        csrFile.putd(mscratch, toLong(value));
+                        csrFile.putd(mscratch, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 71 -> {
-                        csrFile.putd(mepc, toLong(value));
+                        csrFile.putd(mepc, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 72 -> {
-                        csrFile.putd(mcause, toLong(value));
+                        csrFile.putd(mcause, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 73 -> {
-                        csrFile.putd(mtval, toLong(value));
+                        csrFile.putd(mtval, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 74 -> {
-                        csrFile.putd(mip, toLong(value));
+                        csrFile.putd(mip, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 75 -> {
-                        csrFile.putd(cycle, toLong(value));
+                        csrFile.putd(cycle, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 76 -> {
-                        csrFile.putd(time, toLong(value));
+                        csrFile.putd(time, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 77 -> {
-                        csrFile.putd(instret, toLong(value));
+                        csrFile.putd(instret, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 78 -> {
-                        csrFile.putd(sstatus, toLong(value));
+                        csrFile.putd(sstatus, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 79 -> {
-                        csrFile.putd(sie, toLong(value));
+                        csrFile.putd(sie, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 80 -> {
-                        csrFile.putd(stvec, toLong(value));
+                        csrFile.putd(stvec, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 81 -> {
-                        csrFile.putd(sscratch, toLong(value));
+                        csrFile.putd(sscratch, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 82 -> {
-                        csrFile.putd(sepc, toLong(value));
+                        csrFile.putd(sepc, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 83 -> {
-                        csrFile.putd(scause, toLong(value));
+                        csrFile.putd(scause, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 84 -> {
-                        csrFile.putd(stval, toLong(value));
+                        csrFile.putd(stval, CSR_M, toLong(value));
                         yield "OK";
                     }
                     case 85 -> {
-                        csrFile.putd(sip, toLong(value));
+                        csrFile.putd(sip, CSR_M, toLong(value));
                         yield "OK";
                     }
                     default -> "";
@@ -642,7 +651,7 @@ public class GDBStub implements Runnable, Closeable {
                 case "qOffsets" -> "Text=%1$08x;Data=%1$08x;Bss=%1$08x".formatted(machine.offset());
                 default -> {
                     if (payload.startsWith("qSupported")) {
-                        yield "swbreak+;qXfer:features:read+";
+                        yield "swbreak+;qXfer:features:read+;QStartNoAckMode+";
                     }
                     if (payload.startsWith("qXfer")) {
                         final var parts  = payload.split("[:,]");
@@ -676,6 +685,13 @@ public class GDBStub implements Runnable, Closeable {
                     }
                     yield "";
                 }
+            };
+            case 'Q' -> switch (payload) {
+                case "QStartNoAckMode" -> {
+                    state.noack = true;
+                    yield "OK";
+                }
+                default -> "";
             };
             case 'k' -> throw new InterruptedException("GDB client requested to kill the process");
             default -> "";

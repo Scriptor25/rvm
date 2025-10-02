@@ -2,6 +2,7 @@ package io.scriptor.isa;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 import java.util.function.IntPredicate;
 
@@ -76,6 +77,6 @@ public record Instruction(
 
     @Override
     public @NotNull String toString() {
-        return "%s [%d -> %08x & %08x] %s".formatted(mnemonic, ilen, bits, mask, operands);
+        return "%s [%d -> %08x & %08x] %s".formatted(mnemonic, ilen, bits, mask, Arrays.toString(operands));
     }
 }

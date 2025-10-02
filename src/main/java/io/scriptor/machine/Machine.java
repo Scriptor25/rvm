@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteOrder;
 import java.util.function.IntConsumer;
+import java.util.function.IntPredicate;
 import java.util.stream.Stream;
 
 import static io.scriptor.util.ByteUtil.signExtend;
@@ -54,9 +55,9 @@ public interface Machine {
      */
     void pause();
 
-    void onBreakpoint(@NotNull IntConsumer handler);
+    void onBreakpoint(@NotNull IntPredicate handler);
 
-    void breakpoint(int id);
+    boolean breakpoint(int id);
 
     void onTrap(@NotNull IntConsumer handler);
 

@@ -3,14 +3,28 @@ package io.scriptor.machine;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.PrintStream;
+import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
 
 public interface CSRFile {
 
     void reset();
 
-    void dump(final @NotNull PrintStream out);
+    void define(final int addr);
 
-    int getw(final int addr);
+    void define(final int addr, final long mask);
+
+    void define(final int addr, final long mask, final int base);
+
+    void define(final int addr, final long mask, final int base, final long value);
+
+    void defineVal(final int addr, final long val);
+
+    void define(final int addr, final @NotNull LongSupplier get);
+
+    void define(final int addr, final @NotNull LongSupplier get, final @NotNull LongConsumer set);
+
+    void dump(final @NotNull PrintStream out);
 
     /**
      * read a 4-byte value from a control/status register.
@@ -20,11 +34,7 @@ public interface CSRFile {
      */
     int getw(final int addr, final int priv);
 
-    int getwu(final int addr);
-
     int getwu(final int addr, final int priv);
-
-    long getd(final int addr);
 
     /**
      * read an 8-byte value from a control/status register.
@@ -33,8 +43,6 @@ public interface CSRFile {
      * @param priv privilege level
      */
     long getd(final int addr, int priv);
-
-    void putw(final int addr, final int val);
 
     /**
      * write a 4-byte value to a control/status register.
@@ -45,11 +53,7 @@ public interface CSRFile {
      */
     void putw(final int addr, final int priv, final int val);
 
-    void putwu(final int addr, final int val);
-
     void putwu(final int addr, final int priv, final int val);
-
-    void putd(final int addr, final long val);
 
     /**
      * write an 8-byte value to a control/status register.

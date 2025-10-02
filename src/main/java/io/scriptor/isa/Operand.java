@@ -3,6 +3,8 @@ package io.scriptor.isa;
 import io.scriptor.util.IntSet;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Arrays;
+
 public record Operand(
         @NotNull String label,
         @NotNull Segment[] segments,
@@ -26,6 +28,6 @@ public record Operand(
 
     @Override
     public @NotNull String toString() {
-        return "%s%s!%s".formatted(label, segments, exclude);
+        return "%s%s!%s".formatted(label, Arrays.toString(segments), exclude);
     }
 }

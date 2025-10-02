@@ -139,6 +139,14 @@ public interface CSR {
      */
     int sstatus = 0x100;
     /**
+     * Supervisor exception delegation register.
+     */
+    int sedeleg = 0x102;
+    /**
+     * Supervisor interrupt delegation register.
+     */
+    int sideleg = 0x103;
+    /**
      * Supervisor interrupt-enable register.
      */
     int sie = 0x104;

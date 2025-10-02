@@ -3,6 +3,7 @@ package io.scriptor.impl;
 import io.scriptor.isa.Instruction;
 import io.scriptor.isa.Registry;
 import io.scriptor.machine.*;
+import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.PrintStream;
@@ -64,60 +65,128 @@ public final class Hart64 implements Hart {
         wfi = false;
 
         // machine isa
-        csrFile.putd(misa,
-                     1L << 63 // mxl = 64
-                     | 1L << 20 // 'U' - user mode implemented
-                     | 1L << 18 // 'S' - supervisor mode implemented
-                     | 1L << 12 // 'M' - integer multiply/divide extension
-                     | 1L << 8 // 'I' - base isa
-                     | 1L << 5 // 'F' - single-precision floating-point extension
-                     | 1L << 3 // 'D' - double-precision floating-point extension
-                     | 1L << 2 // 'C' - compressed extension
-                     | 1L // 'A' - atomic extension
+
+        csrFile.defineVal(misa,
+                          1L << 63 // mxl = 64
+                          | 1L << 20 // 'U' - user mode implemented
+                          | 1L << 18 // 'S' - supervisor mode implemented
+                          | 1L << 12 // 'M' - integer multiply/divide extension
+                          | 1L << 8 // 'I' - base isa
+                          | 1L << 5 // 'F' - single-precision floating-point extension
+                          | 1L << 3 // 'D' - double-precision floating-point extension
+                          | 1L << 2 // 'C' - compressed extension
+                          | 1L // 'A' - atomic extension
         );
 
         // machine identification
-        csrFile.putd(mvendorid, 0xCAFEBABEL);
-        csrFile.putd(marchid, 0x1L);
-        csrFile.putd(mimpid, 0x1L);
-        csrFile.putd(mhartid, id);
+
+        csrFile.defineVal(mvendorid, 0xCAFEBABEL);
+        csrFile.defineVal(marchid, 0x1L);
+        csrFile.defineVal(mimpid, 0x1L);
+        csrFile.defineVal(mhartid, id & 0xFFFFFFFFL);
 
         // machine status/control
-        csrFile.putd(mstatus, 0x1800L);
-        csrFile.putd(sstatus, 0L);
-        csrFile.putd(medeleg, 0L);
-        csrFile.putd(mideleg, 0L);
+
+        csrFile.define(mstatus, 0x1888L, -1, 0x1800L);
+        csrFile.define(sstatus, 0x84L, mstatus);
+        csrFile.define(medeleg, 0xFFFFL);
+        csrFile.define(mideleg, 0xFFFFL);
 
         // machine interrupt control
-        csrFile.putd(mie, 0L);
-        csrFile.putd(mip, 0L);
-        csrFile.putd(sie, 0L);
-        csrFile.putd(sip, 0L);
+
+        csrFile.define(mie, 0x88888L);
+        csrFile.define(mip, 0x88888L);
+        csrFile.define(sie, 0x22L);
+        csrFile.define(sip, 0x22L);
 
         // machine trap handling
-        csrFile.putd(mtvec, 0L);
-        csrFile.putd(stvec, 0L);
-        csrFile.putd(mepc, 0L);
-        csrFile.putd(sepc, 0L);
-        csrFile.putd(mcause, 0L);
-        csrFile.putd(scause, 0L);
-        csrFile.putd(mtval, 0L);
-        csrFile.putd(stval, 0L);
-        csrFile.putd(mscratch, 0L);
+
+        csrFile.define(mtvec);
+        csrFile.define(stvec);
+        csrFile.define(mepc);
+        csrFile.define(sepc);
+        csrFile.define(mcause, 0x7FFFFFFFFFFFFFFFL);
+        csrFile.define(scause, 0x7FFFFFFFFFFFFFFFL);
+        csrFile.define(mtval);
+        csrFile.define(stval);
+        csrFile.define(mscratch);
 
         // machine virtual memory
-        csrFile.putd(satp, 0L);
+
+        csrFile.define(satp);
 
         // machine counters/timers
-        csrFile.putd(time, 0L);
-        csrFile.putd(cycle, 0L);
-        csrFile.putd(instret, 0L);
 
-        for (int pmpcfgx = pmpcfg0; pmpcfgx <= pmpcfg15; ++pmpcfgx)
-            csrFile.putd(pmpcfgx, 0L);
+        csrFile.define(time);
+        csrFile.define(cycle);
+        csrFile.define(instret);
 
-        for (int pmpaddrx = pmpaddr0; pmpaddrx <= pmpaddr63; ++pmpaddrx)
-            csrFile.putd(pmpaddrx, 0L);
+        // physical memory protection
+
+        for (int pmpcfgx = pmpcfg0; pmpcfgx <= pmpcfg15; ++pmpcfgx) {
+            csrFile.define(pmpcfgx, 0xFFL);
+        }
+
+        for (int pmpaddrx = pmpaddr0; pmpaddrx <= pmpaddr63; ++pmpaddrx) {
+            csrFile.define(pmpaddrx);
+        }
+
+        // supervisor exception/interrupt delegation
+
+        csrFile.define(sedeleg);
+        csrFile.define(sideleg);
+        csrFile.define(sscratch);
+
+        // user status / floating-point
+
+        csrFile.define(fflags, 0x1FL);
+        csrFile.define(frm, 0x7L);
+        csrFile.define(fcsr, 0xFFL);
+
+        // debug registers
+
+        csrFile.define(dcsr);
+        csrFile.define(dpc);
+        csrFile.define(dscratch0);
+        csrFile.define(dscratch1);
+
+        // machine hardware performance counters
+
+        for (int mhpmcounterx = mhpmcounter3; mhpmcounterx <= mhpmcounter31; ++mhpmcounterx) {
+            csrFile.define(mhpmcounterx);
+        }
+
+        for (int mhpmeventx = mhpmevent3; mhpmeventx <= mhpmevent31; ++mhpmeventx) {
+            csrFile.define(mhpmeventx);
+        }
+
+        // clint control/status
+
+        csrFile.define(time, () -> machine.clint().mtime());
+        csrFile.define(stimecmp, () -> machine.clint().mtimecmp(id), val -> machine.clint().mtimecmp(id, val));
+
+        csrFile.define(mcounteren, 0xFFFFFFFFL, -1, 0xFFFFFFFFL);
+        csrFile.define(mcountinhibit, 0xFFFFFFFFL, -1, 0L);
+        csrFile.define(mcyclecfg);
+
+        csrFile.define(scounteren, 0xFFFFFFFFL, -1, 0xFFFFFFFFL);
+        csrFile.define(scountinhibit, 0xFFFFFFFFL, -1, 0L);
+        csrFile.define(scountovf, 0xFFFFFFFFL, -1, 0L);
+
+        csrFile.define(menvcfg);
+        csrFile.define(senvcfg);
+
+        csrFile.define(tselect);
+
+        csrFile.define(mstateen0);
+        csrFile.define(mstateen1);
+        csrFile.define(mstateen2);
+        csrFile.define(mstateen3);
+
+        csrFile.define(sstateen0);
+        csrFile.define(sstateen1);
+        csrFile.define(sstateen2);
+        csrFile.define(sstateen3);
     }
 
     @Override
@@ -151,10 +220,10 @@ public final class Hart64 implements Hart {
         csrFile.dump(out);
 
         out.printf("mstatus=%x, mtvec=%x, mcause=%x, mepc=%x%n",
-                   csrFile.getd(mstatus),
-                   csrFile.getd(mtvec),
-                   csrFile.getd(mcause),
-                   csrFile.getd(mepc));
+                   csrFile.getd(mstatus, CSR_M),
+                   csrFile.getd(mtvec, CSR_M),
+                   csrFile.getd(mcause, CSR_M),
+                   csrFile.getd(mepc, CSR_M));
 
         final var sp = gprFile.getd(0x2);
         out.printf("stack (sp=%016x):%n", sp);
@@ -186,31 +255,48 @@ public final class Hart64 implements Hart {
         final var interrupt = (cause & (1L << 63)) != 0L;
         final var code      = (int) (cause & 0x7FFFFFFFL);
 
-        csrFile.putd(mepc, priv, pc);
-        csrFile.putd(mcause, priv, cause);
-        csrFile.putd(mtval, priv, tval);
-
-        var status = csrFile.getd(mstatus, priv);
-
-        final var mie = (status & (1L << 3)) != 0L;
-        if (mie) {
-            status |= (1L << 7);
+        final int target;
+        if (interrupt) {
+            target = ((csrFile.getd(mideleg, CSR_M) & (1L << code)) != 0) ? CSR_S : CSR_M;
         } else {
-            status &= ~(1L << 7);
+            target = ((csrFile.getd(medeleg, CSR_M) & (1L << code)) != 0) ? CSR_S : CSR_M;
         }
-        status &= ~(1L << 3);
-        status |= (CSR_M << 11);
 
+        if (target == CSR_M) {
+            csrFile.putd(mepc, CSR_M, pc);
+            csrFile.putd(mcause, CSR_M, cause);
+            csrFile.putd(mtval, CSR_M, tval);
+        } else {
+            csrFile.putd(sepc, CSR_S, pc);
+            csrFile.putd(scause, CSR_S, cause);
+            csrFile.putd(stval, CSR_S, tval);
+        }
+
+        var status = csrFile.getd(mstatus, CSR_M);
+        if (target == CSR_M) {
+            final var mie = (status >> 3) & 1L;
+            status &= ~(1L << 3);
+            status |= CSR_M << 11;
+            status |= mie << 7;
+        } else {
+            final var sie = (status >> 1) & 1L;
+            status &= ~(1L << 1);
+            status |= CSR_S << 8;
+            status |= sie << 5;
+        }
         csrFile.putd(mstatus, priv, status);
 
-        final var tvec = csrFile.getd(mtvec, priv);
+        final var tvec = target == CSR_M ? csrFile.getd(mtvec, CSR_M) : csrFile.getd(stvec, CSR_S);
         final var base = tvec & ~0b11L;
         final var mode = tvec & 0b11L;
+
         if (mode == 0b01 && interrupt) {
             pc = base + 4L * code;
         } else {
             pc = base;
         }
+
+        priv = target;
     }
 
     private void interrupt() {
@@ -238,18 +324,52 @@ public final class Hart64 implements Hart {
             return pc;
         }
 
-        final var ilen = definition.ilen();
-
-        var next = pc + ilen;
+        var next = pc + definition.ilen();
 
         switch (definition.mnemonic()) {
-            case "fence.i", "c.nop" -> {
+            case "fence", "fence.i", "c.nop" -> {
                 // noop
             }
 
             case "ebreak", "c.ebreak" -> {
-                next = pc;
-                machine.breakpoint(id);
+                if (machine.breakpoint(id)) {
+                    next = pc;
+                }
+            }
+
+            case "mret" -> {
+                var status = csrFile.getd(mstatus, priv);
+
+                final var mpp  = (int) ((status >> 11) & 0b11L);
+                final var mpie = (status & (1L << 7)) != 0L;
+
+                priv = mpp;
+
+                status &= ~(1L << 3);
+                status |= (mpie ? (1L << 3) : 0L);
+                status |= (0b11L << 11);
+                status |= (1L << 7);
+
+                csrFile.putd(mstatus, CSR_M, status);
+
+                next = csrFile.getd(mepc, CSR_M);
+            }
+            case "sret" -> {
+                var status = csrFile.getd(sstatus, priv);
+
+                final var spp  = (int) ((status >> 8) & 0b1L);
+                final var spie = (status & (1L << 5)) != 0L;
+
+                priv = spp;
+
+                status &= ~(1L << 1);
+                status |= (spie ? (1L << 1) : 0L);
+                status |= (1L << 8);
+                status |= (1L << 5);
+
+                csrFile.putd(sstatus, CSR_M, status);
+
+                next = csrFile.getd(sepc, CSR_M);
             }
 
             case "addi" -> {
@@ -260,6 +380,16 @@ public final class Hart64 implements Hart {
                 final var imm = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) + signExtend(imm, 12));
+            }
+
+            case "addiw" -> {
+                definition.decode(instruction, values, "rd", "rs1", "imm");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var imm = values[2];
+
+                gprFile.putw(rd, gprFile.getw(rs1) + signExtend(imm, 12));
             }
 
             case "slti" -> {
@@ -278,7 +408,7 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                gprFile.putd(rd, Long.compareUnsigned(gprFile.getd(rs1), imm) < 0 ? 1L : 0L);
+                gprFile.putd(rd, Long.compareUnsigned(gprFile.getd(rs1), signExtend(imm, 12)) < 0 ? 1L : 0L);
             }
 
             case "slt" -> {
@@ -356,6 +486,74 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, gprFile.getd(rs1) & gprFile.getd(rs2));
             }
 
+            case "sll" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var shamt = gprFile.getd(rs2) & 0b111111;
+
+                gprFile.putd(rd, gprFile.getd(rs1) << shamt);
+            }
+            case "srl" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var shamt = gprFile.getd(rs2) & 0b111111;
+
+                gprFile.putd(rd, gprFile.getd(rs1) >>> shamt);
+            }
+            case "sra" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var shamt = gprFile.getd(rs2) & 0b111111;
+
+                gprFile.putd(rd, gprFile.getd(rs1) >> shamt);
+            }
+
+            case "sllw" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var shamt = gprFile.getw(rs2) & 0b11111;
+
+                gprFile.putw(rd, gprFile.getw(rs1) << shamt);
+            }
+            case "srlw" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var shamt = gprFile.getw(rs2) & 0b11111;
+
+                gprFile.putw(rd, gprFile.getw(rs1) >>> shamt);
+            }
+            case "sraw" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var shamt = gprFile.getw(rs2) & 0b11111;
+
+                gprFile.putw(rd, gprFile.getw(rs1) >> shamt);
+            }
+
             case "slli", "c.slli" -> {
                 definition.decode(instruction, values, "rd", "rs1", "shamt");
 
@@ -384,16 +582,6 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, gprFile.getd(rs1) >> shamt);
             }
 
-            case "addiw" -> {
-                definition.decode(instruction, values, "rd", "rs1", "imm");
-
-                final var rd  = values[0];
-                final var rs1 = values[1];
-                final var imm = values[2];
-
-                gprFile.putd(rd, gprFile.getw(rs1) + signExtend(imm, 12));
-            }
-
             case "slliw" -> {
                 definition.decode(instruction, values, "rd", "rs1", "shamt");
 
@@ -401,7 +589,7 @@ public final class Hart64 implements Hart {
                 final var rs1   = values[1];
                 final var shamt = values[2];
 
-                gprFile.putd(rd, (long) gprFile.getw(rs1) << shamt);
+                gprFile.putw(rd, gprFile.getw(rs1) << shamt);
             }
             case "srliw" -> {
                 definition.decode(instruction, values, "rd", "rs1", "shamt");
@@ -410,7 +598,7 @@ public final class Hart64 implements Hart {
                 final var rs1   = values[1];
                 final var shamt = values[2];
 
-                gprFile.putd(rd, gprFile.getw(rs1) >>> shamt);
+                gprFile.putw(rd, gprFile.getw(rs1) >>> shamt);
             }
             case "sraiw" -> {
                 definition.decode(instruction, values, "rd", "rs1", "shamt");
@@ -419,7 +607,7 @@ public final class Hart64 implements Hart {
                 final var rs1   = values[1];
                 final var shamt = values[2];
 
-                gprFile.putd(rd, gprFile.getw(rs1) >> shamt);
+                gprFile.putw(rd, gprFile.getw(rs1) >> shamt);
             }
 
             case "add", "c.add" -> {
@@ -438,7 +626,7 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                gprFile.putd(rd, gprFile.getw(rs1) + gprFile.getw(rs2));
+                gprFile.putw(rd, gprFile.getw(rs1) + gprFile.getw(rs2));
             }
 
             case "sub" -> {
@@ -457,7 +645,7 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                gprFile.putd(rd, gprFile.getw(rs1) - gprFile.getw(rs2));
+                gprFile.putw(rd, gprFile.getw(rs1) - gprFile.getw(rs2));
             }
 
             case "jal" -> {
@@ -466,9 +654,11 @@ public final class Hart64 implements Hart {
                 final var rd  = values[0];
                 final var imm = values[1];
 
+                final var ra = next;
+
                 next = pc + signExtend(imm, 21);
 
-                gprFile.putd(rd, pc + ilen);
+                gprFile.putd(rd, ra);
             }
 
             case "jalr" -> {
@@ -478,9 +668,11 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                next = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var ra = next;
 
-                gprFile.putd(rd, pc + ilen);
+                next = (gprFile.getd(rs1) + signExtend(imm, 12)) & ~1L;
+
+                gprFile.putd(rd, ra);
             }
 
             case "lui" -> {
@@ -690,6 +882,15 @@ public final class Hart64 implements Hart {
                 machine.sd(address, gprFile.getd(rs2));
             }
 
+            case "mul" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                gprFile.putd(rd, gprFile.getd(rs1) * gprFile.getd(rs2));
+            }
             case "mulw" -> {
                 definition.decode(instruction, values, "rd", "rs1", "rs2");
 
@@ -697,7 +898,7 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                gprFile.putd(rd, (long) gprFile.getw(rs1) * gprFile.getw(rs2));
+                gprFile.putw(rd, gprFile.getw(rs1) * gprFile.getw(rs2));
             }
 
             case "div" -> {
@@ -821,7 +1022,7 @@ public final class Hart64 implements Hart {
                 final var value = csrFile.getd(csr, priv);
                 if (rs1 != 0) {
                     final var mask = gprFile.getd(rs1);
-                    csrFile.putd(csr, priv, value & mask);
+                    csrFile.putd(csr, priv, value | mask);
                 }
                 gprFile.putd(rd, value);
             }
@@ -834,7 +1035,7 @@ public final class Hart64 implements Hart {
 
                 final var value = csrFile.getd(csr, priv);
                 if (uimm != 0) {
-                    csrFile.putd(csr, priv, value & uimm);
+                    csrFile.putd(csr, priv, value | uimm);
                 }
                 gprFile.putd(rd, value);
             }
@@ -876,14 +1077,71 @@ public final class Hart64 implements Hart {
                 final var address = gprFile.getd(rs1);
                 final var aligned = address & ~0x3L;
 
-                final long value;
+                final int value;
                 synchronized (machine.acquireLock(aligned)) {
                     final var source = gprFile.getw(rs2);
                     value = machine.lw(aligned);
                     machine.sw(aligned, source);
                 }
 
-                gprFile.putd(rd, signExtend(value, 32));
+                gprFile.putw(rd, value);
+            }
+            case "amoswap.d" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var address = gprFile.getd(rs1);
+                final var aligned = address & ~0x7L;
+
+                final long value;
+                synchronized (machine.acquireLock(aligned)) {
+                    final var source = gprFile.getd(rs2);
+                    value = machine.ld(aligned);
+                    machine.sd(aligned, source);
+                }
+
+                gprFile.putd(rd, value);
+            }
+            case "amoadd.w" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var address = gprFile.getd(rs1);
+                final var aligned = address & ~0x3L;
+
+                final int value;
+                synchronized (machine.acquireLock(aligned)) {
+                    final var source = gprFile.getw(rs2);
+                    value = machine.lw(aligned);
+                    machine.sw(aligned, value + source);
+                }
+
+                gprFile.putw(rd, value);
+            }
+            case "amoadd.d" -> {
+                definition.decode(instruction, values, "rd", "rs1", "rs2");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+                final var rs2 = values[2];
+
+                final var address = gprFile.getd(rs1);
+                final var aligned = address & ~0x7L;
+
+                final long value;
+                synchronized (machine.acquireLock(aligned)) {
+                    final var source = gprFile.getd(rs2);
+                    value = machine.ld(aligned);
+                    machine.sd(aligned, value + source);
+                }
+
+                gprFile.putd(rd, value);
             }
 
             case "wfi" -> {
@@ -906,7 +1164,7 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                gprFile.putd(rd, gprFile.getw(rs1) + signExtend(imm, 6));
+                gprFile.putw(rd, gprFile.getw(rs1) + signExtend(imm, 6));
             }
             case "c.addi4spn" -> {
                 definition.decode(instruction, values, "rdp", "uimm");
@@ -1009,7 +1267,18 @@ public final class Hart64 implements Hart {
 
                 final var rs1 = values[0];
 
-                next = gprFile.getd(rs1);
+                next = gprFile.getd(rs1) & ~1L;
+            }
+            case "c.jalr" -> {
+                definition.decode(instruction, values, "rs1");
+
+                final var rs1 = values[0];
+
+                final var ra = next;
+
+                next = gprFile.getd(rs1) & ~1L;
+
+                gprFile.putd(0x1, ra);
             }
             case "c.mv" -> {
                 definition.decode(instruction, values, "rd", "rs2");
@@ -1101,7 +1370,7 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1] + 0x8;
                 final var rs2 = values[2] + 0x8;
 
-                gprFile.putd(rd, gprFile.getw(rs1) + gprFile.getw(rs2));
+                gprFile.putw(rd, gprFile.getw(rs1) + gprFile.getw(rs2));
             }
             case "c.subw" -> {
                 definition.decode(instruction, values, "rdp", "rs1p", "rs2p");
@@ -1110,7 +1379,7 @@ public final class Hart64 implements Hart {
                 final var rs1 = values[1] + 0x8;
                 final var rs2 = values[2] + 0x8;
 
-                gprFile.putd(rd, gprFile.getw(rs1) - gprFile.getw(rs2));
+                gprFile.putw(rd, gprFile.getw(rs1) - gprFile.getw(rs2));
             }
 
             case "c.sub" -> {
@@ -1142,7 +1411,10 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, gprFile.getd(rs1) >> shamt);
             }
 
-            default -> throw new UnsupportedOperationException(definition.toString());
+            default -> {
+                Log.error("unsupported instruction %s", definition);
+                throw new TrapException(0x02, instruction);
+            }
         }
 
         return next;

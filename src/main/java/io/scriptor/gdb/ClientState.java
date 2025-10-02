@@ -12,4 +12,6 @@ public final class ClientState {
     public boolean end = false;
 
     public int checksum;
+
+    public boolean noack = false;
 }

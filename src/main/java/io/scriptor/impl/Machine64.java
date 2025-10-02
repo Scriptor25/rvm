@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntConsumer;
+import java.util.function.IntPredicate;
 import java.util.stream.Stream;
 
 public final class Machine64 implements Machine {
@@ -36,7 +37,7 @@ public final class Machine64 implements Machine {
     private boolean once;
     private boolean active;
 
-    private IntConsumer breakpointHandler;
+    private IntPredicate breakpointHandler;
     private IntConsumer trapHandler;
 
     public Machine64(final int capacity, final @NotNull ByteOrder order, final int count) {
@@ -191,15 +192,16 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public void onBreakpoint(final @NotNull IntConsumer handler) {
+    public void onBreakpoint(final @NotNull IntPredicate handler) {
         this.breakpointHandler = handler;
     }
 
     @Override
-    public void breakpoint(final int id) {
+    public boolean breakpoint(final int id) {
         if (breakpointHandler != null) {
-            breakpointHandler.accept(id);
+            return breakpointHandler.test(id);
         }
+        return false;
     }
 
     @Override
@@ -288,7 +290,7 @@ public final class Machine64 implements Machine {
         }
 
         Log.error("fetch pc=%016x", pc);
-        throw new TrapException(1, pc);
+        throw new TrapException(0x01, pc);
     }
 
     @Override
@@ -346,7 +348,7 @@ public final class Machine64 implements Machine {
         }
 
         Log.error("read address=%016x, size=%x".formatted(address, size));
-        throw new TrapException(5, address);
+        throw new TrapException(0x05, address);
     }
 
     @Override
@@ -395,7 +397,7 @@ public final class Machine64 implements Machine {
         }
 
         Log.error("write address=%016x, size=%x, value=%x".formatted(address, size, value));
-        throw new TrapException(7, address);
+        throw new TrapException(0x07, address);
     }
 
     @Override
