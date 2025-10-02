@@ -2,6 +2,7 @@ package io.scriptor.isa;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.NoSuchElementException;
 import java.util.function.IntPredicate;
 
 public record Instruction(
@@ -26,27 +27,51 @@ public record Instruction(
         return true;
     }
 
-    public void decode(final int instruction, final int @NotNull [] values, final @NotNull String... labels) {
-        if (values.length < labels.length) {
+    public int decode(final int instruction, final @NotNull String label) {
+        for (final var operand : operands) {
+            if (operand.label().equals(label)) {
+                return operand.extract(instruction);
+            }
+        }
+        throw new NoSuchElementException(label);
+    }
+
+    public void decode(final int instruction, final int @NotNull [] values, final @NotNull String label0) {
+        if (values.length < 1) {
             throw new IllegalArgumentException();
         }
 
-        for (int i = 0; i < labels.length; ++i) {
-            final var label = labels[i];
+        values[0] = decode(instruction, label0);
+    }
 
-            var found = false;
-            for (final var operand : operands) {
-                if (operand.label().equals(label)) {
-                    final var value = operand.extract(instruction);
-                    values[i] = value;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                throw new IllegalArgumentException(label);
-            }
+    public void decode(
+            final int instruction,
+            final int @NotNull [] values,
+            final @NotNull String label0,
+            final @NotNull String label1
+    ) {
+        if (values.length < 2) {
+            throw new IllegalArgumentException();
         }
+
+        values[0] = decode(instruction, label0);
+        values[1] = decode(instruction, label1);
+    }
+
+    public void decode(
+            final int instruction,
+            final int @NotNull [] values,
+            final @NotNull String label0,
+            final @NotNull String label1,
+            final @NotNull String label2
+    ) {
+        if (values.length < 3) {
+            throw new IllegalArgumentException();
+        }
+
+        values[0] = decode(instruction, label0);
+        values[1] = decode(instruction, label1);
+        values[2] = decode(instruction, label2);
     }
 
     @Override

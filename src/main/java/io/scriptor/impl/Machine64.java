@@ -390,6 +390,7 @@ public final class Machine64 implements Machine {
         // uart rx
         if (address == 0x10000000L && size == 1) {
             System.out.write((int) (value & 0xFFL));
+            System.out.flush();
             return;
         }
 
