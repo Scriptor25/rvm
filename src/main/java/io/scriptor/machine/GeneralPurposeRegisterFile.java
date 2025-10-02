@@ -1,14 +1,6 @@
 package io.scriptor.machine;
 
-import org.jetbrains.annotations.NotNull;
-
-import java.io.PrintStream;
-
-public interface GPRFile {
-
-    void reset();
-
-    void dump(final @NotNull PrintStream out);
+public interface GeneralPurposeRegisterFile extends Device {
 
     /**
      * read a 4-byte value from a general purpose register.

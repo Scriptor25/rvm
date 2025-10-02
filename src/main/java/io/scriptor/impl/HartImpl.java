@@ -6,25 +6,28 @@ import io.scriptor.machine.*;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
 import java.io.PrintStream;
 
 import static io.scriptor.isa.CSR.*;
+import static io.scriptor.machine.Semihosting.*;
 import static io.scriptor.util.ByteUtil.signExtend;
 
-public final class Hart64 implements Hart {
+public final class HartImpl implements Hart {
 
     private final Machine machine;
     private final int id;
 
-    private final GPRFile gprFile = new GPRFile64();
-    private final FPRFile fprFile = new FPRFile64();
-    private final CSRFile csrFile = new CSRFile64();
+    private final GeneralPurposeRegisterFile gprFile = new GeneralPurposeRegisterFileImpl();
+    private final FloatingPointRegisterFile fprFile = new FloatingPointRegisterFileImpl();
+    private final ControlStatusRegisterFile csrFile = new ControlStatusRegisterFileImpl();
 
     private long pc;
     private int priv;
     private boolean wfi;
+    private boolean semihosting;
 
-    public Hart64(final @NotNull Machine machine, final int id) {
+    public HartImpl(final @NotNull Machine machine, final int id) {
         this.machine = machine;
         this.id = id;
     }
@@ -52,6 +55,53 @@ public final class Hart64 implements Hart {
         }
     }
 
+    @Override
+    public void dump(final @NotNull PrintStream out) {
+
+        final var instruction = machine.fetch(pc, true);
+        out.printf("pc=%016x, instruction=%08x%n", pc, instruction);
+
+        if (Registry.has(64, instruction)) {
+            final var definition = Registry.get(64, instruction);
+
+            final var display = new StringBuilder();
+            display.append(definition.mnemonic());
+            for (final var operand : definition.operands()) {
+                display.append(", ")
+                       .append(operand.label())
+                       .append('=')
+                       .append(Integer.toHexString(operand.extract(instruction)));
+            }
+
+            out.printf("  %s%n", display);
+        }
+
+        out.println("gpr file:");
+        gprFile.dump(out);
+
+        out.println("fpr file:");
+        fprFile.dump(out);
+
+        out.println("csr file:");
+        csrFile.dump(out);
+
+        out.printf("mstatus=%x, mtvec=%x, mcause=%x, mepc=%x%n",
+                   csrFile.getd(mstatus, CSR_M),
+                   csrFile.getd(mtvec, CSR_M),
+                   csrFile.getd(mcause, CSR_M),
+                   csrFile.getd(mepc, CSR_M));
+
+        final var sp = gprFile.getd(0x2);
+        out.printf("stack (sp=%016x):%n", sp);
+        for (long offset = -0x10; offset <= 0x10; offset += 0x8) {
+            final var address = sp + offset;
+            final var value   = machine.read(address, 8, true);
+
+            out.printf("%016x : %016x%n", address, value);
+        }
+
+        printStackTrace(out);
+    }
 
     @Override
     public void reset(final long entry) {
@@ -60,9 +110,9 @@ public final class Hart64 implements Hart {
         csrFile.reset();
 
         pc = entry;
-
         priv = CSR_M;
         wfi = false;
+        semihosting = false;
 
         // machine isa
 
@@ -87,7 +137,10 @@ public final class Hart64 implements Hart {
 
         // machine status/control
 
-        csrFile.define(mstatus, 0x1888L, -1, 0x1800L);
+        csrFile.define(mstatus,
+                       0b10000000_00000000_00000110_11111111_00000001_11111111_11111111_11101010L,
+                       -1,
+                       0b00000000_00000000_00000000_00000000_00000000_00000000_01111000_00000000L);
         csrFile.define(sstatus, 0x84L, mstatus);
         csrFile.define(medeleg, 0xFFFFL);
         csrFile.define(mideleg, 0xFFFFL);
@@ -190,54 +243,6 @@ public final class Hart64 implements Hart {
     }
 
     @Override
-    public void dump(final @NotNull PrintStream out) {
-
-        final var instruction = machine.fetch(pc, true);
-        out.printf("pc=%016x, instruction=%08x%n", pc, instruction);
-
-        if (Registry.has(64, instruction)) {
-            final var definition = Registry.get(64, instruction);
-
-            final var display = new StringBuilder();
-            display.append(definition.mnemonic());
-            for (final var operand : definition.operands()) {
-                display.append(", ")
-                       .append(operand.label())
-                       .append('=')
-                       .append(Integer.toHexString(operand.extract(instruction)));
-            }
-
-            out.printf("  %s%n", display);
-        }
-
-        out.println("gpr file:");
-        gprFile.dump(out);
-
-        out.println("fpr file:");
-        fprFile.dump(out);
-
-        out.println("csr file:");
-        csrFile.dump(out);
-
-        out.printf("mstatus=%x, mtvec=%x, mcause=%x, mepc=%x%n",
-                   csrFile.getd(mstatus, CSR_M),
-                   csrFile.getd(mtvec, CSR_M),
-                   csrFile.getd(mcause, CSR_M),
-                   csrFile.getd(mepc, CSR_M));
-
-        final var sp = gprFile.getd(0x2);
-        out.printf("stack (sp=%016x):%n", sp);
-        for (long offset = -0x10; offset <= 0x10; offset += 0x8) {
-            final var address = sp + offset;
-            final var value   = machine.read(address, 8, true);
-
-            out.printf("%016x : %016x%n", address, value);
-        }
-
-        printStackTrace(out);
-    }
-
-    @Override
     public void step() {
         try {
             final var instruction = machine.fetch(pc, false);
@@ -331,10 +336,69 @@ public final class Hart64 implements Hart {
                 // noop
             }
 
-            case "ebreak", "c.ebreak" -> {
+            case "ebreak" -> {
+                if (semihosting) {
+                    final var sysnum = gprFile.getd(0x0A);
+                    final var params = gprFile.getd(0x0B);
+
+                    switch ((int) sysnum) {
+                        case SEMIHOSTING_SYSOPEN -> {
+                            // open file
+                            final var fname = machine.lstring(machine.ld(params));
+                            final var mode  = machine.ld(params + 0x08L);
+                            final var len   = machine.ld(params + 0x10L);
+
+                            gprFile.putd(0x0A, fopen(machine, fname, mode, len));
+                        }
+                        case SEMIHOSTING_SYSWRITEC -> {
+                            // write character stdout
+                            final var ch = machine.lb(params);
+
+                            System.out.write((byte) ch);
+                        }
+                        case SEMIHOSTING_SYSWRITE -> {
+                            // write buffer fd
+                            final var fd   = machine.ld(params);
+                            final var memp = machine.ld(params + 0x08L);
+                            final var len  = machine.ld(params + 0x16L);
+
+                            gprFile.putd(0x0A, fwrite(machine, fd, memp, len));
+                        }
+                        case SEMIHOSTING_SYSREAD -> {
+                            // read buffer fd
+                            final var fd   = machine.ld(params);
+                            final var memp = machine.ld(params + 0x08L);
+                            final var len  = machine.ld(params + 0x16L);
+
+                            gprFile.putd(0x0A, fread(machine, fd, memp, len));
+                        }
+                        case SEMIHOSTING_SYSREADC -> {
+                            // read character stdin
+                            try {
+                                if (System.in.available() > 0) {
+                                    gprFile.putw(0x0A, System.in.read());
+                                    break;
+                                }
+                            } catch (final IOException e) {
+                                Log.error("sysreadc: %s", e);
+                            }
+                            gprFile.putw(0x0A, -1);
+                        }
+                        case SEMIHOSTING_SYSERRNO -> {
+                            // last host error
+                            gprFile.putd(0x0A, 0L);
+                        }
+                        default -> Log.warn("undefined semihosting call sysnum=%x, params=%x", sysnum, params);
+                    }
+                    break;
+                }
+
                 if (machine.breakpoint(id)) {
                     next = pc;
+                    break;
                 }
+
+                throw new TrapException(0x03, pc);
             }
 
             case "mret" -> {
@@ -554,12 +618,17 @@ public final class Hart64 implements Hart {
                 gprFile.putw(rd, gprFile.getw(rs1) >> shamt);
             }
 
-            case "slli", "c.slli" -> {
+            case "slli" -> {
                 definition.decode(instruction, values, "rd", "rs1", "shamt");
 
                 final var rd    = values[0];
                 final var rs1   = values[1];
                 final var shamt = values[2];
+
+                if (rd == 0 && rs1 == 0 && shamt == 0x1F) {
+                    semihosting = true;
+                    break;
+                }
 
                 gprFile.putd(rd, gprFile.getd(rs1) << shamt);
             }
@@ -578,6 +647,11 @@ public final class Hart64 implements Hart {
                 final var rd    = values[0];
                 final var rs1   = values[1];
                 final var shamt = values[2];
+
+                if (rd == 0 && rs1 == 0 && shamt == 0x07) {
+                    semihosting = false;
+                    break;
+                }
 
                 gprFile.putd(rd, gprFile.getd(rs1) >> shamt);
             }
@@ -1080,7 +1154,7 @@ public final class Hart64 implements Hart {
                 final int value;
                 synchronized (machine.acquireLock(aligned)) {
                     final var source = gprFile.getw(rs2);
-                    value = machine.lw(aligned);
+                    value = (int) machine.lw(aligned);
                     machine.sw(aligned, source);
                 }
 
@@ -1118,7 +1192,7 @@ public final class Hart64 implements Hart {
                 final int value;
                 synchronized (machine.acquireLock(aligned)) {
                     final var source = gprFile.getw(rs2);
-                    value = machine.lw(aligned);
+                    value = (int) machine.lw(aligned);
                     machine.sw(aligned, value + source);
                 }
 
@@ -1392,6 +1466,15 @@ public final class Hart64 implements Hart {
                 gprFile.putd(rd, gprFile.getd(rs1) - gprFile.getd(rs2));
             }
 
+            case "c.slli" -> {
+                definition.decode(instruction, values, "rd", "rs1", "shamt");
+
+                final var rd    = values[0];
+                final var rs1   = values[1];
+                final var shamt = values[2];
+
+                gprFile.putd(rd, gprFile.getd(rs1) << shamt);
+            }
             case "c.srli" -> {
                 definition.decode(instruction, values, "rdp", "rs1p", "shamt");
 
@@ -1409,6 +1492,31 @@ public final class Hart64 implements Hart {
                 final var shamt = values[2];
 
                 gprFile.putd(rd, gprFile.getd(rs1) >> shamt);
+            }
+            case "c.ebreak" -> {
+                if (machine.breakpoint(id)) {
+                    next = pc;
+                    break;
+                }
+
+                throw new TrapException(0x03, pc);
+            }
+
+            case "fmv.w.x" -> {
+                definition.decode(instruction, values, "rd", "rs1");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+
+                fprFile.putfr(rd, gprFile.getw(rs1));
+            }
+            case "fmv.x.w" -> {
+                definition.decode(instruction, values, "rd", "rs1");
+
+                final var rd  = values[0];
+                final var rs1 = values[1];
+
+                gprFile.putw(rd, fprFile.getfr(rs1));
             }
 
             default -> {
@@ -1441,17 +1549,17 @@ public final class Hart64 implements Hart {
     }
 
     @Override
-    public @NotNull GPRFile gprFile() {
+    public @NotNull GeneralPurposeRegisterFile gprFile() {
         return gprFile;
     }
 
     @Override
-    public @NotNull FPRFile fprFile() {
+    public @NotNull FloatingPointRegisterFile fprFile() {
         return fprFile;
     }
 
     @Override
-    public @NotNull CSRFile csrFile() {
+    public @NotNull ControlStatusRegisterFile csrFile() {
         return csrFile;
     }
 }

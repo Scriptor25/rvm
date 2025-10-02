@@ -1,19 +1,14 @@
 package io.scriptor.impl;
 
-import io.scriptor.machine.GPRFile;
+import io.scriptor.machine.GeneralPurposeRegisterFile;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.PrintStream;
 import java.util.Arrays;
 
-public final class GPRFile64 implements GPRFile {
+public final class GeneralPurposeRegisterFileImpl implements GeneralPurposeRegisterFile {
 
     private final long[] values = new long[32];
-
-    @Override
-    public void reset() {
-        Arrays.fill(values, 0);
-    }
 
     @Override
     public void dump(final @NotNull PrintStream out) {
@@ -24,6 +19,11 @@ public final class GPRFile64 implements GPRFile {
                 out.println();
             }
         }
+    }
+
+    @Override
+    public void reset() {
+        Arrays.fill(values, 0);
     }
 
     @Override

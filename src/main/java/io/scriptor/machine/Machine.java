@@ -1,20 +1,19 @@
 package io.scriptor.machine;
 
 import io.scriptor.elf.SymbolTable;
-import io.scriptor.impl.CLINT;
+import io.scriptor.impl.device.CLINT;
 import io.scriptor.util.ExtendedInputStream;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteOrder;
 import java.util.function.IntConsumer;
-import java.util.function.IntPredicate;
-import java.util.stream.Stream;
 
 import static io.scriptor.util.ByteUtil.signExtend;
 
-public interface Machine {
+public interface Machine extends Device {
 
     @NotNull SymbolTable symbols();
 
@@ -22,28 +21,12 @@ public interface Machine {
 
     @NotNull Hart hart(int id);
 
-    @NotNull Stream<Hart> harts();
-
-    /**
-     * reset the machine state.
-     */
-    void reset();
-
-    /**
-     * dump the current machine state.
-     *
-     * @param out output print stream
-     */
-    void dump(@NotNull PrintStream out);
-
     void dump(@NotNull PrintStream out, long address, long size);
-
-    void tick() throws InterruptedException;
 
     /**
      * proceed execution for one step.
      */
-    void step();
+    void spinOnce();
 
     /**
      * proceed execution.
@@ -55,7 +38,7 @@ public interface Machine {
      */
     void pause();
 
-    void onBreakpoint(@NotNull IntPredicate handler);
+    void onBreakpoint(@NotNull IntConsumer handler);
 
     boolean breakpoint(int id);
 
@@ -103,8 +86,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lb(long address) {
-        return (int) signExtend(read(address, 1, false), 8);
+    default long lb(long address) {
+        return signExtend(read(address, 1, false), 8);
     }
 
     /**
@@ -113,8 +96,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lbu(long address) {
-        return (int) read(address, 1, false);
+    default long lbu(long address) {
+        return read(address, 1, false);
     }
 
     /**
@@ -123,8 +106,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lh(long address) {
-        return (int) signExtend(read(address, 2, false), 16);
+    default long lh(long address) {
+        return signExtend(read(address, 2, false), 16);
     }
 
     /**
@@ -133,8 +116,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lhu(long address) {
-        return (int) read(address, 2, false);
+    default long lhu(long address) {
+        return read(address, 2, false);
     }
 
     /**
@@ -143,8 +126,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lw(long address) {
-        return (int) signExtend(read(address, 4, false), 32);
+    default long lw(long address) {
+        return signExtend(read(address, 4, false), 32);
     }
 
     /**
@@ -153,8 +136,8 @@ public interface Machine {
      * @param address source address
      * @return value at source address
      */
-    default int lwu(long address) {
-        return (int) read(address, 4, false);
+    default long lwu(long address) {
+        return read(address, 4, false);
     }
 
     /**
@@ -165,6 +148,14 @@ public interface Machine {
      */
     default long ld(long address) {
         return read(address, 8, false);
+    }
+
+    default @NotNull String lstring(long address) {
+        final var buffer = new ByteArrayOutputStream();
+        for (byte b; (b = (byte) lb(address++)) != 0; ) {
+            buffer.write(b);
+        }
+        return buffer.toString();
     }
 
     /**

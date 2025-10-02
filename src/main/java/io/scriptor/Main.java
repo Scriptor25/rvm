@@ -6,7 +6,7 @@ import io.scriptor.elf.Identity;
 import io.scriptor.elf.ProgramHeader;
 import io.scriptor.elf.SectionHeader;
 import io.scriptor.gdb.GDBStub;
-import io.scriptor.impl.Machine64;
+import io.scriptor.impl.MachineImpl;
 import io.scriptor.isa.Registry;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.ChannelInputStream;
@@ -93,7 +93,7 @@ public final class Main {
             }
         }
 
-        final Machine machine = new Machine64(memory, ByteOrder.LITTLE_ENDIAN, 1);
+        final Machine machine = new MachineImpl(memory, ByteOrder.LITTLE_ENDIAN, 1);
 
         for (final var payload : loads) {
             if (load(machine, payload.filename(), payload.offset())) {
@@ -109,26 +109,19 @@ public final class Main {
 
         if (debug) {
             try (final var gdb = new GDBStub(machine, 1234)) {
-                final var gdbThread = new Thread(gdb, "rvm-gdb");
-                gdbThread.start();
-
-                while (gdbThread.isAlive()) {
+                while (gdb.step()) {
                     try {
-                        machine.tick();
-                    } catch (final InterruptedException e) {
-                        Log.error("main thread interrupted: %s", e);
-                        break;
+                        machine.step();
                     } catch (final Exception e) {
-                        machine.dump(System.err);
                         machine.pause();
+                        machine.dump(System.err);
                         Log.error("machine exception: %s", e);
+
                         gdb.stop(-1, 0x00);
                     }
                 }
-
-                gdbThread.interrupt();
             } catch (final IOException e) {
-                Log.error("failed to create gdb thread: %s", e);
+                Log.error("failed to create gdb stub: %s", e);
             }
             return;
         }
@@ -136,9 +129,10 @@ public final class Main {
         try {
             machine.spin();
             while (true) {
-                machine.tick();
+                machine.step();
             }
         } catch (final Exception e) {
+            machine.pause();
             machine.dump(System.err);
             Log.error("machine exception: %s", e);
         }

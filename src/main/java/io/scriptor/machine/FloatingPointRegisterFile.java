@@ -1,14 +1,6 @@
 package io.scriptor.machine;
 
-import org.jetbrains.annotations.NotNull;
-
-import java.io.PrintStream;
-
-public interface FPRFile {
-
-    void reset();
-
-    void dump(final @NotNull PrintStream out);
+public interface FloatingPointRegisterFile extends Device {
 
     float getf(final int reg);
 

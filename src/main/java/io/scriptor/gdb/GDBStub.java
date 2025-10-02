@@ -20,7 +20,7 @@ import java.util.function.LongConsumer;
 
 import static io.scriptor.isa.CSR.*;
 
-public class GDBStub implements Runnable, Closeable {
+public class GDBStub implements Closeable {
 
     private static @NotNull String toHexString(final long value, final int n) {
         final var builder = new StringBuilder();
@@ -95,12 +95,8 @@ public class GDBStub implements Runnable, Closeable {
         this.machine = machine;
 
         machine.onBreakpoint(id -> {
-            final var injected = breakpoints.containsKey(machine.hart(id).pc());
-
             machine.pause();
             stop(id, 0x05);
-
-            return injected;
         });
         machine.onTrap(id -> {
             machine.pause();
@@ -115,29 +111,31 @@ public class GDBStub implements Runnable, Closeable {
         channel.register(selector, SelectionKey.OP_ACCEPT);
     }
 
-    @Override
-    public void run() {
-        while (true) {
-            try {
-                selector.select();
-
-                for (var it = selector.selectedKeys().iterator(); it.hasNext(); ) {
-                    final var key = it.next();
-                    it.remove();
-
-                    if (key.isAcceptable()) {
-                        handleAccept(key);
-                        continue;
-                    }
-
-                    handleRead(key);
-                }
-            } catch (final IOException e) {
-                Log.error("gdb error: %s", e);
-            } catch (final InterruptedException e) {
-                Log.warn("gdb thread interrupted: %s", e);
-                Thread.currentThread().interrupt();
+    public boolean step() {
+        try {
+            if (selector.selectNow() <= 0) {
+                return true;
             }
+
+            for (var it = selector.selectedKeys().iterator(); it.hasNext(); ) {
+                final var key = it.next();
+                it.remove();
+
+                if (key.isAcceptable()) {
+                    handleAccept(key);
+                    continue;
+                }
+
+                handleRead(key);
+            }
+
+            return true;
+        } catch (final InterruptedException e) {
+            Log.error("gdb interrupted: %s", e);
+            return false;
+        } catch (final Exception e) {
+            Log.error("gdb error: %s", e);
+            return false;
         }
     }
 
@@ -283,11 +281,14 @@ public class GDBStub implements Runnable, Closeable {
                 yield "OK";
             }
             case 's' -> {
-                machine.step();
+                machine.spinOnce();
+                yield "OK";
+            }
+            case 'r', 'R' -> {
+                machine.reset();
                 yield "OK";
             }
             case 'D' -> {
-                machine.reset();
                 yield "OK";
             }
             case 'g' -> {

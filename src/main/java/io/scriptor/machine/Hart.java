@@ -3,15 +3,14 @@ package io.scriptor.machine;
 import io.scriptor.isa.Instruction;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.PrintStream;
+public interface Hart extends Device {
 
-public interface Hart {
+    @Override
+    default void reset() {
+        reset(0L);
+    }
 
     void reset(final long entry);
-
-    void dump(final @NotNull PrintStream out);
-
-    void step();
 
     long execute(final int instruction, final Instruction definition);
 
@@ -28,19 +27,19 @@ public interface Hart {
      *
      * @return the gpr file
      */
-    @NotNull GPRFile gprFile();
+    @NotNull GeneralPurposeRegisterFile gprFile();
 
     /**
      * get the harts fpr file
      *
      * @return the fpr file
      */
-    @NotNull FPRFile fprFile();
+    @NotNull FloatingPointRegisterFile fprFile();
 
     /**
      * get the harts csr file
      *
      * @return the csr file
      */
-    @NotNull CSRFile csrFile();
+    @NotNull ControlStatusRegisterFile csrFile();
 }

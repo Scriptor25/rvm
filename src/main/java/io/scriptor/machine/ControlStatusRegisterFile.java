@@ -2,13 +2,10 @@ package io.scriptor.machine;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.io.PrintStream;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
-public interface CSRFile {
-
-    void reset();
+public interface ControlStatusRegisterFile extends Device {
 
     void define(final int addr);
 
@@ -23,8 +20,6 @@ public interface CSRFile {
     void define(final int addr, final @NotNull LongSupplier get);
 
     void define(final int addr, final @NotNull LongSupplier get, final @NotNull LongConsumer set);
-
-    void dump(final @NotNull PrintStream out);
 
     /**
      * read a 4-byte value from a control/status register.

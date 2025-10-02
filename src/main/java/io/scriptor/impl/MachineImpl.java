@@ -1,6 +1,9 @@
 package io.scriptor.impl;
 
 import io.scriptor.elf.SymbolTable;
+import io.scriptor.impl.device.CLINT;
+import io.scriptor.impl.device.PLIC;
+import io.scriptor.impl.device.UART;
 import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.ExtendedInputStream;
@@ -11,15 +14,12 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntConsumer;
-import java.util.function.IntPredicate;
-import java.util.stream.Stream;
 
-public final class Machine64 implements Machine {
+public final class MachineImpl implements Machine {
 
     private final Map<Long, Object> locks = new ConcurrentHashMap<>();
 
@@ -28,6 +28,8 @@ public final class Machine64 implements Machine {
     private final SymbolTable symbols = new SymbolTable();
     private final ByteBuffer memory;
     private final CLINT clint;
+    private final PLIC plic;
+    private final UART uart;
     private final Hart[] harts;
 
     private final Map<Integer, Long> registers = new HashMap<>();
@@ -37,15 +39,19 @@ public final class Machine64 implements Machine {
     private boolean once;
     private boolean active;
 
-    private IntPredicate breakpointHandler;
+    private IntConsumer breakpointHandler;
     private IntConsumer trapHandler;
 
-    public Machine64(final int capacity, final @NotNull ByteOrder order, final int count) {
+    public MachineImpl(final int capacity, final @NotNull ByteOrder order, final int count) {
         this.memory = ByteBuffer.allocateDirect(capacity).order(order);
+
         this.clint = new CLINT(this, count);
+        this.plic = new PLIC(count, 32);
+        this.uart = new UART(System.in, System.out);
+
         this.harts = new Hart[count];
         for (int id = 0; id < count; ++id) {
-            this.harts[id] = new Hart64(this, id);
+            this.harts[id] = new HartImpl(this, id);
         }
     }
 
@@ -65,26 +71,11 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public @NotNull Stream<Hart> harts() {
-        return Arrays.stream(harts);
-    }
-
-    @Override
-    public void reset() {
-        once = false;
-        active = false;
-
-        clint.reset();
-
-        for (final var hart : harts) {
-            hart.reset(entry);
-            registers.forEach((register, value) -> hart.gprFile().putd(register, value));
-        }
-    }
-
-    @Override
     public void dump(final @NotNull PrintStream out) {
         clint.dump(out);
+        plic.dump(out);
+        uart.dump(out);
+
         for (int id = 0; id < harts.length; ++id) {
             out.printf("hart #%x:%n", id);
             harts[id].dump(out);
@@ -155,13 +146,30 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public synchronized void tick() throws InterruptedException {
+    public void reset() {
+        once = false;
+        active = false;
+
+        clint.reset();
+        plic.reset();
+        uart.reset();
+
+        for (final var hart : harts) {
+            hart.reset(entry);
+            registers.forEach((register, value) -> hart.gprFile().putd(register, value));
+        }
+    }
+
+    @Override
+    public void step() {
         if (!active) {
-            wait();
             return;
         }
 
         clint.step();
+        plic.step();
+        uart.step();
+
         for (final var hart : harts) {
             hart.step();
         }
@@ -172,17 +180,15 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public synchronized void step() {
+    public void spinOnce() {
         once = true;
         active = true;
-        notify();
     }
 
     @Override
-    public synchronized void spin() {
+    public void spin() {
         once = false;
         active = true;
-        notify();
     }
 
     @Override
@@ -192,14 +198,15 @@ public final class Machine64 implements Machine {
     }
 
     @Override
-    public void onBreakpoint(final @NotNull IntPredicate handler) {
+    public void onBreakpoint(final @NotNull IntConsumer handler) {
         this.breakpointHandler = handler;
     }
 
     @Override
     public boolean breakpoint(final int id) {
         if (breakpointHandler != null) {
-            return breakpointHandler.test(id);
+            breakpointHandler.accept(id);
+            return true;
         }
         return false;
     }
@@ -310,41 +317,19 @@ public final class Machine64 implements Machine {
             return 0L;
         }
 
-        for (int id = 0; id < harts.length; ++id) {
-            // msip[id]
-            if (address == 0x2000000L + 4L * id && size == 4) {
-                return Integer.toUnsignedLong(clint.msip(id));
-            }
-
-            // mtimecmp[id]
-            if (address == 0x2004000L + 8L * id && size == 8) {
-                return clint.mtimecmp(id);
-            }
+        // clint
+        if (address >= 0x02000000L && address < 0x02010000L) {
+            return clint.read(address - 0x02000000L, size);
         }
 
-        // mtime
-        if (address == 0x200BFF8L && size == 8) {
-            return clint.mtime();
+        // plic
+        if (address >= 0x0C000000L && address < 0x10000000L) {
+            return plic.read(address - 0x0C000000L, size);
         }
 
-        // uart rx
-        if (address == 0x010000000L && size == 1) {
-            try {
-                return ((long) System.in.read()) & 0xFFL;
-            } catch (final IOException e) {
-                Log.error("read stdin: %s", e);
-                return 0L;
-            }
-        }
-
-        // uart lsr
-        if (address == 0x010000005L && size == 1) {
-            try {
-                return System.in.available() > 0 ? 1L : 0L;
-            } catch (final IOException e) {
-                Log.error("read stdin: %s", e);
-                return 0L;
-            }
+        // uart
+        if (address >= 0x10000000L && address < 0x10000100L) {
+            return uart.read(address - 0x10000000L, size);
         }
 
         Log.error("read address=%016x, size=%x".formatted(address, size));
@@ -369,30 +354,21 @@ public final class Machine64 implements Machine {
             return;
         }
 
-        for (int id = 0; id < harts.length; ++id) {
-            // msip[id]
-            if (address == 0x2000000L + 4L * id && size == 4) {
-                clint.msip(id, (int) (value & 0xFFFFFFFFL));
-                return;
-            }
-
-            // mtimecmp[id]
-            if (address == 0x2004000L + 8L * id && size == 8) {
-                clint.mtimecmp(id, value);
-                return;
-            }
-        }
-
-        // mtime
-        if (address == 0x200BFF8L && size == 8) {
-            clint.mtime(value);
+        // clint
+        if (address >= 0x02000000L && address < 0x02010000L) {
+            clint.write(address - 0x02000000L, size, value);
             return;
         }
 
-        // uart rx
-        if (address == 0x10000000L && size == 1) {
-            System.out.write((int) (value & 0xFFL));
-            System.out.flush();
+        // plic
+        if (address >= 0x0C000000L && address < 0x10000000L) {
+            plic.write(address - 0x0C000000L, size, value);
+            return;
+        }
+
+        // uart
+        if (address >= 0x10000000L && address < 0x10000100L) {
+            uart.write(address - 0x10000000L, size, value);
             return;
         }
 
