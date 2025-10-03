@@ -2,7 +2,7 @@
 
 .option norvc
 
-/* do not touch a0, contains pointer to fdt! */
+/* do not touch a0 and a1, contain boot hart id and pointer to fdt! */
 
 .type start, @function
 .global start

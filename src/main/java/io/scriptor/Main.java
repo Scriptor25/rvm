@@ -1,6 +1,9 @@
 package io.scriptor;
 
-import io.scriptor.arg.*;
+import io.scriptor.arg.FlagPayload;
+import io.scriptor.arg.LoadPayload;
+import io.scriptor.arg.MemoryPayload;
+import io.scriptor.arg.Template;
 import io.scriptor.elf.Header;
 import io.scriptor.elf.Identity;
 import io.scriptor.elf.ProgramHeader;
@@ -16,7 +19,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -46,8 +48,7 @@ public final class Main {
         try {
             final var payloads = Template.parse(args);
 
-            final var loads     = payloads.getAll(TEMPLATE_LOAD, LoadPayload.class);
-            final var registers = payloads.getAll(TEMPLATE_REGISTER, RegisterPayload.class);
+            final var loads = payloads.getAll(TEMPLATE_LOAD, LoadPayload.class);
 
             final var memory = payloads.get(TEMPLATE_MEMORY, MemoryPayload.class)
                                        .stream()
@@ -57,7 +58,9 @@ public final class Main {
 
             final var debug = payloads.get(TEMPLATE_DEBUG, FlagPayload.class).isPresent();
 
-            run(loads, registers, memory, debug);
+            final var machine = init(loads, memory);
+
+            run(machine, debug);
         } catch (final Exception e) {
             Log.error("%s", e);
         }
@@ -65,46 +68,37 @@ public final class Main {
         logThread.interrupt();
     }
 
-    private static void run(
+    private static @NotNull Machine init(
             final @NotNull List<LoadPayload> loads,
-            final @NotNull List<RegisterPayload> registers,
-            final int memory,
-            final boolean debug
+            final int memory
     ) {
-
         final List<String> isa = new ArrayList<>();
         isa.add("types");
 
-        if (read("index.txt", stream -> {
+        read("index.txt", stream -> {
             final var reader = new BufferedReader(new InputStreamReader(stream));
             reader.lines()
                   .map(String::trim)
                   .filter(not(String::isEmpty))
                   .filter(line -> line.endsWith(".isa"))
                   .forEach(isa::add);
-        })) {
-            return;
-        }
+        });
 
         final var registry = Registry.getInstance();
         for (final var name : isa) {
-            if (read(name, registry::parse)) {
-                return;
-            }
+            read(name, registry::parse);
         }
 
         final Machine machine = new MachineImpl(memory, ByteOrder.LITTLE_ENDIAN, 1);
 
         for (final var payload : loads) {
-            if (load(machine, payload.filename(), payload.offset())) {
-                return;
-            }
+            load(machine, payload.filename(), payload.offset());
         }
 
-        for (final var payload : registers) {
-            machine.register(payload.register(), payload.value());
-        }
+        return machine;
+    }
 
+    private static void run(final @NotNull Machine machine, final boolean debug) {
         machine.reset();
 
         if (debug) {
@@ -138,7 +132,7 @@ public final class Main {
         }
     }
 
-    private static boolean load(
+    private static void load(
             final @NotNull Machine machine,
             final @NotNull String filename,
             final long offset
@@ -152,9 +146,6 @@ public final class Main {
 
             if (elf) {
                 final var header = Header.read(identity, stream);
-
-                // System.out.printf("identity: %s%n", identity);
-                // System.out.printf("header:   %s%n", header);
 
                 machine.entry(header.entry() + offset);
                 machine.offset(offset);
@@ -195,64 +186,39 @@ public final class Main {
                     readSymbols(identity, stream, dynsym, dynstr, symbols, offset);
                 }
 
-                // System.out.println("symbols:");
-                // for (final var symbol : symbols) {
-                //     System.out.println(symbol);
-                // }
-
                 for (final var ph : phtab) {
-                    // System.out.printf("program header: %s%n", ph);
-                    // print(stream.seek(ph.offset()), ph.offset(), ph.filesz());
-
                     if (ph.type() == 0x01) {
                         stream.seek(ph.offset());
                         machine.segment(stream, ph.paddr() + offset, ph.filesz(), ph.memsz());
                     }
                 }
-
-                /*for (final var sh : shtab) {
-                    stream.seek(shstrtab.offset() + sh.name());
-                    final var name = readString(stream);
-                    System.out.printf("section header '%s': %s%n", name, sh);
-                    print(stream.seek(sh.offset()), sh.offset(), sh.size());
-                }*/
             } else {
-                // print(stream.seek(0L), 0, stream.size());
-
                 stream.seek(0L);
                 machine.segment(stream, offset, stream.size(), stream.size());
             }
-            return false;
         } catch (final IOException e) {
             Log.error("failed to load file '%s' (offset %x): %s", filename, offset, e);
-            return true;
+            throw new RuntimeException(e);
         }
     }
 
-    private static void print(final @NotNull InputStream stream, final long offset, final long length)
-            throws IOException {
-        if (length == 0) {
-            System.out.println("<empty>");
-            return;
-        }
+    private static void dump(final @NotNull ByteBuffer buffer) {
 
-        final var CHUNK = 0x20;
+        final var CHUNK = 0x10;
 
         var allZero      = false;
         var allZeroBegin = 0L;
 
-        for (long i = 0; i < length; i += CHUNK) {
+        while (buffer.hasRemaining()) {
 
-            final var chunk = (int) Math.min(length - i, CHUNK);
+            final var begin = buffer.position();
+            final var chunk = Math.min(buffer.remaining(), CHUNK);
 
             final var bytes = new byte[chunk];
-            final var count = stream.read(bytes);
-
-            if (count <= 0)
-                break;
+            buffer.get(bytes);
 
             boolean allZeroP = true;
-            for (int j = 0; j < count; ++j)
+            for (int j = 0; j < chunk; ++j)
                 if (bytes[j] != 0) {
                     allZeroP = false;
                     break;
@@ -260,30 +226,30 @@ public final class Main {
 
             if (allZero && !allZeroP) {
                 allZero = false;
-                System.out.printf("%016x - %016x%n", allZeroBegin, i - 1);
+                System.out.printf("%08x - %08x%n", allZeroBegin, begin - 1);
             } else if (!allZero && allZeroP) {
                 allZero = true;
-                allZeroBegin = i;
+                allZeroBegin = begin;
                 continue;
             } else if (allZero) {
                 continue;
             }
 
-            System.out.printf("%016x |", offset + i);
+            System.out.printf("%08x |", begin);
 
-            for (int j = 0; j < count; ++j) {
-                System.out.printf(" %02x", bytes[j]);
+            for (int j = 0; j < chunk; ++j) {
+                System.out.printf(" %02X", bytes[j]);
             }
-            for (int j = count; j < CHUNK; ++j) {
+            for (int j = chunk; j < CHUNK; ++j) {
                 System.out.print(" 00");
             }
 
             System.out.print(" | ");
 
-            for (int j = 0; j < count; ++j) {
+            for (int j = 0; j < chunk; ++j) {
                 System.out.print(bytes[j] >= 0x20 ? (char) bytes[j] : '.');
             }
-            for (int j = count; j < CHUNK; ++j) {
+            for (int j = chunk; j < CHUNK; ++j) {
                 System.out.print('.');
             }
 

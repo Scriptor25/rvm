@@ -2,12 +2,14 @@
 
 void kputc(const char c)
 {
-    *UART_RX = c;
+    while (!(*UART_STATUS & UART_TX_READY_BIT))
+        ;
+    *UART_TX = c;
 }
 
 unsigned char kgetc()
 {
-    while (!(*UART_LSR & UART_DR_BIT))
+    while (!(*UART_STATUS & UART_RX_READY_BIT))
         ;
     return *UART_RX;
 }

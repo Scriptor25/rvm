@@ -19,18 +19,16 @@ public final class Resource {
      *
      * @param name     resource name
      * @param consumer stream consumer
-     * @return if error
      */
-    public static boolean read(final @NotNull String name, final @NotNull IOConsumer<InputStream> consumer) {
+    public static void read(final @NotNull String name, final @NotNull IOConsumer<InputStream> consumer) {
         try (final var stream = ClassLoader.getSystemResourceAsStream(name)) {
             if (stream == null)
                 throw new FileNotFoundException("resource name '%s'".formatted(name));
 
             consumer.accept(stream);
-            return false;
         } catch (final IOException e) {
             Log.error("failed to read resource name '%s': %s", name, e);
-            return true;
+            throw new RuntimeException(e);
         }
     }
 

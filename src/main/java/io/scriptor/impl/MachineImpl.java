@@ -1,6 +1,8 @@
 package io.scriptor.impl;
 
 import io.scriptor.elf.SymbolTable;
+import io.scriptor.fdt.FDT;
+import io.scriptor.fdt.TreeBuilder;
 import io.scriptor.impl.device.CLINT;
 import io.scriptor.impl.device.PLIC;
 import io.scriptor.impl.device.UART;
@@ -14,7 +16,6 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntConsumer;
@@ -27,12 +28,12 @@ public final class MachineImpl implements Machine {
 
     private final SymbolTable symbols = new SymbolTable();
     private final ByteBuffer memory;
+    private final ByteBuffer dtb;
     private final CLINT clint;
     private final PLIC plic;
     private final UART uart;
     private final Hart[] harts;
 
-    private final Map<Integer, Long> registers = new HashMap<>();
     private long entry;
     private long offset;
 
@@ -44,6 +45,10 @@ public final class MachineImpl implements Machine {
 
     public MachineImpl(final int capacity, final @NotNull ByteOrder order, final int count) {
         this.memory = ByteBuffer.allocateDirect(capacity).order(order);
+
+        this.dtb = ByteBuffer.allocateDirect(0x2000).order(ByteOrder.BIG_ENDIAN);
+        generateDeviceTreeBlob(this.dtb);
+        this.dtb.order(order);
 
         this.clint = new CLINT(this, count);
         this.plic = new PLIC(count, 32);
@@ -156,7 +161,8 @@ public final class MachineImpl implements Machine {
 
         for (final var hart : harts) {
             hart.reset(entry);
-            registers.forEach((register, value) -> hart.gprFile().putd(register, value));
+            hart.gprFile().putd(0x0A, 0x00000000L); // boot hart id
+            hart.gprFile().putd(0x0B, 0xF8000000L); // dtb address
         }
     }
 
@@ -239,11 +245,6 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public void register(final int register, final long value) {
-        registers.put(register, value);
-    }
-
-    @Override
     public void offset(final long offset) {
         this.offset = offset;
     }
@@ -303,12 +304,12 @@ public final class MachineImpl implements Machine {
     @Override
     public long read(final long address, final int size, final boolean unsafe) {
         if (DRAM_BASE <= address && address + size <= DRAM_BASE + memory.capacity()) {
-            final var base = (int) (address - DRAM_BASE);
+            final var offset = (int) (address - DRAM_BASE);
             return switch (size) {
-                case 1 -> (long) memory.get(base) & 0xFFL;
-                case 2 -> (long) memory.getShort(base) & 0xFFFFL;
-                case 4 -> (long) memory.getInt(base) & 0xFFFFFFFFL;
-                case 8 -> memory.getLong(base);
+                case 1 -> (long) memory.get(offset) & 0xFFL;
+                case 2 -> (long) memory.getShort(offset) & 0xFFFFL;
+                case 4 -> (long) memory.getInt(offset) & 0xFFFFFFFFL;
+                case 8 -> memory.getLong(offset);
                 default -> throw new IllegalArgumentException("read size=%x".formatted(size));
             };
         }
@@ -330,6 +331,17 @@ public final class MachineImpl implements Machine {
         // uart
         if (address >= 0x10000000L && address < 0x10000100L) {
             return uart.read(address - 0x10000000L, size);
+        }
+
+        if (address >= 0xF8000000L && address + size <= 0xF8000000L + dtb.limit()) {
+            final var offset = (int) (address - 0xF8000000L);
+            return switch (size) {
+                case 1 -> (long) dtb.get(offset) & 0xFFL;
+                case 2 -> (long) dtb.getShort(offset) & 0xFFFFL;
+                case 4 -> (long) dtb.getInt(offset) & 0xFFFFFFFFL;
+                case 8 -> dtb.getLong(offset);
+                default -> throw new IllegalArgumentException("read size=%x".formatted(size));
+            };
         }
 
         Log.error("read address=%016x, size=%x".formatted(address, size));
@@ -394,5 +406,85 @@ public final class MachineImpl implements Machine {
                  DRAM_BASE,
                  memory.capacity());
         return false;
+    }
+
+    @Override
+    public void generateDeviceTreeBlob(final @NotNull ByteBuffer buffer) {
+
+        final var CPU0  = 0x01;
+        final var PLIC0 = 0x02;
+
+        TreeBuilder
+                .create()
+                .root(b0 -> b0
+                        .name("")
+                        .prop(b1 -> b1.name("#address-cells").data(0x02))
+                        .prop(b1 -> b1.name("#size-cells").data(0x02))
+                        .prop(b1 -> b1.name("compatible").data("rvm,riscv-virt"))
+                        .prop(b1 -> b1.name("model").data("RVM"))
+                        .node(b1 -> b1
+                                .name("chosen")
+                                .prop(b2 -> b2.name("stdout-path").data("/soc/serial@10000000"))
+                        )
+                        .node(b1 -> b1
+                                .name("cpus")
+                                .prop(b2 -> b2.name("#address-cells").data(0x01))
+                                .prop(b2 -> b2.name("#size-cells").data(0x00))
+                                .prop(b2 -> b2.name("timebase-frequency").data(0x989680))
+                                .node(b2 -> b2
+                                        .name("cpu@0")
+                                        .prop(b3 -> b3.name("device_type").data("cpu"))
+                                        .prop(b3 -> b3.name("reg").data(0x00))
+                                        .prop(b3 -> b3.name("status").data("okay"))
+                                        .prop(b3 -> b3.name("compatible").data("riscv"))
+                                        .prop(b3 -> b3.name("riscv,isa").data("rv64gc"))
+                                        .prop(b3 -> b3.name("mmu-type").data("riscv,sv39"))
+                                        .prop(b3 -> b3.name("#interrupt-cells").data(0x01))
+                                        .prop(b3 -> b3.name("interrupt-controller").data())
+                                        .prop(b3 -> b3.name("phandle").data(CPU0))
+                                )
+                        )
+                        .node(b1 -> b1
+                                .name("memory@80000000")
+                                .prop(b2 -> b2.name("device_type").data("memory"))
+                                .prop(b2 -> b2.name("reg").data(0x00, 0x80000000, 0x00, 0x40000000))
+                        )
+                        .node(b1 -> b1
+                                .name("soc")
+                                .prop(b2 -> b2.name("#address-cells").data(0x02))
+                                .prop(b2 -> b2.name("#size-cells").data(0x02))
+                                .prop(b2 -> b2.name("compatible").data("simple-bus"))
+                                .prop(b2 -> b2.name("ranges").data())
+                                .node(b2 -> b2
+                                        .name("clint@2000000")
+                                        .prop(b3 -> b3.name("compatible").data("riscv,clint0"))
+                                        .prop(b3 -> b3.name("reg").data(0x00, 0x2000000, 0x00, 0x10000))
+                                        .prop(b3 -> b3.name("interrupts-extended")
+                                                      .data(CPU0, 0x03, CPU0, 0x07))
+                                )
+                                .node(b2 -> b2
+                                        .name("plic@c000000")
+                                        .prop(b3 -> b3.name("compatible").data("riscv,plic0"))
+                                        .prop(b3 -> b3.name("reg").data(0x00, 0xc000000, 0x00, 0x4000000))
+                                        .prop(b3 -> b3.name("interrupt-controller").data())
+                                        .prop(b3 -> b3.name("#interrupt-cells").data(0x01))
+                                        .prop(b3 -> b3.name("riscv,ndev").data(0x20))
+                                        .prop(b3 -> b3.name("interrupts-extended").data(CPU0, 0x0b))
+                                        .prop(b3 -> b3.name("phandle").data(PLIC0))
+                                )
+                                .node(b2 -> b2
+                                        .name("serial@10000000")
+                                        .prop(b3 -> b3.name("compatible").data("ns16550a"))
+                                        .prop(b3 -> b3.name("reg").data(0x00, 0x10000000, 0x00, 0x100))
+                                        .prop(b3 -> b3.name("clock-frequency").data(0x384000))
+                                        .prop(b3 -> b3.name("current-speed").data(0x1c200))
+                                        .prop(b3 -> b3.name("reg-shift").data(0x00))
+                                        .prop(b3 -> b3.name("reg-io-width").data(0x04))
+                                        .prop(b3 -> b3.name("interrupts").data(0x01))
+                                        .prop(b3 -> b3.name("interrupt-parent").data(PLIC0))
+                                )
+                        )
+                )
+                .build(tree -> FDT.write(tree, buffer));
     }
 }

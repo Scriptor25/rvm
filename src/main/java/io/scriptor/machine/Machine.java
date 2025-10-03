@@ -8,6 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.function.IntConsumer;
 
@@ -60,8 +61,6 @@ public interface Machine extends Device {
      * @param address entry address
      */
     void entry(long address);
-
-    void register(int register, long value);
 
     void offset(long offset);
 
@@ -228,4 +227,6 @@ public interface Machine extends Device {
     void write(long address, int size, long value, boolean unsafe);
 
     boolean direct(long address, byte @NotNull [] buffer, boolean write);
+
+    void generateDeviceTreeBlob(final @NotNull ByteBuffer buffer);
 }
