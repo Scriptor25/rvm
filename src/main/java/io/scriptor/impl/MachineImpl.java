@@ -1,12 +1,16 @@
 package io.scriptor.impl;
 
 import io.scriptor.elf.SymbolTable;
+import io.scriptor.fdt.BuilderContext;
 import io.scriptor.fdt.FDT;
 import io.scriptor.fdt.TreeBuilder;
 import io.scriptor.impl.device.CLINT;
+import io.scriptor.impl.device.Memory;
 import io.scriptor.impl.device.PLIC;
 import io.scriptor.impl.device.UART;
+import io.scriptor.machine.Device;
 import io.scriptor.machine.Hart;
+import io.scriptor.machine.IODevice;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.ExtendedInputStream;
 import io.scriptor.util.Log;
@@ -17,22 +21,27 @@ import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+import java.util.function.Predicate;
+
+import static io.scriptor.impl.MMU.ACCESS_READ;
+import static io.scriptor.impl.MMU.ACCESS_WRITE;
 
 public final class MachineImpl implements Machine {
 
     private final Map<Long, Object> locks = new ConcurrentHashMap<>();
 
-    private final long DRAM_BASE = 0x80000000L;
-
     private final SymbolTable symbols = new SymbolTable();
-    private final ByteBuffer memory;
-    private final ByteBuffer dtb;
-    private final CLINT clint;
-    private final PLIC plic;
-    private final UART uart;
+
+    private final MMU mmu;
     private final Hart[] harts;
+    private final IODevice[] devices;
+
+    private final Memory memory;
+    private final Memory deviceTreeMemory;
 
     private long entry;
     private long offset;
@@ -43,21 +52,50 @@ public final class MachineImpl implements Machine {
     private IntConsumer breakpointHandler;
     private IntConsumer trapHandler;
 
-    public MachineImpl(final int capacity, final @NotNull ByteOrder order, final int count) {
-        this.memory = ByteBuffer.allocateDirect(capacity).order(order);
+    public MachineImpl(final int memoryCapacity, final @NotNull ByteOrder memoryOrder, final int hartCount) {
 
-        this.dtb = ByteBuffer.allocateDirect(0x2000).order(ByteOrder.BIG_ENDIAN);
-        generateDeviceTreeBlob(this.dtb);
-        this.dtb.order(order);
+        mmu = new MMU(this);
 
-        this.clint = new CLINT(this, count);
-        this.plic = new PLIC(count, 32);
-        this.uart = new UART(System.in, System.out);
+        final var dram = 0x00000000L;
 
-        this.harts = new Hart[count];
-        for (int id = 0; id < count; ++id) {
-            this.harts[id] = new HartImpl(this, id);
+        memory = new Memory(this,
+                            dram,
+                            dram + ((memoryCapacity + 7L) & ~7L),
+                            memoryCapacity,
+                            memoryOrder,
+                            false);
+
+        deviceTreeMemory = new Memory(this,
+                                      0xFFFF0000L,
+                                      0xFFFFFFFFL,
+                                      0x2000,
+                                      memoryOrder,
+                                      true);
+
+        devices = new IODevice[5];
+        devices[0] = memory;
+        devices[1] = deviceTreeMemory;
+        devices[2] = new CLINT(this,
+                               0x02000000L,
+                               0x02010000L,
+                               hartCount);
+        devices[3] = new PLIC(this,
+                              0x0C000000L,
+                              0x10000000L,
+                              hartCount,
+                              32);
+        devices[4] = new UART(this,
+                              0x10000000L,
+                              0x10000100L,
+                              System.in,
+                              System.out);
+
+        harts = new Hart[hartCount];
+        for (int id = 0; id < hartCount; ++id) {
+            harts[id] = new HartImpl(this, id);
         }
+
+        generateDeviceTreeBlob(deviceTreeMemory.buffer());
     }
 
     @Override
@@ -66,30 +104,74 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public @NotNull CLINT clint() {
-        return clint;
+    public @NotNull MMU mmu() {
+        return mmu;
     }
 
     @Override
     public @NotNull Hart hart(final int id) {
+        if (id < 0 || id >= harts.length) {
+            throw new IllegalArgumentException();
+        }
         return harts[id];
     }
 
     @Override
-    public void dump(final @NotNull PrintStream out) {
-        clint.dump(out);
-        plic.dump(out);
-        uart.dump(out);
+    public <T extends Device> @NotNull T device(final @NotNull Class<T> type) {
+        for (final var device : devices) {
+            if (type.isInstance(device)) {
+                return type.cast(device);
+            }
+        }
+        throw new NoSuchElementException();
+    }
 
-        for (int id = 0; id < harts.length; ++id) {
-            out.printf("hart #%x:%n", id);
-            harts[id].dump(out);
+    @Override
+    public <T extends Device> @NotNull T device(final @NotNull Class<T> type, final @NotNull Predicate<T> predicate) {
+        for (final var device : devices) {
+            if (type.isInstance(device)) {
+                final var t = type.cast(device);
+                if (predicate.test(t)) {
+                    return t;
+                }
+            }
+        }
+        throw new NoSuchElementException();
+    }
+
+    @Override
+    public <T extends Device> @NotNull T device(final @NotNull Class<T> type, int index) {
+        for (final var device : devices) {
+            if (type.isInstance(device) && index-- <= 0) {
+                return type.cast(device);
+            }
+        }
+        throw new NoSuchElementException();
+    }
+
+    @Override
+    public <T extends Device> void device(final @NotNull Class<T> type, final @NotNull Consumer<T> consumer) {
+        for (final var device : devices) {
+            if (type.isInstance(device)) {
+                consumer.accept(type.cast(device));
+            }
         }
     }
 
     @Override
-    public void dump(final @NotNull PrintStream out, final long address, final long size) {
-        if (size == 0) {
+    public void dump(final @NotNull PrintStream out) {
+        for (final var device : devices) {
+            device.dump(out);
+        }
+
+        for (final var hart : harts) {
+            hart.dump(out);
+        }
+    }
+
+    @Override
+    public void dump(final @NotNull PrintStream out, final long paddr, final long length) {
+        if (length == 0) {
             out.println("<empty>");
             return;
         }
@@ -99,15 +181,14 @@ public final class MachineImpl implements Machine {
         var allZero      = false;
         var allZeroBegin = 0L;
 
-        for (long i = 0; i < size; i += CHUNK) {
+        for (long i = 0; i < length; i += CHUNK) {
 
-            final var chunk = (int) Math.min(size - i, CHUNK);
+            final var chunk = (int) Math.min(length - i, CHUNK);
             if (chunk <= 0)
                 break;
 
             final var buffer = new byte[chunk];
-            if (!direct(address + i, buffer, false))
-                break;
+            pDirect(buffer, paddr + i, false);
 
             boolean allZeroP = true;
             for (int j = 0; j < chunk; ++j)
@@ -127,7 +208,7 @@ public final class MachineImpl implements Machine {
                 continue;
             }
 
-            out.printf("%016x |", address + i);
+            out.printf("%016x |", paddr + i);
 
             for (int j = 0; j < chunk; ++j) {
                 out.printf(" %02x", buffer[j]);
@@ -155,14 +236,14 @@ public final class MachineImpl implements Machine {
         once = false;
         active = false;
 
-        clint.reset();
-        plic.reset();
-        uart.reset();
+        for (final var device : devices) {
+            device.reset();
+        }
 
         for (final var hart : harts) {
             hart.reset(entry);
             hart.gprFile().putd(0x0A, 0x00000000L); // boot hart id
-            hart.gprFile().putd(0x0B, 0xF8000000L); // dtb address
+            hart.gprFile().putd(0x0B, deviceTreeMemory.begin()); // device tree address
         }
     }
 
@@ -172,9 +253,9 @@ public final class MachineImpl implements Machine {
             return;
         }
 
-        clint.step();
-        plic.step();
-        uart.step();
+        for (final var device : devices) {
+            device.step();
+        }
 
         for (final var hart : harts) {
             hart.step();
@@ -205,7 +286,7 @@ public final class MachineImpl implements Machine {
 
     @Override
     public void onBreakpoint(final @NotNull IntConsumer handler) {
-        this.breakpointHandler = handler;
+        breakpointHandler = handler;
     }
 
     @Override
@@ -219,7 +300,7 @@ public final class MachineImpl implements Machine {
 
     @Override
     public void onTrap(final @NotNull IntConsumer handler) {
-        this.trapHandler = handler;
+        trapHandler = handler;
     }
 
     @Override
@@ -236,12 +317,12 @@ public final class MachineImpl implements Machine {
 
     @Override
     public void entry(final long entry) {
-        if (DRAM_BASE <= entry && entry < DRAM_BASE + memory.capacity()) {
-            this.entry = entry;
-            return;
-        }
+        this.entry = entry;
+    }
 
-        throw new IllegalArgumentException("set entry=%016x".formatted(entry));
+    @Override
+    public long entry() {
+        return entry;
     }
 
     @Override
@@ -255,235 +336,189 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public void order(final @NotNull ByteOrder order) {
-        memory.order(order);
-    }
-
-    @Override
     public void segment(
             final @NotNull ExtendedInputStream stream,
             final long address,
-            final long size,
-            final long allocate
+            final int size,
+            final int allocate
     ) throws IOException {
-        final var sizeInt     = (int) size;
-        final var allocateInt = (int) allocate;
+        if (memory.begin() <= address && address + allocate <= memory.end()) {
+            final var data = new byte[allocate];
+            final var read = stream.read(data, 0, size);
+            if (read != size) {
+                Log.warn("end of stream: %d != %d", read, size);
+            }
 
-        if (sizeInt != size || allocateInt != allocate) {
-            throw new IllegalArgumentException();
-        }
+            final var offset = (int) (address - memory.begin());
+            memory.direct(data, offset, true);
 
-        final var begin = (int) (address - DRAM_BASE);
-        final var end   = begin + allocateInt;
-
-        if (0 <= begin && end <= memory.capacity()) {
-            stream.read(memory.slice(begin, sizeInt).order(memory.order()));
-            memory.put(begin + sizeInt, new byte[allocateInt - sizeInt]);
             return;
         }
 
-        throw new IllegalArgumentException("segment address=%016x, size=%x, allocate=%x"
-                                                   .formatted(address, size, allocate));
+        Log.error("memory write out of bounds: segment address=%x, size=%d, allocate=%d", address, size, allocate);
     }
 
     @Override
-    public int fetch(final long pc, final boolean unsafe) {
-        if (DRAM_BASE <= pc && pc + 4 <= DRAM_BASE + memory.capacity()) {
-            final var base = (int) (pc - DRAM_BASE);
-            return memory.getInt(base);
+    public int fetch(final int hartid, final long pc, final boolean unsafe) {
+        var ppc = mmu.translate(hartid, pc, ACCESS_READ, harts[hartid].privilege(), unsafe);
+
+        if (ppc != pc) {
+            Log.info("virtual address %016x -> physical address %016x", pc, ppc);
         }
 
-        if (unsafe) {
+        if (unsafe && ppc == ~0L) {
+            Log.warn("fetch invalid virtual address: pc=%x", pc);
             return 0;
         }
 
-        Log.error("fetch pc=%016x", pc);
-        throw new TrapException(0x01, pc);
-    }
-
-    @Override
-    public long read(final long address, final int size, final boolean unsafe) {
-        if (DRAM_BASE <= address && address + size <= DRAM_BASE + memory.capacity()) {
-            final var offset = (int) (address - DRAM_BASE);
-            return switch (size) {
-                case 1 -> (long) memory.get(offset) & 0xFFL;
-                case 2 -> (long) memory.getShort(offset) & 0xFFFFL;
-                case 4 -> (long) memory.getInt(offset) & 0xFFFFFFFFL;
-                case 8 -> memory.getLong(offset);
-                default -> throw new IllegalArgumentException("read size=%x".formatted(size));
-            };
+        if (memory.begin() <= ppc && ppc + 4 <= memory.end()) {
+            final var offset = (int) (ppc - memory.begin());
+            return (int) memory.read(offset, 4);
         }
 
         if (unsafe) {
+            Log.warn("fetch invalid address: pc=%x", ppc);
+            return 0;
+        }
+
+        throw new TrapException(0x01, ppc, "fetch invalid address: pc=%x", ppc);
+    }
+
+    @Override
+    public long read(final int hartid, final long vaddr, final int size, final boolean unsafe) {
+        final var paddr = mmu.translate(hartid, vaddr, ACCESS_READ, harts[hartid].privilege(), unsafe);
+
+        if (paddr != vaddr) {
+            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr);
+        }
+
+        if (unsafe && paddr == ~0L) {
+            Log.warn("read invalid virtual address: address=%x, size=%d", vaddr, size);
             return 0L;
         }
 
-        // clint
-        if (address >= 0x02000000L && address < 0x02010000L) {
-            return clint.read(address - 0x02000000L, size);
-        }
-
-        // plic
-        if (address >= 0x0C000000L && address < 0x10000000L) {
-            return plic.read(address - 0x0C000000L, size);
-        }
-
-        // uart
-        if (address >= 0x10000000L && address < 0x10000100L) {
-            return uart.read(address - 0x10000000L, size);
-        }
-
-        if (address >= 0xF8000000L && address + size <= 0xF8000000L + dtb.limit()) {
-            final var offset = (int) (address - 0xF8000000L);
-            return switch (size) {
-                case 1 -> (long) dtb.get(offset) & 0xFFL;
-                case 2 -> (long) dtb.getShort(offset) & 0xFFFFL;
-                case 4 -> (long) dtb.getInt(offset) & 0xFFFFFFFFL;
-                case 8 -> dtb.getLong(offset);
-                default -> throw new IllegalArgumentException("read size=%x".formatted(size));
-            };
-        }
-
-        Log.error("read address=%016x, size=%x".formatted(address, size));
-        throw new TrapException(0x05, address);
+        return pRead(paddr, size, unsafe);
     }
 
     @Override
-    public void write(final long address, final int size, final long value, final boolean unsafe) {
-        if (DRAM_BASE <= address && address + size <= DRAM_BASE + memory.capacity()) {
-            final var base = (int) (address - DRAM_BASE);
-            switch (size) {
-                case 1 -> memory.put(base, (byte) (value & 0xFFL));
-                case 2 -> memory.putShort(base, (short) (value & 0xFFFFL));
-                case 4 -> memory.putInt(base, (int) (value & 0xFFFFFFFFL));
-                case 8 -> memory.putLong(base, value);
-                default -> throw new IllegalArgumentException("write size=%x".formatted(size));
-            }
+    public void write(final int hartid, final long vaddr, final int size, final long value, final boolean unsafe) {
+        final var paddr = mmu.translate(hartid, vaddr, ACCESS_WRITE, harts[hartid].privilege(), unsafe);
+
+        if (paddr != vaddr) {
+            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr);
+        }
+
+        if (unsafe && paddr == ~0L) {
+            Log.warn("write invalid virtual address: address=%x, size=%d, value=%x", vaddr, size, value);
             return;
+        }
+
+        pWrite(paddr, size, value, unsafe);
+    }
+
+    @Override
+    public long pRead(final long paddr, final int size, final boolean unsafe) {
+        for (final var device : devices) {
+            if (device.begin() <= paddr && paddr + size <= device.end()) {
+                return device.read((int) (paddr - device.begin()), size);
+            }
         }
 
         if (unsafe) {
-            return;
+            Log.warn("read invalid address: address=%x, size=%d", paddr, size);
+            return 0L;
         }
 
-        // clint
-        if (address >= 0x02000000L && address < 0x02010000L) {
-            clint.write(address - 0x02000000L, size, value);
-            return;
-        }
-
-        // plic
-        if (address >= 0x0C000000L && address < 0x10000000L) {
-            plic.write(address - 0x0C000000L, size, value);
-            return;
-        }
-
-        // uart
-        if (address >= 0x10000000L && address < 0x10000100L) {
-            uart.write(address - 0x10000000L, size, value);
-            return;
-        }
-
-        Log.error("write address=%016x, size=%x, value=%x".formatted(address, size, value));
-        throw new TrapException(0x07, address);
+        throw new TrapException(0x05, paddr, "read invalid address: address=%x, size=%d", paddr, size);
     }
 
     @Override
-    public boolean direct(final long address, final byte @NotNull [] buffer, final boolean write) {
-        if (DRAM_BASE <= address && address + buffer.length <= DRAM_BASE + memory.capacity()) {
-            final var base = (int) (address - DRAM_BASE);
-            if (write) {
-                memory.put(base, buffer, 0, buffer.length);
-            } else {
-                memory.get(base, buffer, 0, buffer.length);
+    public void pWrite(final long paddr, final int size, final long value, final boolean unsafe) {
+        for (final var device : devices) {
+            if (device.begin() <= paddr && paddr + size <= device.end()) {
+                device.write((int) (paddr - device.begin()), size, value);
+                return;
             }
-            return true;
         }
 
-        Log.warn("direct read/write out of bounds: address=%016x, length=%x, base=%016x, capacity=%x",
-                 address,
-                 buffer.length,
-                 DRAM_BASE,
-                 memory.capacity());
-        return false;
+        if (unsafe) {
+            Log.warn("write invalid address: address=%x, size=%d, value=%x", paddr, size, value);
+            return;
+        }
+
+        throw new TrapException(0x07, paddr,
+                                "write invalid address: address=%x, size=%d, value=%x",
+                                paddr, size, value);
+    }
+
+    @Override
+    public void direct(int hartid, byte @NotNull [] data, long vaddr, boolean write) {
+        final var paddr = mmu.translate(hartid,
+                                        vaddr,
+                                        write ? ACCESS_WRITE : ACCESS_READ,
+                                        harts[hartid].privilege(),
+                                        true);
+
+        if (paddr != vaddr) {
+            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr);
+        }
+
+        if (paddr == ~0L) {
+            Log.warn("direct read/write invalid virtual address: address=%x, length=%d", vaddr, data.length);
+            return;
+        }
+
+        pDirect(data, paddr, write);
+    }
+
+    @Override
+    public void pDirect(final byte @NotNull [] data, final long paddr, final boolean write) {
+        if (memory.begin() <= paddr && paddr + data.length <= memory.end()) {
+            final var offset = (int) (paddr - memory.begin());
+            memory.direct(data, offset, write);
+            return;
+        }
+
+        Log.warn("direct read/write invalid address: address=%x, length=%d", paddr, data.length);
     }
 
     @Override
     public void generateDeviceTreeBlob(final @NotNull ByteBuffer buffer) {
 
-        final var CPU0  = 0x01;
-        final var PLIC0 = 0x02;
+        final var context = new BuilderContext<Device>();
 
         TreeBuilder
                 .create()
-                .root(b0 -> b0
+                .root(rb -> rb
                         .name("")
-                        .prop(b1 -> b1.name("#address-cells").data(0x02))
-                        .prop(b1 -> b1.name("#size-cells").data(0x02))
-                        .prop(b1 -> b1.name("compatible").data("rvm,riscv-virt"))
-                        .prop(b1 -> b1.name("model").data("RVM"))
-                        .node(b1 -> b1
-                                .name("chosen")
-                                .prop(b2 -> b2.name("stdout-path").data("/soc/serial@10000000"))
+                        .prop(pb -> pb.name("#address-cells").data(0x02))
+                        .prop(pb -> pb.name("#size-cells").data(0x02))
+                        .prop(pb -> pb.name("compatible").data("rvm,riscv-virt"))
+                        .prop(pb -> pb.name("model").data("RVM"))
+                        .node(nb -> nb.name("chosen")
+                                      .prop(pb -> pb.name("stdout-path").data("/soc/serial@10000000"))
                         )
-                        .node(b1 -> b1
-                                .name("cpus")
-                                .prop(b2 -> b2.name("#address-cells").data(0x01))
-                                .prop(b2 -> b2.name("#size-cells").data(0x00))
-                                .prop(b2 -> b2.name("timebase-frequency").data(0x989680))
-                                .node(b2 -> b2
-                                        .name("cpu@0")
-                                        .prop(b3 -> b3.name("device_type").data("cpu"))
-                                        .prop(b3 -> b3.name("reg").data(0x00))
-                                        .prop(b3 -> b3.name("status").data("okay"))
-                                        .prop(b3 -> b3.name("compatible").data("riscv"))
-                                        .prop(b3 -> b3.name("riscv,isa").data("rv64gc"))
-                                        .prop(b3 -> b3.name("mmu-type").data("riscv,sv39"))
-                                        .prop(b3 -> b3.name("#interrupt-cells").data(0x01))
-                                        .prop(b3 -> b3.name("interrupt-controller").data())
-                                        .prop(b3 -> b3.name("phandle").data(CPU0))
-                                )
-                        )
-                        .node(b1 -> b1
-                                .name("memory@80000000")
-                                .prop(b2 -> b2.name("device_type").data("memory"))
-                                .prop(b2 -> b2.name("reg").data(0x00, 0x80000000, 0x00, 0x40000000))
-                        )
-                        .node(b1 -> b1
-                                .name("soc")
-                                .prop(b2 -> b2.name("#address-cells").data(0x02))
-                                .prop(b2 -> b2.name("#size-cells").data(0x02))
-                                .prop(b2 -> b2.name("compatible").data("simple-bus"))
-                                .prop(b2 -> b2.name("ranges").data())
-                                .node(b2 -> b2
-                                        .name("clint@2000000")
-                                        .prop(b3 -> b3.name("compatible").data("riscv,clint0"))
-                                        .prop(b3 -> b3.name("reg").data(0x00, 0x2000000, 0x00, 0x10000))
-                                        .prop(b3 -> b3.name("interrupts-extended")
-                                                      .data(CPU0, 0x03, CPU0, 0x07))
-                                )
-                                .node(b2 -> b2
-                                        .name("plic@c000000")
-                                        .prop(b3 -> b3.name("compatible").data("riscv,plic0"))
-                                        .prop(b3 -> b3.name("reg").data(0x00, 0xc000000, 0x00, 0x4000000))
-                                        .prop(b3 -> b3.name("interrupt-controller").data())
-                                        .prop(b3 -> b3.name("#interrupt-cells").data(0x01))
-                                        .prop(b3 -> b3.name("riscv,ndev").data(0x20))
-                                        .prop(b3 -> b3.name("interrupts-extended").data(CPU0, 0x0b))
-                                        .prop(b3 -> b3.name("phandle").data(PLIC0))
-                                )
-                                .node(b2 -> b2
-                                        .name("serial@10000000")
-                                        .prop(b3 -> b3.name("compatible").data("ns16550a"))
-                                        .prop(b3 -> b3.name("reg").data(0x00, 0x10000000, 0x00, 0x100))
-                                        .prop(b3 -> b3.name("clock-frequency").data(0x384000))
-                                        .prop(b3 -> b3.name("current-speed").data(0x1c200))
-                                        .prop(b3 -> b3.name("reg-shift").data(0x00))
-                                        .prop(b3 -> b3.name("reg-io-width").data(0x04))
-                                        .prop(b3 -> b3.name("interrupts").data(0x01))
-                                        .prop(b3 -> b3.name("interrupt-parent").data(PLIC0))
-                                )
-                        )
+                        .node(nb -> {
+                            nb.name("cpus")
+                              .prop(pb -> pb.name("#address-cells").data(0x01))
+                              .prop(pb -> pb.name("#size-cells").data(0x00))
+                              .prop(pb -> pb.name("timebase-frequency").data(0x989680));
+
+                            for (final var hart : harts) {
+                                nb.node(builder -> hart.build(context, builder));
+                            }
+                        })
+                        .node(nb -> {
+                            nb.name("soc")
+                              .prop(pb -> pb.name("#address-cells").data(0x02))
+                              .prop(pb -> pb.name("#size-cells").data(0x02))
+                              .prop(pb -> pb.name("compatible").data("simple-bus"))
+                              .prop(pb -> pb.name("ranges").data());
+
+                            for (final var device : devices) {
+                                nb.node(builder -> device.build(context, builder));
+                            }
+                        })
                 )
                 .build(tree -> FDT.write(tree, buffer));
     }

@@ -2,7 +2,11 @@ package io.scriptor.machine;
 
 public interface IODevice extends Device {
 
-    long read(long offset, int size);
+    long begin();
 
-    void write(long offset, int size, long value);
+    long end();
+
+    long read(int offset, int size);
+
+    void write(int offset, int size, long value);
 }

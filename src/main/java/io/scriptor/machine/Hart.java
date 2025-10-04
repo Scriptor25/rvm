@@ -22,6 +22,8 @@ public interface Hart extends Device {
 
     void pc(final long pc);
 
+    int privilege();
+
     /**
      * get the harts gpr file
      *

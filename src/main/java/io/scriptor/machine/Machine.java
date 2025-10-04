@@ -1,7 +1,7 @@
 package io.scriptor.machine;
 
 import io.scriptor.elf.SymbolTable;
-import io.scriptor.impl.device.CLINT;
+import io.scriptor.impl.MMU;
 import io.scriptor.util.ExtendedInputStream;
 import org.jetbrains.annotations.NotNull;
 
@@ -9,8 +9,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+import java.util.function.Predicate;
 
 import static io.scriptor.util.ByteUtil.signExtend;
 
@@ -18,25 +19,24 @@ public interface Machine extends Device {
 
     @NotNull SymbolTable symbols();
 
-    @NotNull CLINT clint();
+    @NotNull MMU mmu();
 
     @NotNull Hart hart(int id);
 
-    void dump(@NotNull PrintStream out, long address, long size);
+    <T extends Device> @NotNull T device(@NotNull Class<T> type);
 
-    /**
-     * proceed execution for one step.
-     */
+    <T extends Device> @NotNull T device(@NotNull Class<T> type, final @NotNull Predicate<T> predicate);
+
+    <T extends Device> @NotNull T device(@NotNull Class<T> type, int index);
+
+    <T extends Device> void device(@NotNull Class<T> type, final @NotNull Consumer<T> consumer);
+
+    void dump(@NotNull PrintStream out, long paddr, long length);
+
     void spinOnce();
 
-    /**
-     * proceed execution.
-     */
     void spin();
 
-    /**
-     * pause execution.
-     */
     void pause();
 
     void onBreakpoint(@NotNull IntConsumer handler);
@@ -47,186 +47,83 @@ public interface Machine extends Device {
 
     void trap(int id);
 
-    /**
-     * acquire a read/write lock for the specified address
-     *
-     * @param address the address
-     * @return the lock object
-     */
     @NotNull Object acquireLock(long address);
 
-    /**
-     * set the entry address.
-     *
-     * @param address entry address
-     */
-    void entry(long address);
+    void entry(long entry);
+
+    long entry();
 
     void offset(long offset);
 
     long offset();
 
-    void order(@NotNull ByteOrder order);
+    void segment(@NotNull ExtendedInputStream stream, long address, int size, int allocate) throws IOException;
 
-    /**
-     * load a segment from a stream into memory.
-     *
-     * @param stream  input stream
-     * @param address destination address
-     * @param size    destination size
-     * @throws IOException if any
-     */
-    void segment(@NotNull ExtendedInputStream stream, long address, long size, long allocate)
-            throws IOException;
-
-    /**
-     * load a sign-extended 1-byte value.
-     *
-     * @param address source address
-     * @return value at source address
-     */
-    default long lb(long address) {
-        return signExtend(read(address, 1, false), 8);
+    default long lb(final int hartid, final long vaddr) {
+        return signExtend(read(hartid, vaddr, 1, false), 8);
     }
 
-    /**
-     * load an unsigned 1-byte value.
-     *
-     * @param address source address
-     * @return value at source address
-     */
-    default long lbu(long address) {
-        return read(address, 1, false);
+    default long lbu(final int hartid, final long vaddr) {
+        return read(hartid, vaddr, 1, false);
     }
 
-    /**
-     * load a sign-extended 2-byte value.
-     *
-     * @param address source address
-     * @return value at source address
-     */
-    default long lh(long address) {
-        return signExtend(read(address, 2, false), 16);
+    default long lh(final int hartid, final long vaddr) {
+        return signExtend(read(hartid, vaddr, 2, false), 16);
     }
 
-    /**
-     * load an unsigned 2-byte value.
-     *
-     * @param address source address
-     * @return value at source address
-     */
-    default long lhu(long address) {
-        return read(address, 2, false);
+    default long lhu(final int hartid, final long vaddr) {
+        return read(hartid, vaddr, 2, false);
     }
 
-    /**
-     * load a sign-extended 4-byte value.
-     *
-     * @param address source address
-     * @return value at source address
-     */
-    default long lw(long address) {
-        return signExtend(read(address, 4, false), 32);
+    default long lw(final int hartid, final long vaddr) {
+        return signExtend(read(hartid, vaddr, 4, false), 32);
     }
 
-    /**
-     * load an unsigned 4-byte value.
-     *
-     * @param address source address
-     * @return value at source address
-     */
-    default long lwu(long address) {
-        return read(address, 4, false);
+    default long lwu(final int hartid, final long vaddr) {
+        return read(hartid, vaddr, 4, false);
     }
 
-    /**
-     * load an 8-byte value.
-     *
-     * @param address source address
-     * @return value at source address
-     */
-    default long ld(long address) {
-        return read(address, 8, false);
+    default long ld(final int hartid, final long vaddr) {
+        return read(hartid, vaddr, 8, false);
     }
 
-    default @NotNull String lstring(long address) {
+    default @NotNull String lstring(final int hartid, long vaddr) {
         final var buffer = new ByteArrayOutputStream();
-        for (byte b; (b = (byte) lb(address++)) != 0; ) {
+        for (byte b; (b = (byte) lb(hartid, vaddr++)) != 0; ) {
             buffer.write(b);
         }
         return buffer.toString();
     }
 
-    /**
-     * store a 1-byte value.
-     *
-     * @param address destination address
-     * @param value   source value
-     */
-    default void sb(long address, byte value) {
-        write(address, 1, value, false);
+    default void sb(final int hartid, final long vaddr, final byte value) {
+        write(hartid, vaddr, 1, value, false);
     }
 
-    /**
-     * store a 2-byte value.
-     *
-     * @param address destination address
-     * @param value   source value
-     */
-    default void sh(long address, short value) {
-        write(address, 2, value, false);
+    default void sh(final int hartid, final long vaddr, final short value) {
+        write(hartid, vaddr, 2, value, false);
     }
 
-    /**
-     * store a 4-byte value.
-     *
-     * @param address destination address
-     * @param value   source value
-     */
-    default void sw(long address, int value) {
-        write(address, 4, value, false);
+    default void sw(final int hartid, final long vaddr, final int value) {
+        write(hartid, vaddr, 4, value, false);
     }
 
-    /**
-     * store an 8-byte value.
-     *
-     * @param address destination address
-     * @param value   source value
-     */
-    default void sd(long address, long value) {
-        write(address, 8, value, false);
+    default void sd(final int hartid, final long vaddr, final long value) {
+        write(hartid, vaddr, 8, value, false);
     }
 
-    /**
-     * fetch the 4-byte value at pc.
-     *
-     * @param pc     program counter
-     * @param unsafe return 0 instead of error
-     * @return instruction at pc, or 0 if error and unsafe
-     */
-    int fetch(long pc, boolean unsafe);
+    int fetch(int hartid, long pc, boolean unsafe);
 
-    /**
-     * read a N-byte value.
-     *
-     * @param address source address
-     * @param size    value size
-     * @param unsafe  ignore errors
-     * @return N-byte value at source address
-     */
-    long read(long address, int size, boolean unsafe);
+    long read(int hartid, long vaddr, int size, boolean unsafe);
 
-    /**
-     * write a N-byte value.
-     *
-     * @param address destination address
-     * @param size    value size
-     * @param value   N-byte source value
-     * @param unsafe  ignore errors
-     */
-    void write(long address, int size, long value, boolean unsafe);
+    void write(int hartid, long vaddr, int size, long value, boolean unsafe);
 
-    boolean direct(long address, byte @NotNull [] buffer, boolean write);
+    long pRead(long paddr, int size, boolean unsafe);
 
-    void generateDeviceTreeBlob(final @NotNull ByteBuffer buffer);
+    void pWrite(long paddr, int size, long value, boolean unsafe);
+
+    void direct(int hartid, byte @NotNull [] data, long vaddr, boolean write);
+
+    void pDirect(byte @NotNull [] data, long paddr, boolean write);
+
+    void generateDeviceTreeBlob(@NotNull ByteBuffer buffer);
 }

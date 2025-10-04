@@ -14,6 +14,8 @@ repositories {
 
 dependencies {
     compileOnly(libs.jetbrains.annotations)
+
+    implementation("com.carrotsearch:hppc:0.10.0")
 }
 
 java {

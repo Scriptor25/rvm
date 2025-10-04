@@ -1,6 +1,6 @@
 package io.scriptor.isa;
 
-import io.scriptor.util.IntSet;
+import com.carrotsearch.hppc.IntSet;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;

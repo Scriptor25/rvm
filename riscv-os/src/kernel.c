@@ -7,7 +7,7 @@ void kmain(const long boot_hart_id, void* fdt)
     char buffer[256];
     auto node = -1;
 
-    kprintf("boot_hart_id=%02x, fdt=%08p\r\n", boot_hart_id, fdt);
+    kprintf("boot_hart_id=%02x, fdt=%016p\r\n", boot_hart_id, fdt);
 
     kputs("Hello from kernel!\r\n");
     while (1)

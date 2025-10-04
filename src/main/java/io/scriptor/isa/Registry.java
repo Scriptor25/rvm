@@ -1,7 +1,7 @@
 package io.scriptor.isa;
 
+import com.carrotsearch.hppc.IntHashSet;
 import io.scriptor.util.DirectList;
-import io.scriptor.util.IntSet;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
@@ -121,7 +121,7 @@ public final class Registry {
             segments.add(new Segment(hi, lo, shift));
         }
 
-        final var operand = new Operand(mOperand.group(1), segments.toArray(Segment[]::new), new IntSet());
+        final var operand = new Operand(mOperand.group(1), segments.toArray(Segment[]::new), new IntHashSet());
 
         if (mOperand.group(3) != null) {
             final var values = mOperand.group(3).trim().split(",");

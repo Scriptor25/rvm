@@ -7,19 +7,23 @@ import java.util.function.LongSupplier;
 
 public interface ControlStatusRegisterFile extends Device {
 
-    void define(final int addr);
+    void define(int addr);
 
-    void define(final int addr, final long mask);
+    void define(int addr, long mask);
 
-    void define(final int addr, final long mask, final int base);
+    void define(int addr, long mask, int base);
 
-    void define(final int addr, final long mask, final int base, final long value);
+    void define(int addr, long mask, int base, long value);
 
-    void defineVal(final int addr, final long val);
+    void defineVal(int addr, long val);
 
-    void define(final int addr, final @NotNull LongSupplier get);
+    void define(int addr, @NotNull LongSupplier get);
 
-    void define(final int addr, final @NotNull LongSupplier get, final @NotNull LongConsumer set);
+    void define(int addr, @NotNull LongSupplier get, @NotNull LongConsumer set);
+
+    void hookGet(int addr, @NotNull LongConsumer hook);
+
+    void hookSet(int addr, @NotNull LongConsumer hook);
 
     /**
      * read a 4-byte value from a control/status register.
@@ -27,9 +31,9 @@ public interface ControlStatusRegisterFile extends Device {
      * @param addr source register
      * @param priv privilege level
      */
-    int getw(final int addr, final int priv);
+    int getw(int addr, int priv);
 
-    int getwu(final int addr, final int priv);
+    int getwu(int addr, int priv);
 
     /**
      * read an 8-byte value from a control/status register.
@@ -37,7 +41,7 @@ public interface ControlStatusRegisterFile extends Device {
      * @param addr source register
      * @param priv privilege level
      */
-    long getd(final int addr, int priv);
+    long getd(int addr, int priv);
 
     /**
      * write a 4-byte value to a control/status register.
@@ -46,9 +50,9 @@ public interface ControlStatusRegisterFile extends Device {
      * @param priv privilege level
      * @param val  source value
      */
-    void putw(final int addr, final int priv, final int val);
+    void putw(int addr, int priv, int val);
 
-    void putwu(final int addr, final int priv, final int val);
+    void putwu(int addr, int priv, int val);
 
     /**
      * write an 8-byte value to a control/status register.
@@ -57,5 +61,5 @@ public interface ControlStatusRegisterFile extends Device {
      * @param priv privilege level
      * @param val  source value
      */
-    void putd(final int addr, final int priv, final long val);
+    void putd(int addr, int priv, long val);
 }

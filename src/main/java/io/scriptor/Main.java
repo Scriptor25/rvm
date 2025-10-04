@@ -10,6 +10,7 @@ import io.scriptor.elf.ProgramHeader;
 import io.scriptor.elf.SectionHeader;
 import io.scriptor.gdb.GDBStub;
 import io.scriptor.impl.MachineImpl;
+import io.scriptor.impl.device.Memory;
 import io.scriptor.isa.Registry;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.ChannelInputStream;
@@ -40,7 +41,7 @@ public final class Main {
     // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
     // https://wiki.osdev.org/RISC-V_Bare_Bones
 
-    public static void main(final @NotNull String @NotNull [] args) {
+    public static void main(final @NotNull String @NotNull [] args) throws InterruptedException {
 
         final var logThread = new Thread(Log::handle, "rvm-log");
         logThread.start();
@@ -65,7 +66,8 @@ public final class Main {
             Log.error("%s", e);
         }
 
-        logThread.interrupt();
+        Log.shutdown();
+        logThread.join();
     }
 
     private static @NotNull Machine init(
@@ -108,7 +110,7 @@ public final class Main {
                         machine.step();
                     } catch (final Exception e) {
                         machine.pause();
-                        machine.dump(System.err);
+                        Log.inject(machine::dump);
                         Log.error("machine exception: %s", e);
 
                         gdb.stop(-1, 0x00);
@@ -127,7 +129,7 @@ public final class Main {
             }
         } catch (final Exception e) {
             machine.pause();
-            machine.dump(System.err);
+            Log.inject(machine::dump);
             Log.error("machine exception: %s", e);
         }
     }
@@ -149,7 +151,9 @@ public final class Main {
 
                 machine.entry(header.entry() + offset);
                 machine.offset(offset);
-                machine.order(identity.order());
+                machine.device(Memory.class, memory -> {
+                    memory.buffer().order(identity.order());
+                });
 
                 final var phtab = new ProgramHeader[header.phnum()];
                 final var shtab = new SectionHeader[header.shnum()];
@@ -189,12 +193,12 @@ public final class Main {
                 for (final var ph : phtab) {
                     if (ph.type() == 0x01) {
                         stream.seek(ph.offset());
-                        machine.segment(stream, ph.paddr() + offset, ph.filesz(), ph.memsz());
+                        machine.segment(stream, ph.paddr() + offset, (int) ph.filesz(), (int) ph.memsz());
                     }
                 }
             } else {
                 stream.seek(0L);
-                machine.segment(stream, offset, stream.size(), stream.size());
+                machine.segment(stream, offset, (int) stream.size(), (int) stream.size());
             }
         } catch (final IOException e) {
             Log.error("failed to load file '%s' (offset %x): %s", filename, offset, e);

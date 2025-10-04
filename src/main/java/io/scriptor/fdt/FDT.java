@@ -3,6 +3,7 @@ package io.scriptor.fdt;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 public final class FDT {
 
@@ -10,6 +11,9 @@ public final class FDT {
     }
 
     public static @NotNull ByteBuffer write(final @NotNull Tree tree, final @NotNull ByteBuffer buffer) {
+        final var order = buffer.order();
+        buffer.order(ByteOrder.BIG_ENDIAN);
+
         final var strings = new StringTable();
 
         buffer.position(Header.BYTES);
@@ -44,8 +48,10 @@ public final class FDT {
         buffer.position(0);
         header.write(buffer);
 
-        buffer.position(totalsize).flip();
-        buffer.limit((buffer.limit() + 7) & ~7);
+        buffer.position(totalsize)
+              .flip()
+              .limit((buffer.limit() + 7) & ~7)
+              .order(order);
 
         return buffer;
     }

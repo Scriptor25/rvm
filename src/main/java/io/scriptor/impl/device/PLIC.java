@@ -1,6 +1,10 @@
 package io.scriptor.impl.device;
 
+import io.scriptor.fdt.BuilderContext;
+import io.scriptor.fdt.NodeBuilder;
+import io.scriptor.machine.Device;
 import io.scriptor.machine.IODevice;
+import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
@@ -20,6 +24,9 @@ public final class PLIC implements IODevice {
     public static final int THRESHOLD = 0x0;
     public static final int CLAIM = 0x4;
 
+    private final Machine machine;
+    private final long begin;
+    private final long end;
     private final int hartCount;
     private final int ndev;
 
@@ -28,7 +35,10 @@ public final class PLIC implements IODevice {
     private final int[][] enable;
     private final int[] threshold;
 
-    public PLIC(final int hartCount, final int ndev) {
+    public PLIC(final @NotNull Machine machine, final long begin, final long end, final int hartCount, final int ndev) {
+        this.machine = machine;
+        this.begin = begin;
+        this.end = end;
         this.hartCount = hartCount;
         this.ndev = ndev;
 
@@ -75,9 +85,35 @@ public final class PLIC implements IODevice {
     }
 
     @Override
-    public long read(final long offset, final int size) { // TODO: check size
+    public void build(final @NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
+        final var phandle = context.push(this);
+
+        final var cpu0 = context.get(machine.hart(0));
+
+        builder.name("plic@%x".formatted(begin))
+               .prop(pb -> pb.name("phandle").data(phandle))
+               .prop(pb -> pb.name("compatible").data("riscv,plic0"))
+               .prop(pb -> pb.name("reg").data(begin, end - begin))
+               .prop(pb -> pb.name("interrupt-controller").data())
+               .prop(pb -> pb.name("#interrupt-cells").data(0x01))
+               .prop(pb -> pb.name("riscv,ndev").data(0x20))
+               .prop(pb -> pb.name("interrupts-extended").data(cpu0, 0x0b));
+    }
+
+    @Override
+    public long begin() {
+        return begin;
+    }
+
+    @Override
+    public long end() {
+        return end;
+    }
+
+    @Override
+    public long read(final int offset, final int size) { // TODO: check size
         if (offset >= PRIORITY_BASE && offset < PENDING_BASE && size == 4) {
-            final var index = (int) ((offset - PRIORITY_BASE) / PRIORITY_STRIDE) + 1;
+            final var index = ((offset - PRIORITY_BASE) / PRIORITY_STRIDE) + 1;
             if (index > ndev) {
                 return 0L;
             }
@@ -85,7 +121,7 @@ public final class PLIC implements IODevice {
         }
 
         if (offset >= PENDING_BASE && offset < ENABLE_BASE && size == 4) {
-            final var index = (int) ((offset - PENDING_BASE) / PENDING_STRIDE) + 1;
+            final var index = ((offset - PENDING_BASE) / PENDING_STRIDE) + 1;
             if (index > ndev) {
                 return 0L;
             }
@@ -93,8 +129,8 @@ public final class PLIC implements IODevice {
         }
 
         if (offset >= ENABLE_BASE && offset < CONTEXT_BASE && size == 4) {
-            final var hart = (int) ((offset - ENABLE_BASE) / 0x100);
-            final var word = (int) ((offset - ENABLE_BASE - hart * 0x100) / ENABLE_STRIDE);
+            final var hart = (offset - ENABLE_BASE) / 0x100;
+            final var word = (offset - ENABLE_BASE - hart * 0x100) / ENABLE_STRIDE;
             if (hart >= hartCount || word < 0 || word >= enable[hart].length) {
                 return 0L;
             }
@@ -102,9 +138,9 @@ public final class PLIC implements IODevice {
         }
 
         if (offset >= CONTEXT_BASE && size == 4) {
-            final var hart    = (int) ((offset - CONTEXT_BASE) / CONTEXT_STRIDE);
-            final var context = (int) (offset - CONTEXT_BASE - hart * CONTEXT_STRIDE);
-            if (hart < 0 || hart >= hartCount) {
+            final var hart    = (offset - CONTEXT_BASE) / CONTEXT_STRIDE;
+            final var context = offset - CONTEXT_BASE - hart * CONTEXT_STRIDE;
+            if (hart >= hartCount) {
                 return 0L;
             }
             return switch (context) {
@@ -119,9 +155,9 @@ public final class PLIC implements IODevice {
     }
 
     @Override
-    public void write(final long offset, final int size, final long value) { // TODO: check size, check read-only
+    public void write(final int offset, final int size, final long value) { // TODO: check size, check read-only
         if (offset >= PRIORITY_BASE && offset < PENDING_BASE && size == 4) {
-            final var index = (int) ((offset - PRIORITY_BASE) / PRIORITY_STRIDE) + 1;
+            final var index = ((offset - PRIORITY_BASE) / PRIORITY_STRIDE) + 1;
             if (index > ndev) {
                 return;
             }
@@ -130,8 +166,8 @@ public final class PLIC implements IODevice {
         }
 
         if (offset >= ENABLE_BASE && offset < CONTEXT_BASE && size == 4) {
-            final var hart = (int) ((offset - ENABLE_BASE) / 0x100);
-            final var word = (int) ((offset - ENABLE_BASE - hart * 0x100) / ENABLE_STRIDE);
+            final var hart = (offset - ENABLE_BASE) / 0x100;
+            final var word = (offset - ENABLE_BASE - hart * 0x100) / ENABLE_STRIDE;
             if (hart >= hartCount || word < 0 || word >= enable[hart].length) {
                 return;
             }
@@ -140,8 +176,8 @@ public final class PLIC implements IODevice {
         }
 
         if (offset >= CONTEXT_BASE && size == 4) {
-            final var hart    = (int) ((offset - CONTEXT_BASE) / CONTEXT_STRIDE);
-            final var context = (int) (offset - CONTEXT_BASE - hart * CONTEXT_STRIDE);
+            final var hart    = (offset - CONTEXT_BASE) / CONTEXT_STRIDE;
+            final var context = offset - CONTEXT_BASE - hart * CONTEXT_STRIDE;
             if (hart >= hartCount) {
                 return;
             }
@@ -157,6 +193,11 @@ public final class PLIC implements IODevice {
         }
 
         Log.error("invalid plic write offset=%x, size=%d, value=%x", offset, size, value);
+    }
+
+    @Override
+    public @NotNull String toString() {
+        return "plic@%x".formatted(begin);
     }
 
     public void setPending(final int source) {

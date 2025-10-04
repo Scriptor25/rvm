@@ -585,7 +585,7 @@ public class GDBStub implements Closeable {
                 final var length  = Integer.parseUnsignedInt(parts[1], 0x10);
 
                 final var data = new byte[length];
-                machine.direct(address, data, false);
+                machine.direct(gId, data, address, false);
                 yield toHexString(data);
             }
             case 'M' -> {
@@ -594,10 +594,8 @@ public class GDBStub implements Closeable {
                 final var length  = Integer.parseUnsignedInt(parts[1], 0x10);
 
                 final var data = toBytes(new byte[length], parts[2]);
-                if (machine.direct(address, data, true)) {
-                    yield "OK";
-                }
-                yield "E01";
+                machine.direct(gId, data, address, true);
+                yield "OK";
             }
             // break/watchpoint type:
             //  0 -> software breakpoint
@@ -617,12 +615,12 @@ public class GDBStub implements Closeable {
                             yield "E00";
                         }
                         final var data = breakpoints.get(address);
-                        machine.write(address, length, data, true);
+                        machine.write(gId, address, length, data, true);
                         breakpoints.remove(address);
                         yield "OK";
                     }
                     default -> {
-                        Log.warn("unsupported break- or watchpoint type: '%d'".formatted(type));
+                        Log.warn("unsupported break- or watchpoint type: '%d'", type);
                         yield "";
                     }
                 };
@@ -635,13 +633,13 @@ public class GDBStub implements Closeable {
 
                 yield switch (type) {
                     case 0 -> {
-                        final var data = machine.read(address, length, true);
-                        machine.write(address, length, length == 4 ? 0x100073 : 0x9002, true);
+                        final var data = machine.read(gId, address, length, true);
+                        machine.write(gId, address, length, length == 4 ? 0x100073 : 0x9002, true);
                         breakpoints.put(address, data);
                         yield "OK";
                     }
                     default -> {
-                        Log.warn("unsupported break- or watchpoint type: '%d'".formatted(type));
+                        Log.warn("unsupported break- or watchpoint type: '%d'", type);
                         yield "";
                     }
                 };

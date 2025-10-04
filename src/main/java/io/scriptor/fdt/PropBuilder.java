@@ -72,6 +72,23 @@ public final class PropBuilder implements Buildable<Prop> {
         });
     }
 
+    public @NotNull PropBuilder data(final long @NotNull ... data) {
+        return data(new Writable() {
+
+            @Override
+            public void write(final @NotNull ByteBuffer buffer) {
+                for (final var d : data) {
+                    buffer.putLong(d);
+                }
+            }
+
+            @Override
+            public int size() {
+                return Long.BYTES * data.length;
+            }
+        });
+    }
+
     public @NotNull PropBuilder data(final @NotNull String data) {
         final var bytes  = data.getBytes();
         final var buffer = new byte[bytes.length + 1];
