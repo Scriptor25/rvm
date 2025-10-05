@@ -1,13 +1,12 @@
 package io.scriptor.fdt;
 
+import com.carrotsearch.hppc.ObjectIntHashMap;
+import com.carrotsearch.hppc.ObjectIntMap;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.HashMap;
-import java.util.Map;
 
 public final class BuilderContext<T> {
 
-    private final Map<T, Integer> handles = new HashMap<>();
+    private final ObjectIntMap<T> handles = new ObjectIntHashMap<>();
 
     public int push(final @NotNull T key) {
         final var handle = handles.size() + 1;

@@ -1,5 +1,7 @@
 package io.scriptor.impl;
 
+import com.carrotsearch.hppc.LongObjectHashMap;
+import com.carrotsearch.hppc.LongObjectMap;
 import io.scriptor.elf.SymbolTable;
 import io.scriptor.fdt.BuilderContext;
 import io.scriptor.fdt.FDT;
@@ -20,9 +22,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
@@ -32,7 +32,9 @@ import static io.scriptor.impl.MMU.ACCESS_WRITE;
 
 public final class MachineImpl implements Machine {
 
-    private final Map<Long, Object> locks = new ConcurrentHashMap<>();
+    public static final long DRAM = 0x80000000L;
+
+    private final LongObjectMap<Object> locks = new LongObjectHashMap<>();
 
     private final SymbolTable symbols = new SymbolTable();
 
@@ -52,22 +54,22 @@ public final class MachineImpl implements Machine {
     private IntConsumer breakpointHandler;
     private IntConsumer trapHandler;
 
-    public MachineImpl(final int memoryCapacity, final @NotNull ByteOrder memoryOrder, final int hartCount) {
+    public MachineImpl(int memoryCapacity, final @NotNull ByteOrder memoryOrder, final int hartCount) {
+
+        memoryCapacity = ((memoryCapacity + 0b111) & ~0b111);
 
         mmu = new MMU(this);
 
-        final var dram = 0x00000000L;
-
         memory = new Memory(this,
-                            dram,
-                            dram + ((memoryCapacity + 7L) & ~7L),
+                            DRAM,
+                            DRAM + memoryCapacity,
                             memoryCapacity,
                             memoryOrder,
                             false);
 
         deviceTreeMemory = new Memory(this,
-                                      0xFFFF0000L,
-                                      0xFFFFFFFFL,
+                                      0x100000000L,
+                                      0x100002000L,
                                       0x2000,
                                       memoryOrder,
                                       true);
@@ -95,7 +97,21 @@ public final class MachineImpl implements Machine {
             harts[id] = new HartImpl(this, id);
         }
 
-        generateDeviceTreeBlob(deviceTreeMemory.buffer());
+        for (int j = 0; j < devices.length; ++j) {
+            for (int i = j + 1; i < devices.length; ++i) {
+                if (devices[i].begin() < devices[j].end() && devices[j].begin() < devices[i].end()) {
+                    Log.warn("device map overlap: %s [%x;%x] and %s [%x;%x]",
+                             devices[j],
+                             devices[j].begin(),
+                             devices[j].end(),
+                             devices[i],
+                             devices[i].begin(),
+                             devices[i].end());
+                }
+            }
+        }
+
+        generateDeviceTree(deviceTreeMemory.buffer());
     }
 
     @Override
@@ -312,7 +328,13 @@ public final class MachineImpl implements Machine {
 
     @Override
     public @NotNull Object acquireLock(final long address) {
-        return locks.computeIfAbsent(address, _ -> new Object());
+        if (locks.containsKey(address)) {
+            return locks.get(address);
+        }
+
+        final var lock = new Object();
+        locks.put(address, lock);
+        return lock;
     }
 
     @Override
@@ -483,7 +505,7 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public void generateDeviceTreeBlob(final @NotNull ByteBuffer buffer) {
+    public void generateDeviceTree(final @NotNull ByteBuffer buffer) {
 
         final var context = new BuilderContext<Device>();
 

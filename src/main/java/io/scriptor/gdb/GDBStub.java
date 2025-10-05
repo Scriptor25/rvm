@@ -1,5 +1,7 @@
 package io.scriptor.gdb;
 
+import com.carrotsearch.hppc.LongLongHashMap;
+import com.carrotsearch.hppc.LongLongMap;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
@@ -13,8 +15,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.IntConsumer;
 import java.util.function.LongConsumer;
 
@@ -89,7 +89,7 @@ public class GDBStub implements Closeable {
 
     private int gId = 0;
 
-    private final Map<Long, Long> breakpoints = new HashMap<>();
+    private final LongLongMap breakpoints = new LongLongHashMap();
 
     public GDBStub(final @NotNull Machine machine, final int port) throws IOException {
         this.machine = machine;

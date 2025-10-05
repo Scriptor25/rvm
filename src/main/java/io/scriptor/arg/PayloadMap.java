@@ -1,18 +1,34 @@
 package io.scriptor.arg;
 
+import com.carrotsearch.hppc.IntObjectMap;
+import com.carrotsearch.hppc.ObjectIndexedContainer;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
-import java.util.Map;
+import java.lang.reflect.Array;
 import java.util.Optional;
 
-public record PayloadMap(@NotNull Map<Integer, List<Payload>> payloads) {
+public record PayloadMap(@NotNull IntObjectMap<ObjectIndexedContainer<Payload>> payloads) {
 
     public <T extends Payload> @NotNull Optional<T> get(final int id, final @NotNull Class<T> type) {
-        return payloads.getOrDefault(id, List.of()).stream().filter(type::isInstance).map(type::cast).findAny();
+        if (payloads.containsKey(id)) {
+            return payloads.get(id)
+                           .stream()
+                           .filter(type::isInstance)
+                           .map(type::cast)
+                           .findAny();
+        }
+        return Optional.empty();
     }
 
-    public <T extends Payload> @NotNull List<T> getAll(final int id, final @NotNull Class<T> type) {
-        return payloads.getOrDefault(id, List.of()).stream().filter(type::isInstance).map(type::cast).toList();
+    @SuppressWarnings("unchecked")
+    public <T extends Payload> T @NotNull [] getAll(final int id, final @NotNull Class<T> type) {
+        if (payloads.containsKey(id)) {
+            return payloads.get(id)
+                           .stream()
+                           .filter(type::isInstance)
+                           .map(type::cast)
+                           .toArray(length -> (T[]) Array.newInstance(type, length));
+        }
+        return (T[]) Array.newInstance(type, 0);
     }
 }

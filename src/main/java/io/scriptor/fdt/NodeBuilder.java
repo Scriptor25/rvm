@@ -1,9 +1,9 @@
 package io.scriptor.fdt;
 
+import com.carrotsearch.hppc.ObjectArrayList;
+import com.carrotsearch.hppc.ObjectIndexedContainer;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Consumer;
 
 public final class NodeBuilder implements Buildable<Node> {
@@ -13,8 +13,8 @@ public final class NodeBuilder implements Buildable<Node> {
     }
 
     private String name;
-    private final List<Prop> props = new ArrayList<>();
-    private final List<Node> nodes = new ArrayList<>();
+    private final ObjectIndexedContainer<Prop> props = new ObjectArrayList<>();
+    private final ObjectIndexedContainer<Node> nodes = new ObjectArrayList<>();
 
     private NodeBuilder() {
     }
@@ -54,6 +54,6 @@ public final class NodeBuilder implements Buildable<Node> {
             throw new IllegalStateException("missing node name");
         }
 
-        return new Node(name, props.toArray(Prop[]::new), nodes.toArray(Node[]::new));
+        return new Node(name, props.toArray(Prop.class), nodes.toArray(Node.class));
     }
 }

@@ -1,5 +1,7 @@
 package io.scriptor;
 
+import com.carrotsearch.hppc.ObjectArrayList;
+import com.carrotsearch.hppc.ObjectIndexedContainer;
 import io.scriptor.arg.FlagPayload;
 import io.scriptor.arg.LoadPayload;
 import io.scriptor.arg.MemoryPayload;
@@ -23,9 +25,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 import static io.scriptor.arg.Template.*;
 import static io.scriptor.elf.ELF.readSymbols;
@@ -71,10 +71,10 @@ public final class Main {
     }
 
     private static @NotNull Machine init(
-            final @NotNull List<LoadPayload> loads,
+            final LoadPayload @NotNull [] loads,
             final int memory
     ) {
-        final List<String> isa = new ArrayList<>();
+        final ObjectIndexedContainer<String> isa = new ObjectArrayList<>();
         isa.add("types");
 
         read("index.txt", stream -> {
@@ -88,7 +88,7 @@ public final class Main {
 
         final var registry = Registry.getInstance();
         for (final var name : isa) {
-            read(name, registry::parse);
+            read(name.value, registry::parse);
         }
 
         final Machine machine = new MachineImpl(memory, ByteOrder.LITTLE_ENDIAN, 1);

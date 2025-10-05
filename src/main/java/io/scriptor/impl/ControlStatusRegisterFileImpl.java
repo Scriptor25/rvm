@@ -2,13 +2,13 @@ package io.scriptor.impl;
 
 import com.carrotsearch.hppc.IntObjectHashMap;
 import com.carrotsearch.hppc.IntObjectMap;
+import com.carrotsearch.hppc.ObjectArrayList;
 import io.scriptor.machine.ControlStatusRegisterFile;
 import io.scriptor.machine.ControlStatusRegisterMeta;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.PrintStream;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
@@ -50,49 +50,91 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
 
     @Override
     public void define(final int addr) {
-        metadata.put(addr, new ControlStatusRegisterMeta(~0L, -1, null, null, new ArrayList<>(), new ArrayList<>()));
+        metadata.put(addr,
+                     new ControlStatusRegisterMeta(~0L,
+                                                   -1,
+                                                   null,
+                                                   null,
+                                                   new ObjectArrayList<>(),
+                                                   new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
 
     @Override
     public void define(final int addr, final long mask) {
-        metadata.put(addr, new ControlStatusRegisterMeta(mask, -1, null, null, new ArrayList<>(), new ArrayList<>()));
+        metadata.put(addr,
+                     new ControlStatusRegisterMeta(mask,
+                                                   -1,
+                                                   null,
+                                                   null,
+                                                   new ObjectArrayList<>(),
+                                                   new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
 
     @Override
     public void define(final int addr, final long mask, final int base) {
-        metadata.put(addr, new ControlStatusRegisterMeta(mask, base, null, null, new ArrayList<>(), new ArrayList<>()));
+        metadata.put(addr,
+                     new ControlStatusRegisterMeta(mask,
+                                                   base,
+                                                   null,
+                                                   null,
+                                                   new ObjectArrayList<>(),
+                                                   new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
 
     @Override
     public void define(final int addr, final long mask, final int base, final long val) {
-        metadata.put(addr, new ControlStatusRegisterMeta(mask, base, null, null, new ArrayList<>(), new ArrayList<>()));
+        metadata.put(addr,
+                     new ControlStatusRegisterMeta(mask,
+                                                   base,
+                                                   null,
+                                                   null,
+                                                   new ObjectArrayList<>(),
+                                                   new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = val & mask;
     }
 
     @Override
     public void defineVal(final int addr, final long val) {
-        metadata.put(addr, new ControlStatusRegisterMeta(~0L, -1, null, null, new ArrayList<>(), new ArrayList<>()));
+        metadata.put(addr,
+                     new ControlStatusRegisterMeta(~0L,
+                                                   -1,
+                                                   null,
+                                                   null,
+                                                   new ObjectArrayList<>(),
+                                                   new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = val;
     }
 
     @Override
     public void define(final int addr, final @NotNull LongSupplier get) {
-        metadata.put(addr, new ControlStatusRegisterMeta(~0L, -1, get, null, new ArrayList<>(), new ArrayList<>()));
+        metadata.put(addr,
+                     new ControlStatusRegisterMeta(~0L,
+                                                   -1,
+                                                   get,
+                                                   null,
+                                                   new ObjectArrayList<>(),
+                                                   new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
 
     @Override
     public void define(final int addr, final @NotNull LongSupplier get, final @NotNull LongConsumer set) {
-        metadata.put(addr, new ControlStatusRegisterMeta(~0L, -1, get, set, new ArrayList<>(), new ArrayList<>()));
+        metadata.put(addr,
+                     new ControlStatusRegisterMeta(~0L,
+                                                   -1,
+                                                   get,
+                                                   set,
+                                                   new ObjectArrayList<>(),
+                                                   new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
@@ -133,7 +175,7 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
         if (meta.get() != null) {
             final var value = meta.get().getAsLong() & mask;
             for (final var hook : meta.getHooks()) {
-                hook.accept(value);
+                hook.value.accept(value);
             }
             return value;
         }
@@ -148,7 +190,7 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
 
         final var value = values[addr] & mask;
         for (final var hook : meta.getHooks()) {
-            hook.accept(value);
+            hook.value.accept(value);
         }
         return value;
     }
@@ -187,7 +229,7 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
             }
             final var value = val & mask;
             for (final var hook : meta.setHooks()) {
-                hook.accept(value);
+                hook.value.accept(value);
             }
             meta.set().accept(value);
             return;
@@ -203,7 +245,7 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
 
         final var value = (values[addr] & ~mask) | (val & mask);
         for (final var hook : meta.setHooks()) {
-            hook.accept(value);
+            hook.value.accept(value);
         }
         values[addr] = value;
     }

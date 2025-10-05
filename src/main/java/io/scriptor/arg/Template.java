@@ -1,12 +1,10 @@
 package io.scriptor.arg;
 
+import com.carrotsearch.hppc.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -15,7 +13,7 @@ import static io.scriptor.util.Unit.*;
 public record Template<T extends Payload>(
         int id,
         @NotNull Pattern name,
-        @Nullable Function<Map<String, String>, T> pipe
+        @Nullable Function<ObjectObjectMap<String, String>, T> pipe
 ) {
 
     public static final int TEMPLATE_LOAD = 1;
@@ -54,7 +52,7 @@ public record Template<T extends Payload>(
     );
 
     public static PayloadMap parse(final @NotNull String @NotNull [] args) {
-        final Map<Integer, List<Payload>> values = new HashMap<>();
+        final IntObjectMap<ObjectIndexedContainer<Payload>> values = new IntObjectHashMap<>();
 
         for (int i = 0; i < args.length; ++i) {
             for (final var template : TEMPLATES) {
@@ -63,13 +61,22 @@ public record Template<T extends Payload>(
                     continue;
 
                 if (template.pipe() == null) {
-                    values.computeIfAbsent(template.id(), _ -> new ArrayList<>()).add(new FlagPayload(true));
+
+                    final ObjectIndexedContainer<Payload> list;
+                    if (values.containsKey(template.id())) {
+                        list = values.get(template.id());
+                    } else {
+                        list = new ObjectArrayList<>();
+                        values.put(template.id(), list);
+                    }
+
+                    list.add(new FlagPayload(true));
                     continue;
                 }
 
                 final var attributes = args[++i].split(",");
 
-                final Map<String, String> map = new HashMap<>();
+                final ObjectObjectMap<String, String> map = new ObjectObjectHashMap<>();
                 for (final var attribute : attributes) {
                     if (attribute.contains("=")) {
                         final var entry = attribute.split("=");
@@ -81,7 +88,15 @@ public record Template<T extends Payload>(
 
                 final var value = template.pipe().apply(map);
 
-                values.computeIfAbsent(template.id(), _ -> new ArrayList<>()).add(value);
+                final ObjectIndexedContainer<Payload> list;
+                if (values.containsKey(template.id())) {
+                    list = values.get(template.id());
+                } else {
+                    list = new ObjectArrayList<>();
+                    values.put(template.id(), list);
+                }
+
+                list.add(value);
                 break;
             }
         }

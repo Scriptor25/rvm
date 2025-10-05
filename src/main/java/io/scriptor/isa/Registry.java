@@ -1,7 +1,8 @@
 package io.scriptor.isa;
 
 import com.carrotsearch.hppc.IntHashSet;
-import io.scriptor.util.DirectList;
+import com.carrotsearch.hppc.ObjectArrayList;
+import com.carrotsearch.hppc.ObjectIndexedContainer;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
@@ -67,7 +68,7 @@ public final class Registry {
             Pattern.compile("^(\\w+(?:\\.\\w+)*)\\s*\\[([^]]+)](?:\\?(\\d+))?\\s*(?:\\((\\w+)\\))?(.*)$");
 
     private final Map<String, Type> types = new HashMap<>();
-    private final DirectList<Instruction> instructions = new DirectList<>();
+    private final ObjectIndexedContainer<Instruction> instructions = new ObjectArrayList<>();
 
     private Registry() {
     }

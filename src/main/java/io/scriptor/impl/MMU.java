@@ -1,11 +1,11 @@
 package io.scriptor.impl;
 
+import com.carrotsearch.hppc.ObjectArrayList;
+import com.carrotsearch.hppc.ObjectObjectHashMap;
+import com.carrotsearch.hppc.ObjectObjectMap;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.HashMap;
-import java.util.Map;
 
 import static io.scriptor.isa.CSR.*;
 
@@ -14,7 +14,7 @@ public final class MMU {
     private record Key(long vpn, long asid, int hartid) {
     }
 
-    private record Entry(long pte, long vpn, long asid, int hartid, long paddr, long psize, long val) {
+    private record Entry(long pteaddr, long pte, long vpn, long asid, int hartid, long paddr, long psize) {
 
         public boolean contains(final long vpn) {
             final var pcount = psize >>> PAGE_SHIFT;
@@ -34,7 +34,7 @@ public final class MMU {
 
     private final Machine machine;
 
-    private final Map<Key, Entry> tlb = new HashMap<>();
+    private final ObjectObjectMap<Key, Entry> tlb = new ObjectObjectHashMap<>();
 
     public MMU(final @NotNull Machine machine) {
         this.machine = machine;
@@ -48,13 +48,19 @@ public final class MMU {
 
         final var vpn = vaddr >>> PAGE_SHIFT;
 
-        tlb.entrySet().removeIf(e -> {
-            final var key   = e.getKey();
-            final var entry = e.getValue();
-            return hartid == key.hartid
-                   && (asid == 0L || asid == key.asid)
-                   && (vaddr == 0L || entry.contains(vpn));
-        });
+        final var remove = new ObjectArrayList<Key>();
+        for (final var e : tlb) {
+            final var matches = hartid == e.key.hartid
+                                && (asid == 0L || asid == e.key.asid)
+                                && (vaddr == 0L || e.value.contains(vpn));
+            if (matches) {
+                remove.add(e.key);
+            }
+        }
+
+        for (final var key : remove) {
+            tlb.remove(key.value);
+        }
     }
 
     public long translate(
@@ -80,27 +86,37 @@ public final class MMU {
             case 10 -> sv57(hartid, vaddr, access, privilege, asid, ppn, unsafe);
             default -> {
                 if (unsafe) {
-                    Log.warn("page fault: unsupported mode %d", mode);
+                    Log.warn("page fault (hartid=%x, vaddr=%x, access=%x, privilege=%x): unsupported mode %d",
+                             hartid,
+                             vaddr,
+                             access,
+                             privilege,
+                             mode);
                     yield ~0L;
                 }
-                throw new TrapException(toCause(access), vaddr, "page fault: unsupported mode %d", mode);
+                throw new TrapException(toCause(access),
+                                        vaddr,
+                                        "page fault (hartid=%x, vaddr=%x, access=%x, privilege=%x): unsupported mode %d",
+                                        hartid,
+                                        vaddr,
+                                        access,
+                                        privilege,
+                                        mode);
             }
         };
     }
 
     private long touch(
-            final long pteAddr,
+            final long pteaddr,
             long pte,
+            final int hartid,
             final long vaddr,
             final int access,
             final int privilege,
             final boolean unsafe
     ) {
         if (fail(pte, access, privilege)) {
-            if (!unsafe) {
-                throw new TrapException(toCause(access), vaddr, "page fault: unprivileged");
-            }
-            Log.warn("page fault: unprivileged");
+            pageFault(hartid, vaddr, access, privilege, unsafe, "unprivileged");
         }
 
         if (!pteA(pte) || (access == ACCESS_WRITE && !pteD(pte))) {
@@ -108,7 +124,7 @@ public final class MMU {
             if (access == ACCESS_WRITE) {
                 pte |= (1L << 7);
             }
-            machine.pWrite(pteAddr, 8, pte, unsafe);
+            machine.pWrite(pteaddr, 8, pte, unsafe);
         }
 
         return pte;
@@ -132,10 +148,10 @@ public final class MMU {
                 entry = tlb.get(new Key(vpn, 0L, hartid));
             }
             if (entry != null && entry.contains(vpn)) {
-                touch(entry.pte, entry.val, vaddr, access, privilege, unsafe);
+                touch(entry.pteaddr, entry.pte, hartid, vaddr, access, privilege, unsafe);
 
-                final var pOffset = vaddr & (entry.psize - 1L);
-                return entry.paddr + pOffset;
+                final var poffset = vaddr & (entry.psize - 1L);
+                return entry.paddr + poffset;
             }
         }
 
@@ -163,12 +179,12 @@ public final class MMU {
                      a,
                      vpn[i]);
 
-            final var pteAddr = a + vpn[i] * 8;
+            final var pteaddr = a + vpn[i] * 8L;
 
-            var pte = machine.pRead(pteAddr, 8, unsafe);
+            var pte = machine.pRead(pteaddr, 8, unsafe);
 
-            Log.info("   => pteAddr=%x, pte=%016x, V=%b, R=%b, W=%b, X=%b, U=%b, G=%b, A=%b, D=%b",
-                     pteAddr,
+            Log.info("   => pteaddr=%x, pte=%016x, V=%b, R=%b, W=%b, X=%b, U=%b, G=%b, A=%b, D=%b",
+                     pteaddr,
                      pte,
                      pteV(pte),
                      pteR(pte),
@@ -180,45 +196,35 @@ public final class MMU {
                      pteD(pte));
 
             if (!pteV(pte)) {
-                if (unsafe) {
-                    Log.warn("page fault: invalid entry");
-                    return ~0L;
-                }
-                throw new TrapException(toCause(access), vaddr, "page fault: invalid entry");
+                pageFault(hartid, vaddr, access, privilege, unsafe, "invalid entry");
+                return ~0L;
             }
 
             if (!pteR(pte) && pteW(pte)) {
-                if (unsafe) {
-                    Log.warn("page fault: reserved entry type");
-                    return ~0L;
-                }
-                throw new TrapException(toCause(access), vaddr, "page fault: reserved entry type");
+                pageFault(hartid, vaddr, access, privilege, unsafe, "reserved entry type");
+                return ~0L;
             }
 
             if (pteR(pte) || pteX(pte)) {
-                pte = touch(pteAddr, pte, vaddr, access, privilege, unsafe);
+                pte = touch(pteaddr, pte, hartid, vaddr, access, privilege, unsafe);
 
-                final var pSize   = 1L << (PAGE_SHIFT + i * 9);
-                final var pOffset = vaddr & (pSize - 1L);
+                final var psize   = 1L << (PAGE_SHIFT + i * 9);
+                final var ppn     = ppn(pte, i);
+                final var pbase   = ppn << PAGE_SHIFT;
+                final var poffset = vaddr & (psize - 1L);
+                final var paddr   = pbase + poffset;
+                final var ptevpn  = (vaddr >>> PAGE_SHIFT) & ~((1L << (i * 9)) - 1L);
 
-                final var ppn   = ppn(pte, i);
-                final var pAddr = (ppn << PAGE_SHIFT);
+                add(new Entry(pteaddr, pte, ptevpn, asid, hartid, pbase, psize));
 
-                final var pteVpn = (vaddr >>> PAGE_SHIFT) & ~((1L << (i * 9)) - 1L);
-
-                add(new Entry(pteAddr, pteVpn, asid, hartid, pAddr, pSize, pte));
-
-                return pAddr + pOffset;
+                return paddr;
             }
 
             a = ppn(pte, 0) << PAGE_SHIFT;
         }
 
-        if (unsafe) {
-            Log.warn("page fault: missing entry");
-            return ~0L;
-        }
-        throw new TrapException(toCause(access), vaddr, "page fault: missing entry");
+        pageFault(hartid, vaddr, access, privilege, unsafe, "missing entry");
+        return ~0L;
     }
 
     private long sv39(
@@ -258,7 +264,7 @@ public final class MMU {
     }
 
     private void add(final @NotNull Entry entry) {
-        final var asid = pteG(entry.val) ? 0L : entry.asid;
+        final var asid = pteG(entry.pte) ? 0L : entry.asid;
 
         final var pcount = entry.psize >>> PAGE_SHIFT;
         for (long i = 0L; i < pcount; ++i) {
@@ -329,5 +335,32 @@ public final class MMU {
 
     private static long ppn(final long pte, final int i) {
         return ((pte >>> 10) & 0xFFFFFFFFFFFL) >>> (i * 9);
+    }
+
+    private void pageFault(
+            final int hartid,
+            final long vaddr,
+            final int access,
+            final int privilege,
+            final boolean unsafe,
+            final @NotNull String message
+    ) {
+        if (unsafe) {
+            Log.warn("page fault (hartid=%x, vaddr=%016x, access=%x, privilege=%x): %s",
+                     hartid,
+                     vaddr,
+                     access,
+                     privilege,
+                     message);
+            return;
+        }
+        throw new TrapException(toCause(access),
+                                vaddr,
+                                "page fault (hartid=%x, vaddr=%016x, access=%x, privilege=%x): %s",
+                                hartid,
+                                vaddr,
+                                access,
+                                privilege,
+                                message);
     }
 }

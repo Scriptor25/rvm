@@ -1,9 +1,9 @@
 package io.scriptor.machine;
 
+import com.carrotsearch.hppc.ObjectIndexedContainer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
@@ -12,7 +12,7 @@ public record ControlStatusRegisterMeta(
         int base,
         @Nullable LongSupplier get,
         @Nullable LongConsumer set,
-        @NotNull List<LongConsumer> getHooks,
-        @NotNull List<LongConsumer> setHooks
+        @NotNull ObjectIndexedContainer<LongConsumer> getHooks,
+        @NotNull ObjectIndexedContainer<LongConsumer> setHooks
 ) {
 }

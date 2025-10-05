@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 
 public final class Log {
 
-    private static final int LEVEL = 1;
+    private static final int LEVEL = 2;
 
     private static final BlockingQueue<Consumer<PrintStream>> queue = new LinkedBlockingQueue<>();
     private static final Consumer<PrintStream> SHUTDOWN = out -> {
@@ -42,8 +42,10 @@ public final class Log {
     }
 
     public static void info(final @NotNull String message, final @NotNull Object... args) {
-        prepare(args);
-        info(message.formatted(args));
+        if (LEVEL >= 2) {
+            prepare(args);
+            info(message.formatted(args));
+        }
     }
 
     public static void warn(final @NotNull String message) {
@@ -53,8 +55,10 @@ public final class Log {
     }
 
     public static void warn(final @NotNull String message, final @NotNull Object... args) {
-        prepare(args);
-        warn(message.formatted(args));
+        if (LEVEL >= 1) {
+            prepare(args);
+            warn(message.formatted(args));
+        }
     }
 
     public static void error(final @NotNull String message) {
@@ -64,8 +68,10 @@ public final class Log {
     }
 
     public static void error(final @NotNull String message, final @NotNull Object... args) {
-        prepare(args);
-        error(message.formatted(args));
+        if (LEVEL >= 0) {
+            prepare(args);
+            error(message.formatted(args));
+        }
     }
 
     public static void inject(final @NotNull Consumer<PrintStream> consumer) {

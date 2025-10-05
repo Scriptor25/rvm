@@ -125,5 +125,5 @@ public interface Machine extends Device {
 
     void pDirect(byte @NotNull [] data, long paddr, boolean write);
 
-    void generateDeviceTreeBlob(@NotNull ByteBuffer buffer);
+    void generateDeviceTree(@NotNull ByteBuffer buffer);
 }
