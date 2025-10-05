@@ -1,11 +1,12 @@
 #include <common.h>
 #include <fdt.h>
+#include <paging.h>
 #include <stdint.h>
 
-void kmain(const long boot_hart_id, void* fdt)
+void kmain(long boot_hart_id, void* fdt)
 {
     char buffer[256];
-    auto node = -1;
+    int node = -1;
 
     kprintf("boot_hart_id=%02x, fdt=%016p\r\n", boot_hart_id, fdt);
 
@@ -15,7 +16,7 @@ void kmain(const long boot_hart_id, void* fdt)
         kputs("> ");
 
         char c;
-        auto bp = buffer;
+        char* bp = buffer;
         do
         {
             c = kgetc();
@@ -28,7 +29,7 @@ void kmain(const long boot_hart_id, void* fdt)
         const char* token;
         int token_length;
 
-        auto line = kstrnext(buffer, &token, &token_length);
+        const char* line = kstrnext(buffer, &token, &token_length);
         if (token_length <= 0)
         {
             continue;
@@ -52,6 +53,12 @@ void kmain(const long boot_hart_id, void* fdt)
             continue;
         }
 
+        if (kstrcmpn("paging", 6, token, token_length) == 0)
+        {
+            sv39_test();
+            continue;
+        }
+
         if (kstrcmpn("fdt", 3, token, token_length) == 0)
         {
             line = kstrnext(line, &token, &token_length);
@@ -60,7 +67,7 @@ void kmain(const long boot_hart_id, void* fdt)
             {
                 line = kstrnext(line, &token, &token_length);
 
-                auto const nextnode = fdt_find_node(fdt, token, token_length);
+                int nextnode = fdt_find_node(fdt, token, token_length);
                 if (nextnode < 0)
                 {
                     kprintf("failed to select node '%.*s'\r\n", token_length, token);
@@ -83,17 +90,17 @@ void kmain(const long boot_hart_id, void* fdt)
 
                 line = kstrnext(line, &token, &token_length);
 
-                auto const prop = fdt_find_prop(fdt, node, token, token_length);
+                int prop = fdt_find_prop(fdt, node, token, token_length);
                 if (prop < 0)
                 {
                     kprintf("failed to select prop '%.*s'\r\n", token_length, token);
                     continue;
                 }
 
-                auto const nname = FDT_NODE_NAME(fdt, node);
-                auto const pname = FDT_PROP_NAME(fdt, prop);
+                const char* nname = FDT_NODE_NAME(fdt, node);
+                const char* pname = FDT_PROP_NAME(fdt, prop);
 
-                auto const plen = FDT_PROP_LEN(fdt, prop);
+                uint32_t plen = FDT_PROP_LEN(fdt, prop);
                 if (plen)
                 {
                     const char* pvalue = FDT_PROP_VALUE(fdt, prop);

@@ -10,7 +10,7 @@ uint32_t htobe32(const void* p)
 
 void fdt_walk(void* fdt)
 {
-    auto const magic = FDT_HEADER_MAGIC(fdt);
+    uint32_t magic = FDT_HEADER_MAGIC(fdt);
     if (magic != 0xd00dfeed)
     {
         kprintf("fdt invalid magic %#08x != 0xd00dfeed\r\n", magic);
@@ -19,12 +19,12 @@ void fdt_walk(void* fdt)
 
     for (int offset = FDT_HEADER_OFF_DT_STRUCT(fdt);; offset = ALIGN32(offset))
     {
-        auto const token = FDT_TOKEN(fdt, offset);
+        uint32_t token = FDT_TOKEN(fdt, offset);
         switch (token)
         {
         case FDT_TOKEN_BEGIN_NODE:
         {
-            auto const name = FDT_NODE_NAME(fdt, offset);
+            const char* name = FDT_NODE_NAME(fdt, offset);
 
             kprintf("fdt begin node '%s' -->\r\n", name);
 
@@ -40,8 +40,8 @@ void fdt_walk(void* fdt)
 
         case FDT_TOKEN_PROP:
         {
-            auto const plen = FDT_PROP_LEN(fdt, offset);
-            auto const pname = FDT_PROP_NAME(fdt, offset);
+            uint32_t plen = FDT_PROP_LEN(fdt, offset);
+            const char* pname = FDT_PROP_NAME(fdt, offset);
             const uint8_t* pvalue = FDT_PROP_VALUE(fdt, offset);
 
             if (plen)
@@ -94,17 +94,17 @@ void fdt_walk(void* fdt)
     }
 }
 
-static int fdt_find_subnode(void* fdt, const int root, const char* name, const int namelen)
+static int fdt_find_subnode(void* fdt, int root, const char* name, int namelen)
 {
-    for (auto offset = root;; offset = ALIGN32(offset))
+    for (int offset = root;; offset = ALIGN32(offset))
     {
-        auto const token = FDT_TOKEN(fdt, offset);
+        uint32_t token = FDT_TOKEN(fdt, offset);
         switch (token)
         {
         case FDT_TOKEN_BEGIN_NODE:
         {
-            auto const nname = FDT_NODE_NAME(fdt, offset);
-            auto const nnamelen = kstrlen(nname);
+            const char* nname = FDT_NODE_NAME(fdt, offset);
+            int nnamelen = kstrlen(nname);
 
             if (kstrcmpn(nname, nnamelen, name, namelen) == 0)
             {
@@ -118,7 +118,7 @@ static int fdt_find_subnode(void* fdt, const int root, const char* name, const i
 
         case FDT_TOKEN_PROP:
         {
-            auto const plen = FDT_PROP_LEN(fdt, offset);
+            uint32_t plen = FDT_PROP_LEN(fdt, offset);
 
             offset += sizeof(uint32_t);
             offset += sizeof(uint32_t);
@@ -138,7 +138,7 @@ static int fdt_find_subnode(void* fdt, const int root, const char* name, const i
     }
 }
 
-int fdt_find_node(void* fdt, const char* path, const int pathlen)
+int fdt_find_node(void* fdt, const char* path, int pathlen)
 {
     if (*path != '/')
     {
@@ -146,16 +146,16 @@ int fdt_find_node(void* fdt, const char* path, const int pathlen)
     }
 
     int offset = FDT_HEADER_OFF_DT_STRUCT(fdt);
-    auto p = path;
+    const char* p = path;
 
     while (offset >= 0 && p - path < pathlen && *p++ == '/')
     {
-        auto end = p;
+        const char* end = p;
         for (; end - path < pathlen && *end != '/'; ++end)
             ;
 
-        auto const namelen = end - p;
-        offset = fdt_find_subnode(fdt, offset, p, (int) namelen);
+        int namelen = end - p;
+        offset = fdt_find_subnode(fdt, offset, p, namelen);
 
         p = end;
     }
@@ -163,16 +163,16 @@ int fdt_find_node(void* fdt, const char* path, const int pathlen)
     return offset;
 }
 
-int fdt_find_prop(void* fdt, const int node, const char* name, const int namelen)
+int fdt_find_prop(void* fdt, int node, const char* name, int namelen)
 {
-    for (auto offset = node;; offset = ALIGN32(offset))
+    for (int offset = node;; offset = ALIGN32(offset))
     {
-        auto const token = FDT_TOKEN(fdt, offset);
+        uint32_t token = FDT_TOKEN(fdt, offset);
         switch (token)
         {
         case FDT_TOKEN_BEGIN_NODE:
         {
-            auto const nname = FDT_NODE_NAME(fdt, offset);
+            const char* nname = FDT_NODE_NAME(fdt, offset);
 
             offset += sizeof(uint32_t);
             offset += kstrlen(nname) + 1;
@@ -181,15 +181,15 @@ int fdt_find_prop(void* fdt, const int node, const char* name, const int namelen
 
         case FDT_TOKEN_PROP:
         {
-            auto const pname = FDT_PROP_NAME(fdt, offset);
-            auto const pnamelen = kstrlen(pname);
+            const char* pname = FDT_PROP_NAME(fdt, offset);
+            int pnamelen = kstrlen(pname);
 
             if (kstrcmpn(pname, pnamelen, name, namelen) == 0)
             {
                 return offset;
             }
 
-            auto const plen = FDT_PROP_LEN(fdt, offset);
+            uint32_t plen = FDT_PROP_LEN(fdt, offset);
 
             offset += sizeof(uint32_t);
             offset += sizeof(uint32_t);

@@ -94,14 +94,6 @@ InsertBraces: false
 InsertNewlineAtEOF: true
 InsertTrailingCommas: None
 
-IntegerLiteralSeparator:
-  Binary: 4
-  BinaryMinDigits: 16
-  Decimal: 3
-  DecimalMinDigits: 10
-  Hex: 4
-  HexMinDigits: 16
-
 JavaScriptQuotes: Double
 JavaScriptWrapImports: true
 

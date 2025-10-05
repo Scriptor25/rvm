@@ -1,6 +1,6 @@
 #include <common.h>
 
-void kputc(const char c)
+void kputc(char c)
 {
     while (!(*UART_STATUS & UART_TX_READY_BIT))
         ;
@@ -32,14 +32,14 @@ int kstrcmp(const char* lhs, const char* rhs)
     return 0;
 }
 
-int kstrcmpn(const char* lhs, const int lhs_len, const char* rhs, const int rhs_len)
+int kstrcmpn(const char* lhs, int lhs_len, const char* rhs, int rhs_len)
 {
     if (lhs_len != rhs_len)
     {
         return lhs_len - rhs_len;
     }
 
-    for (auto n = 0; n < lhs_len; ++n)
+    for (int n = 0; n < lhs_len; ++n)
     {
         if (lhs[n] != rhs[n])
         {
@@ -51,7 +51,7 @@ int kstrcmpn(const char* lhs, const int lhs_len, const char* rhs, const int rhs_
 
 int kstrlen(const char* str)
 {
-    auto length = 0;
+    int length = 0;
     for (; *str; ++str, ++length)
         ;
     return length;
