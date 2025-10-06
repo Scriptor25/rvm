@@ -19,6 +19,9 @@ public interface CSR {
      */
     int CSR_RO = 0b11;
 
+    long STATUS_SUM = 18L;
+    long STATUS_MXR = 19L;
+
     /**
      * user
      */

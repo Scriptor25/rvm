@@ -67,10 +67,10 @@ public final class MMU {
             final int hartid,
             final long vaddr,
             final int access,
-            final int privilege,
+            final int priv,
             final boolean unsafe
     ) {
-        if (privilege >= CSR_H) {
+        if (priv >= CSR_H) {
             return vaddr;
         }
 
@@ -81,26 +81,26 @@ public final class MMU {
 
         return switch (mode) {
             case 0 -> vaddr;
-            case 8 -> sv39(hartid, vaddr, access, privilege, asid, ppn, unsafe);
-            case 9 -> sv48(hartid, vaddr, access, privilege, asid, ppn, unsafe);
-            case 10 -> sv57(hartid, vaddr, access, privilege, asid, ppn, unsafe);
+            case 8 -> sv39(hartid, vaddr, access, priv, asid, ppn, unsafe);
+            case 9 -> sv48(hartid, vaddr, access, priv, asid, ppn, unsafe);
+            case 10 -> sv57(hartid, vaddr, access, priv, asid, ppn, unsafe);
             default -> {
                 if (unsafe) {
-                    Log.warn("page fault (hartid=%x, vaddr=%x, access=%x, privilege=%x): unsupported mode %d",
+                    Log.warn("page fault (hartid=%x, vaddr=%x, access=%x, priv=%x): unsupported mode %d",
                              hartid,
                              vaddr,
                              access,
-                             privilege,
+                             priv,
                              mode);
                     yield ~0L;
                 }
                 throw new TrapException(toCause(access),
                                         vaddr,
-                                        "page fault (hartid=%x, vaddr=%x, access=%x, privilege=%x): unsupported mode %d",
+                                        "page fault (hartid=%x, vaddr=%x, access=%x, priv=%x): unsupported mode %d",
                                         hartid,
                                         vaddr,
                                         access,
-                                        privilege,
+                                        priv,
                                         mode);
             }
         };
@@ -112,11 +112,14 @@ public final class MMU {
             final int hartid,
             final long vaddr,
             final int access,
-            final int privilege,
+            final int priv,
             final boolean unsafe
     ) {
-        if (fail(pte, access, privilege)) {
-            pageFault(hartid, vaddr, access, privilege, unsafe, "unprivileged");
+        if (inaccessible(pte, access, priv)) {
+            pageFault(hartid, vaddr, access, priv, unsafe, "inaccessible");
+        }
+        if (unprivileged(hartid, priv, pte)) {
+            pageFault(hartid, vaddr, access, priv, unsafe, "unprivileged");
         }
 
         if (!pteA(pte) || (access == ACCESS_WRITE && !pteD(pte))) {
@@ -135,7 +138,7 @@ public final class MMU {
             final int hartid,
             final long vaddr,
             final int access,
-            final int privilege,
+            final int priv,
             final long asid,
             final long root,
             final boolean unsafe
@@ -148,7 +151,7 @@ public final class MMU {
                 entry = tlb.get(new Key(vpn, 0L, hartid));
             }
             if (entry != null && entry.contains(vpn)) {
-                touch(entry.pteaddr, entry.pte, hartid, vaddr, access, privilege, unsafe);
+                touch(entry.pteaddr, entry.pte, hartid, vaddr, access, priv, unsafe);
 
                 final var poffset = vaddr & (entry.psize - 1L);
                 return entry.paddr + poffset;
@@ -157,6 +160,8 @@ public final class MMU {
 
         final var mask = (1L << 9) - 1L;
 
+        final var x = 0x1ff;
+
         final var vpn = new long[levels];
         for (int i = 0; i < levels; ++i) {
             vpn[i] = (vaddr >>> (PAGE_SHIFT + i * 9)) & mask;
@@ -164,12 +169,12 @@ public final class MMU {
 
         var a = root << PAGE_SHIFT;
 
-        Log.info("walk(levels=%d, hartid=%x, vaddr=%x, access=%x, privilege=%x, asid=%x, root=%x)",
+        Log.info("walk(levels=%d, hartid=%x, vaddr=%x, access=%x, priv=%x, asid=%x, root=%x)",
                  levels,
                  hartid,
                  vaddr,
                  access,
-                 privilege,
+                 priv,
                  asid,
                  root);
 
@@ -196,23 +201,23 @@ public final class MMU {
                      pteD(pte));
 
             if (!pteV(pte)) {
-                pageFault(hartid, vaddr, access, privilege, unsafe, "invalid entry");
+                pageFault(hartid, vaddr, access, priv, unsafe, "invalid entry");
                 return ~0L;
             }
 
             if (!pteR(pte) && pteW(pte)) {
-                pageFault(hartid, vaddr, access, privilege, unsafe, "reserved entry type");
+                pageFault(hartid, vaddr, access, priv, unsafe, "reserved entry type");
                 return ~0L;
             }
 
             if (pteR(pte) || pteX(pte)) {
-                pte = touch(pteaddr, pte, hartid, vaddr, access, privilege, unsafe);
+                pte = touch(pteaddr, pte, hartid, vaddr, access, priv, unsafe);
 
                 final var psize   = 1L << (PAGE_SHIFT + i * 9);
                 final var ppn     = ppn(pte, i);
                 final var pbase   = ppn << PAGE_SHIFT;
                 final var poffset = vaddr & (psize - 1L);
-                final var paddr   = pbase + poffset;
+                final var paddr   = pbase | poffset;
                 final var ptevpn  = (vaddr >>> PAGE_SHIFT) & ~((1L << (i * 9)) - 1L);
 
                 add(new Entry(pteaddr, pte, ptevpn, asid, hartid, pbase, psize));
@@ -223,7 +228,7 @@ public final class MMU {
             a = ppn(pte, 0) << PAGE_SHIFT;
         }
 
-        pageFault(hartid, vaddr, access, privilege, unsafe, "missing entry");
+        pageFault(hartid, vaddr, access, priv, unsafe, "missing entry");
         return ~0L;
     }
 
@@ -231,36 +236,36 @@ public final class MMU {
             final int hartid,
             final long vaddr,
             final int access,
-            final int privilege,
+            final int priv,
             final long asid,
             final long root,
             final boolean unsafe
     ) {
-        return walk(3, hartid, vaddr, access, privilege, asid, root, unsafe);
+        return walk(3, hartid, vaddr, access, priv, asid, root, unsafe);
     }
 
     private long sv48(
             final int hartid,
             final long vaddr,
             final int access,
-            final int privilege,
+            final int priv,
             final long asid,
             final long root,
             final boolean unsafe
     ) {
-        return walk(4, hartid, vaddr, access, privilege, asid, root, unsafe);
+        return walk(4, hartid, vaddr, access, priv, asid, root, unsafe);
     }
 
     private long sv57(
             final int hartid,
             final long vaddr,
             final int access,
-            final int privilege,
+            final int priv,
             final long asid,
             final long root,
             final boolean unsafe
     ) {
-        return walk(5, hartid, vaddr, access, privilege, asid, root, unsafe);
+        return walk(5, hartid, vaddr, access, priv, asid, root, unsafe);
     }
 
     private void add(final @NotNull Entry entry) {
@@ -294,11 +299,54 @@ public final class MMU {
         };
     }
 
-    private static boolean fail(final long pte, final int access, final int privilege) {
-        return (!pteU(pte) && privilege == CSR_U)
-               || (!pteX(pte) && (access & ACCESS_FETCH) != 0)
-               || (!pteW(pte) && (access & ACCESS_WRITE) != 0)
-               || (!pteR(pte) && (access & ACCESS_READ) != 0);
+    private boolean unprivileged(final int hartid, final int priv, final long pte) {
+        final var status = machine.hart(hartid).csrFile().getd(sstatus, priv);
+        final var sum    = (status & STATUS_SUM) != 0L;
+        final var u      = pteU(pte);
+
+        return (!sum && u && priv != CSR_U) || (!u && priv == CSR_U);
+    }
+
+    private boolean inaccessible(final long pte, final int access, final int priv) {
+
+        final var u = pteU(pte);
+        final var x = pteX(pte);
+        final var w = pteW(pte);
+        final var r = pteR(pte);
+
+        return switch (access) {
+            case ACCESS_FETCH -> !x || (u && priv != CSR_U);
+            case ACCESS_READ -> !w;
+            case ACCESS_WRITE -> !r;
+            default -> false;
+        };
+    }
+
+    private void pageFault(
+            final int hartid,
+            final long vaddr,
+            final int access,
+            final int priv,
+            final boolean unsafe,
+            final @NotNull String message
+    ) {
+        if (unsafe) {
+            Log.warn("page fault (hartid=%x, vaddr=%016x, access=%x, priv=%x): %s",
+                     hartid,
+                     vaddr,
+                     access,
+                     priv,
+                     message);
+            return;
+        }
+        throw new TrapException(toCause(access),
+                                vaddr,
+                                "page fault (hartid=%x, vaddr=%016x, access=%x, priv=%x): %s",
+                                hartid,
+                                vaddr,
+                                access,
+                                priv,
+                                message);
     }
 
     private static boolean pteV(final long pte) {
@@ -335,32 +383,5 @@ public final class MMU {
 
     private static long ppn(final long pte, final int i) {
         return ((pte >>> 10) & 0xFFFFFFFFFFFL) >>> (i * 9);
-    }
-
-    private void pageFault(
-            final int hartid,
-            final long vaddr,
-            final int access,
-            final int privilege,
-            final boolean unsafe,
-            final @NotNull String message
-    ) {
-        if (unsafe) {
-            Log.warn("page fault (hartid=%x, vaddr=%016x, access=%x, privilege=%x): %s",
-                     hartid,
-                     vaddr,
-                     access,
-                     privilege,
-                     message);
-            return;
-        }
-        throw new TrapException(toCause(access),
-                                vaddr,
-                                "page fault (hartid=%x, vaddr=%016x, access=%x, privilege=%x): %s",
-                                hartid,
-                                vaddr,
-                                access,
-                                privilege,
-                                message);
     }
 }
