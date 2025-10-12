@@ -23,8 +23,10 @@ void kmain(long boot_hart_id, void* fdt)
             kputc(c);
 
             *bp++ = c;
-        } while (!(c == '\0' || c == '\r' || c == '\n'));
+        } while (c != '\0' && c != '\r' && c != '\n');
         *bp = 0;
+
+        kputs("\r\n");
 
         const char* token;
         int token_length;
@@ -76,7 +78,9 @@ void kmain(long boot_hart_id, void* fdt)
 
                 node = nextnode;
 
-                kprintf("selected node '%.*s' (offset %#x)\r\n", token_length, token, node);
+                const char* nname = FDT_NODE_NAME(fdt, node);
+
+                kprintf("selected node '%s' (offset %#x)\r\n", nname, node);
                 continue;
             }
 
@@ -114,7 +118,9 @@ void kmain(long boot_hart_id, void* fdt)
                         }
                         kprintf("%02x", pvalue[i]);
                     }
-                    kputs("]\r\n");
+                    kputs("] ('");
+                    knputs(pvalue, plen);
+                    kputs("')\r\n");
                     continue;
                 }
 

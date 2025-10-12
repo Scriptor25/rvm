@@ -91,9 +91,8 @@ public final class PropBuilder implements Buildable<Prop> {
 
     public @NotNull PropBuilder data(final @NotNull String data) {
         final var bytes  = data.getBytes();
-        final var buffer = new byte[bytes.length + 1];
+        final var buffer = new byte[bytes.length];
         System.arraycopy(bytes, 0, buffer, 0, bytes.length);
-        buffer[bytes.length] = '\0';
         return data(buffer);
     }
 

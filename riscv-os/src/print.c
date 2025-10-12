@@ -54,7 +54,7 @@ static void kprints(const char* str, int flags, int width, int precision)
         }
     }
 
-    for (const char* p = str; *p && (!precision || p - str < precision); ++p, ++n)
+    for (const char* p = str; *p && (!precision || ((p - str) < precision)); ++p, ++n)
     {
         kputc(*p);
     }
@@ -65,6 +65,8 @@ static void kprints(const char* str, int flags, int width, int precision)
     }
 }
 
+#define BUFFER_SIZE 0x100
+
 static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, int flags, int width, int precision)
 {
     int left_justify = flags & FLAG_LEFT_JUSTIFY;
@@ -73,8 +75,8 @@ static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, i
     int use_prefix = flags & FLAG_USE_PREFIX;
     int pad_zero = flags & FLAG_PAD_ZERO;
 
-    char buffer[0x100];
-    int bp = 0x100;
+    char buffer[BUFFER_SIZE];
+    int bp = BUFFER_SIZE;
 
     int sign = 0;
     if (signed_)
@@ -88,16 +90,16 @@ static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, i
         value = -value;
     }
 
-    while (0x100 - bp < precision || value)
+    while (((BUFFER_SIZE - bp) < precision) || value)
     {
         uint64_t rem = value % base;
         value /= base;
-        buffer[--bp] = rem < 10 ? '0' + rem : uppercase ? 'A' + rem - 10 : 'a' + rem - 10;
+        buffer[--bp] = (rem < 10) ? ('0' + rem) : (uppercase ? ('A' + rem - 10) : ('a' + rem - 10));
     }
 
     if (pad_zero)
     {
-        while (0x100 - bp < width)
+        while ((BUFFER_SIZE - bp) < width)
         {
             buffer[--bp] = '0';
         }
@@ -135,13 +137,13 @@ static void kprinti(uint64_t value, int signed_, uint64_t base, int uppercase, i
     int n = 0;
     if (!left_justify)
     {
-        for (int rem = width - (0x100 - bp); n < rem; ++n)
+        for (int rem = width - (BUFFER_SIZE - bp); n < rem; ++n)
         {
             kputc(' ');
         }
     }
 
-    for (; n < width || bp < 0x100; ++n)
+    for (; (n < width) || (bp < BUFFER_SIZE); ++n)
     {
         kputc(buffer[bp++]);
     }

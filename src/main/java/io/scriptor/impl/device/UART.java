@@ -15,12 +15,206 @@ import java.io.PrintStream;
 
 public final class UART implements IODevice {
 
-    private static final int TX_OFFSET = 0x00;
-    private static final int RX_OFFSET = 0x04;
-    private static final int STATUS_OFFSET = 0x08;
+    /**
+     * receiver buffer register [ro]
+     */
+    private static final int UART_RBR = 0x00;
+    /**
+     * transmitter holding register [wo]
+     */
+    private static final int UART_THR = 0x00;
+    /**
+     * interrupt enable register
+     */
+    private static final int UART_IER = 0x01;
+    /**
+     * interrupt identification register [ro]
+     */
+    private static final int UART_IIR = 0x02;
+    /**
+     * fifo control register [wo]
+     */
+    private static final int UART_FCR = 0x02;
+    /**
+     * line control register
+     */
+    private static final int UART_LCR = 0x03;
+    /**
+     * modem control register
+     */
+    private static final int UART_MCR = 0x04;
+    /**
+     * line status register
+     */
+    private static final int UART_LSR = 0x05;
+    /**
+     * modem status register
+     */
+    private static final int UART_MSR = 0x06;
+    /**
+     * scratch register
+     */
+    private static final int UART_SCR = 0x07;
 
-    private static final int TX_READY = 0b01;
-    private static final int RX_READY = 0b10;
+    /**
+     * enable received data avaible interrupt
+     */
+    private static final int UART_IER_ERBFI = 0b00000001;
+    /**
+     * enable transmitter holding register empty interrupt
+     */
+    private static final int UART_IER_ETBEI = 0b00000010;
+    /**
+     * enable receiver line status interrupt
+     */
+    private static final int UART_IER_ELSI = 0b00000100;
+    /**
+     * enable modem status interrupt
+     */
+    private static final int UART_IER_EDSSI = 0b00001000;
+
+    /**
+     * 0 = interrupt pending, 1 = none
+     */
+    private static final int UART_IIR_INT_PENDING = 0b00000001;
+    /**
+     * interrupt id
+     */
+    private static final int UART_IIR_INT_ID = 0b00001110;
+    /**
+     * fifo enabled
+     */
+    private static final int UART_IIR_FIFO_ENABLED = 0b01000000;
+    /**
+     * fifo functional
+     */
+    private static final int UART_IIR_FIFO_FUNCTIONAL = 0b10000000;
+
+    /**
+     * enable fifo mode
+     */
+    private static final int UART_FCR_FIFO_ENABLE = 0b00000001;
+    /**
+     * clear received fifo
+     */
+    private static final int UART_FCR_RX_FIFO_RESET = 0b00000010;
+    /**
+     * clear transmit fifo
+     */
+    private static final int UART_FCR_TX_FIFO_RESET = 0b00000100;
+    /**
+     * rx trigger level
+     */
+    private static final int UART_FCR_TRIGGER_LEVEL = 0b00111000;
+
+    /**
+     * word length (5 bits + value)
+     */
+    private static final int UART_LCR_WORD_LENGTH = 0b00000011;
+    /**
+     *
+     */
+    private static final int UART_LCR_STOP_BITS = 0b00000100;
+    /**
+     *
+     */
+    private static final int UART_LCR_PARITY = 0b00111000;
+    /**
+     * force break condition
+     */
+    private static final int UART_LCR_BREAK_CONTROL = 0b01000000;
+    /**
+     * divisor latch access bit
+     */
+    private static final int UART_LCR_DLAB = 0b10000000;
+
+    /**
+     * data terminal ready
+     */
+    private static final int UART_MCR_DTR = 0b00000001;
+    /**
+     * request to send
+     */
+    private static final int UART_MCR_RTS = 0b00000010;
+    /**
+     * user output 1
+     */
+    private static final int UART_MCR_OUT1 = 0b00000100;
+    /**
+     * user output 2
+     */
+    private static final int UART_MCR_OUT2 = 0b00001000;
+    /**
+     * enable loopback test mode
+     */
+    private static final int UART_MCR_LOOPBACK = 0b00010000;
+
+    /**
+     * data ready
+     */
+    private static final int UART_LSR_DR = 0b00000001;
+    /**
+     * overrun error
+     */
+    private static final int UART_LSR_OE = 0b00000010;
+    /**
+     * parity error
+     */
+    private static final int UART_LSR_PE = 0b00000100;
+    /**
+     * framing error
+     */
+    private static final int UART_LSR_FE = 0b00001000;
+    /**
+     * break interrupt
+     */
+    private static final int UART_LSR_BI = 0b00010000;
+    /**
+     * transmitter holding register empty
+     */
+    private static final int UART_LSR_THRE = 0b00100000;
+    /**
+     * transmitter empty
+     */
+    private static final int UART_LSR_TEMT = 0b01000000;
+    /**
+     * error in received fifo
+     */
+    private static final int UART_LSR_FIFO_ERROR = 0b10000000;
+
+    /**
+     * delta clear to send
+     */
+    private static final int UART_MSR_DCTS = 0b00000001;
+    /**
+     * delta data set ready
+     */
+    private static final int UART_MSR_DDSR = 0b00000010;
+    /**
+     * trailing edge ring indicator
+     */
+    private static final int UART_MSR_TERI = 0b00000100;
+    /**
+     * delta carrier detect
+     */
+    private static final int UART_MSR_DDCD = 0b00001000;
+    /**
+     * clear to send
+     */
+    private static final int UART_MSR_CTS = 0b00010000;
+    /**
+     * data set ready
+     */
+    private static final int UART_MSR_DSR = 0b00100000;
+    /**
+     * ring indicator
+     */
+    private static final int UART_MSR_RI = 0b01000000;
+    /**
+     * carrier detect
+     */
+    private static final int UART_MSR_DCD = 0b10000000;
+
 
     private final Machine machine;
     private final long begin;
@@ -82,8 +276,8 @@ public final class UART implements IODevice {
     public long read(final int offset, final int size) {
         try {
             return switch (offset) {
-                case RX_OFFSET -> in.available() > 0 ? (in.read() & 0xFFL) : -1L;
-                case STATUS_OFFSET -> TX_READY | (in.available() > 0 ? RX_READY : 0);
+                case UART_RBR -> in.available() > 0 ? (in.read() & 0xFFL) : -1L;
+                case UART_LSR -> UART_LSR_THRE | (in.available() > 0 ? UART_LSR_DR : 0);
                 default -> {
                     Log.error("invalid uart read offset=%x, size=%d", offset, size);
                     yield 0L;
@@ -99,7 +293,7 @@ public final class UART implements IODevice {
     public void write(final int offset, final int size, final long value) {
         try {
             switch (offset) {
-                case TX_OFFSET -> {
+                case UART_THR -> {
                     out.write((int) (value & 0xFFL));
                     out.flush();
                 }

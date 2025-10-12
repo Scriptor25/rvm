@@ -14,11 +14,37 @@ public final class MMU {
     private record Key(long vpn, long asid, int hartid) {
     }
 
-    private record Entry(long pteaddr, long pte, long vpn, long asid, int hartid, long paddr, long psize) {
+    private static final class Entry {
+
+        long pteaddr;
+        long pte;
+        long vpn;
+        long asid;
+        int hartid;
+        long pgbase;
+        long pgsize;
+
+        private Entry(
+                final long pteaddr,
+                final long pte,
+                final long vpn,
+                final long asid,
+                final int hartid,
+                final long pgbase,
+                final long pgsize
+        ) {
+            this.pteaddr = pteaddr;
+            this.pte = pte;
+            this.vpn = vpn;
+            this.asid = asid;
+            this.hartid = hartid;
+            this.pgbase = pgbase;
+            this.pgsize = pgsize;
+        }
 
         public boolean contains(final long vpn) {
-            final var pcount = psize >>> PAGE_SHIFT;
-            return this.vpn <= vpn && vpn < this.vpn + pcount;
+            final var pgcount = pgsize >>> PAGE_SHIFT;
+            return this.vpn <= vpn && vpn < this.vpn + pgcount;
         }
     }
 
@@ -151,20 +177,11 @@ public final class MMU {
                 entry = tlb.get(new Key(vpn, 0L, hartid));
             }
             if (entry != null && entry.contains(vpn)) {
-                touch(entry.pteaddr, entry.pte, hartid, vaddr, access, priv, unsafe);
+                entry.pte = touch(entry.pteaddr, entry.pte, hartid, vaddr, access, priv, unsafe);
 
-                final var poffset = vaddr & (entry.psize - 1L);
-                return entry.paddr + poffset;
+                final var pgoffset = vaddr & (entry.pgsize - 1L);
+                return entry.pgbase | pgoffset;
             }
-        }
-
-        final var mask = (1L << 9) - 1L;
-
-        final var x = 0x1ff;
-
-        final var vpn = new long[levels];
-        for (int i = 0; i < levels; ++i) {
-            vpn[i] = (vaddr >>> (PAGE_SHIFT + i * 9)) & mask;
         }
 
         var a = root << PAGE_SHIFT;
@@ -179,12 +196,11 @@ public final class MMU {
                  root);
 
         for (int i = levels - 1; i >= 0; --i) {
-            Log.info("  i=%d, a=%x, vpn=%x",
-                     i,
-                     a,
-                     vpn[i]);
+            final var vpn = vpn(vaddr, i);
 
-            final var pteaddr = a + vpn[i] * 8L;
+            Log.info("  i=%d, a=%x, vpn=%x", i, a, vpn);
+
+            final var pteaddr = a + vpn * 8L;
 
             var pte = machine.pRead(pteaddr, 8, unsafe);
 
@@ -213,19 +229,36 @@ public final class MMU {
             if (pteR(pte) || pteX(pte)) {
                 pte = touch(pteaddr, pte, hartid, vaddr, access, priv, unsafe);
 
-                final var psize   = 1L << (PAGE_SHIFT + i * 9);
-                final var ppn     = ppn(pte, i);
-                final var pbase   = ppn << PAGE_SHIFT;
-                final var poffset = vaddr & (psize - 1L);
-                final var paddr   = pbase | poffset;
-                final var ptevpn  = (vaddr >>> PAGE_SHIFT) & ~((1L << (i * 9)) - 1L);
+                final var mask = (1L << (i * 9)) - 1L;
+                final var vvpn = vaddr >>> PAGE_SHIFT;
 
-                add(new Entry(pteaddr, pte, ptevpn, asid, hartid, pbase, psize));
+                var ppn = ppn(pte, i);
+                if (i > 0) {
+                    ppn &= ~mask;
+                    ppn |= vvpn & mask;
+                }
+
+                final var pgsize   = 1L << (PAGE_SHIFT + i * 9);
+                final var pgbase   = ppn << PAGE_SHIFT;
+                final var pgoffset = vaddr & (pgsize - 1L);
+                final var paddr    = pgbase | pgoffset;
+
+                final var ptevpn = vvpn & ~mask;
+
+                add(new Entry(pteaddr, pte, ptevpn, asid, hartid, pgbase, pgsize));
+
+                Log.info("   => ppn=%x, pgsize=%x, pgbase=%x, pgoffset=%x, ptevpn=%x, paddr=%x",
+                         ppn,
+                         pgsize,
+                         pgbase,
+                         pgoffset,
+                         ptevpn,
+                         paddr);
 
                 return paddr;
             }
 
-            a = ppn(pte, 0) << PAGE_SHIFT;
+            a = ppn(pte) << PAGE_SHIFT;
         }
 
         pageFault(hartid, vaddr, access, priv, unsafe, "missing entry");
@@ -271,8 +304,8 @@ public final class MMU {
     private void add(final @NotNull Entry entry) {
         final var asid = pteG(entry.pte) ? 0L : entry.asid;
 
-        final var pcount = entry.psize >>> PAGE_SHIFT;
-        for (long i = 0L; i < pcount; ++i) {
+        final var pgcount = entry.pgsize >>> PAGE_SHIFT;
+        for (long i = 0L; i < pgcount; ++i) {
             final var key = new Key(entry.vpn + i, asid, entry.hartid);
             tlb.put(key, entry);
         }
@@ -316,8 +349,8 @@ public final class MMU {
 
         return switch (access) {
             case ACCESS_FETCH -> !x || (u && priv != CSR_U);
-            case ACCESS_READ -> !w;
-            case ACCESS_WRITE -> !r;
+            case ACCESS_READ -> !r;
+            case ACCESS_WRITE -> !w;
             default -> false;
         };
     }
@@ -381,7 +414,15 @@ public final class MMU {
         return ((pte >>> 7) & 1L) != 0L;
     }
 
+    private static long vpn(final long vaddr, final int i) {
+        return (vaddr >>> (PAGE_SHIFT + i * 9)) & 0x1FFL;
+    }
+
     private static long ppn(final long pte, final int i) {
         return ((pte >>> 10) & 0xFFFFFFFFFFFL) >>> (i * 9);
+    }
+
+    private static long ppn(final long pte) {
+        return (pte >>> 10) & 0xFFFFFFFFFFFL;
     }
 }

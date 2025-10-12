@@ -27,12 +27,11 @@ import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
 
-import static io.scriptor.impl.MMU.ACCESS_READ;
-import static io.scriptor.impl.MMU.ACCESS_WRITE;
+import static io.scriptor.impl.MMU.*;
 
 public final class MachineImpl implements Machine {
 
-    public static final long DRAM = 0x80000000L;
+    public static final long DRAM = 0x00000000L;
 
     private final LongObjectMap<Object> locks = new LongObjectHashMap<>();
 
@@ -78,12 +77,12 @@ public final class MachineImpl implements Machine {
         devices[0] = memory;
         devices[1] = deviceTreeMemory;
         devices[2] = new CLINT(this,
-                               0x02000000L,
-                               0x02010000L,
+                               0x20000000L,
+                               0x20010000L,
                                hartCount);
         devices[3] = new PLIC(this,
-                              0x0C000000L,
-                              0x10000000L,
+                              0xC0000000L,
+                              0xC4000000L,
                               hartCount,
                               32);
         devices[4] = new UART(this,
@@ -100,7 +99,7 @@ public final class MachineImpl implements Machine {
         for (int j = 0; j < devices.length; ++j) {
             for (int i = j + 1; i < devices.length; ++i) {
                 if (devices[i].begin() < devices[j].end() && devices[j].begin() < devices[i].end()) {
-                    Log.warn("device map overlap: %s [%x;%x] and %s [%x;%x]",
+                    Log.warn("device map overlap: %s [%08x;%08x] and %s [%08x;%08x]",
                              devices[j],
                              devices[j].begin(),
                              devices[j].end(),
@@ -382,7 +381,7 @@ public final class MachineImpl implements Machine {
 
     @Override
     public int fetch(final int hartid, final long pc, final boolean unsafe) {
-        var ppc = mmu.translate(hartid, pc, ACCESS_READ, harts[hartid].privilege(), unsafe);
+        var ppc = mmu.translate(hartid, pc, ACCESS_FETCH, harts[hartid].privilege(), unsafe);
 
         if (ppc != pc) {
             Log.info("virtual address %016x -> physical address %016x", pc, ppc);

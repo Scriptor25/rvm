@@ -255,7 +255,9 @@ public final class HartImpl implements Hart {
             pc = execute(instruction, definition);
         } catch (final TrapException e) {
             Log.error(e.getMessage());
-            handle(e.getTrapCause(), e.getTrapValue());
+            if (handle(e.getTrapCause(), e.getTrapValue())) {
+                throw new IllegalStateException();
+            }
             machine.trap(id);
         }
 
@@ -282,7 +284,7 @@ public final class HartImpl implements Hart {
                );
     }
 
-    private void handle(final long cause, final long tval) {
+    private boolean handle(final long cause, final long tval) {
         final var interrupt = (cause & (1L << 63)) != 0L;
         final var code      = (int) (cause & 0x7FFFFFFFL);
 
@@ -318,6 +320,10 @@ public final class HartImpl implements Hart {
         csrFile.putd(mstatus, CSR_M, status);
 
         final var tvec = target == CSR_M ? csrFile.getd(mtvec, CSR_M) : csrFile.getd(stvec, CSR_S);
+        if (tvec == 0L) {
+            return true;
+        }
+
         final var base = tvec & ~0b11L;
         final var mode = tvec & 0b11L;
 
@@ -328,6 +334,7 @@ public final class HartImpl implements Hart {
         }
 
         priv = target;
+        return false;
     }
 
     private void interrupt() {
@@ -421,6 +428,15 @@ public final class HartImpl implements Hart {
                 }
 
                 throw new TrapException(0x03, pc, "breakpoint instruction");
+            }
+
+            case "ecall" -> {
+                switch (priv) {
+                    case CSR_M -> throw new TrapException(0x0B, 0, "environment call from machine mode");
+                    case CSR_S -> throw new TrapException(0x09, 0, "environment call from supervisor mode");
+                    case CSR_U -> throw new TrapException(0x08, 0, "environment call from user mode");
+                    default -> throw new IllegalStateException();
+                }
             }
 
             case "mret" -> {

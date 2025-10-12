@@ -20,7 +20,7 @@ import java.util.function.LongConsumer;
 
 import static io.scriptor.isa.CSR.*;
 
-public class GDBStub implements Closeable {
+public class GDBServer implements Closeable {
 
     private static @NotNull String toHexString(final long value, final int n) {
         final var builder = new StringBuilder();
@@ -91,7 +91,7 @@ public class GDBStub implements Closeable {
 
     private final LongLongMap breakpoints = new LongLongHashMap();
 
-    public GDBStub(final @NotNull Machine machine, final int port) throws IOException {
+    public GDBServer(final @NotNull Machine machine, final int port) throws IOException {
         this.machine = machine;
 
         machine.onBreakpoint(id -> {
@@ -109,6 +109,8 @@ public class GDBStub implements Closeable {
 
         selector = Selector.open();
         channel.register(selector, SelectionKey.OP_ACCEPT);
+
+        Log.info("GDB listening on port %d", port);
     }
 
     public boolean step() {

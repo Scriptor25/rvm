@@ -2,19 +2,16 @@ package io.scriptor;
 
 import com.carrotsearch.hppc.ObjectArrayList;
 import com.carrotsearch.hppc.ObjectIndexedContainer;
-import io.scriptor.arg.FlagPayload;
-import io.scriptor.arg.LoadPayload;
-import io.scriptor.arg.MemoryPayload;
-import io.scriptor.arg.Template;
 import io.scriptor.elf.Header;
 import io.scriptor.elf.Identity;
 import io.scriptor.elf.ProgramHeader;
 import io.scriptor.elf.SectionHeader;
-import io.scriptor.gdb.GDBStub;
+import io.scriptor.gdb.GDBServer;
 import io.scriptor.impl.MachineImpl;
 import io.scriptor.impl.device.Memory;
 import io.scriptor.isa.Registry;
 import io.scriptor.machine.Machine;
+import io.scriptor.util.ArgContext;
 import io.scriptor.util.ChannelInputStream;
 import io.scriptor.util.ExtendedInputStream;
 import io.scriptor.util.Log;
@@ -27,11 +24,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 
-import static io.scriptor.arg.Template.*;
 import static io.scriptor.elf.ELF.readSymbols;
 import static io.scriptor.util.ByteUtil.readString;
 import static io.scriptor.util.Resource.read;
-import static io.scriptor.util.Unit.MiB;
+import static io.scriptor.util.Unit.*;
 import static java.util.function.Predicate.not;
 
 public final class Main {
@@ -47,21 +43,11 @@ public final class Main {
         logThread.start();
 
         try {
-            final var payloads = Template.parse(args);
+            final var context = new ArgContext();
+            context.parse(args);
 
-            final var loads = payloads.getAll(TEMPLATE_LOAD, LoadPayload.class);
-
-            final var memory = payloads.get(TEMPLATE_MEMORY, MemoryPayload.class)
-                                       .stream()
-                                       .mapToInt(MemoryPayload::size)
-                                       .findAny()
-                                       .orElseGet(() -> MiB(32));
-
-            final var debug = payloads.get(TEMPLATE_DEBUG, FlagPayload.class).isPresent();
-
-            final var machine = init(loads, memory);
-
-            run(machine, debug);
+            final var machine = init(context);
+            run(context, machine);
         } catch (final Exception e) {
             Log.error("%s", e);
         }
@@ -70,10 +56,7 @@ public final class Main {
         logThread.join();
     }
 
-    private static @NotNull Machine init(
-            final LoadPayload @NotNull [] loads,
-            final int memory
-    ) {
+    private static @NotNull Machine init(final @NotNull ArgContext context) {
         final ObjectIndexedContainer<String> isa = new ObjectArrayList<>();
         isa.add("types");
 
@@ -91,20 +74,50 @@ public final class Main {
             read(name.value, registry::parse);
         }
 
-        final Machine machine = new MachineImpl(memory, ByteOrder.LITTLE_ENDIAN, 1);
+        final var memoryCapacity = context.getInt("--memory", val -> {
+            final var value = val.substring(0, val.length() - 1);
+            final var unit  = val.substring(val.length() - 1);
 
-        for (final var payload : loads) {
-            load(machine, payload.filename(), payload.offset());
-        }
+            final var multiplier = Integer.parseUnsignedInt(value, 10);
+
+            return switch (unit) {
+                case "K" -> KiB(multiplier);
+                case "M" -> MiB(multiplier);
+                case "G" -> GiB(multiplier);
+                default -> throw new IllegalArgumentException();
+            };
+        }, () -> MiB(32));
+
+        final var memoryOrder = context.get("--order", val -> switch (val) {
+            case "le" -> ByteOrder.LITTLE_ENDIAN;
+            case "be" -> ByteOrder.BIG_ENDIAN;
+            default -> throw new IllegalArgumentException();
+        }, ByteOrder::nativeOrder);
+
+        final var hartCount = context.getInt("--harts", val -> Integer.parseUnsignedInt(val, 10), () -> 1);
+
+        final Machine machine = new MachineImpl(memoryCapacity, memoryOrder, hartCount);
+
+        final var entry = context.getLong("--entry", val -> Long.parseUnsignedLong(val, 0x10), () -> 0L);
+        machine.entry(entry);
+
+        context.getAll("--load", val -> {
+            final var parts    = val.split(":");
+            final var filename = parts[0];
+            final var offset   = parts.length == 2 ? Long.parseUnsignedLong(parts[1], 0x10) : 0L;
+            load(machine, filename, offset);
+        });
 
         return machine;
     }
 
-    private static void run(final @NotNull Machine machine, final boolean debug) {
+    private static void run(final @NotNull ArgContext context, final @NotNull Machine machine) {
         machine.reset();
 
+        final var debug = context.has("--debug");
+
         if (debug) {
-            try (final var gdb = new GDBStub(machine, 1234)) {
+            try (final var gdb = new GDBServer(machine, 1234)) {
                 while (gdb.step()) {
                     try {
                         machine.step();
