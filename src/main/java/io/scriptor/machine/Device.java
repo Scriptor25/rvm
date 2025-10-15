@@ -8,6 +8,8 @@ import java.io.PrintStream;
 
 public interface Device {
 
+    @NotNull Machine machine();
+
     void dump(@NotNull PrintStream out);
 
     void reset();

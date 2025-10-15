@@ -1,6 +1,7 @@
 package io.scriptor.impl;
 
 import io.scriptor.machine.FloatingPointRegisterFile;
+import io.scriptor.machine.Machine;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.PrintStream;
@@ -8,7 +9,17 @@ import java.util.Arrays;
 
 public final class FloatingPointRegisterFileImpl implements FloatingPointRegisterFile {
 
+    private final Machine machine;
     private final long[] values = new long[32];
+
+    public FloatingPointRegisterFileImpl(final @NotNull Machine machine) {
+        this.machine = machine;
+    }
+
+    @Override
+    public @NotNull Machine machine() {
+        return machine;
+    }
 
     @Override
     public void dump(final @NotNull PrintStream out) {

@@ -42,6 +42,11 @@ public final class CLINT implements IODevice {
     }
 
     @Override
+    public @NotNull Machine machine() {
+        return machine;
+    }
+
+    @Override
     public void dump(final @NotNull PrintStream out) {
         out.printf("clint: mtime=%x%n", mtime);
         for (int i = 0; i < hartCount; ++i) {

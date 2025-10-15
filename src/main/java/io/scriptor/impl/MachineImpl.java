@@ -27,17 +27,14 @@ import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
 
-import static io.scriptor.impl.MMU.*;
-
 public final class MachineImpl implements Machine {
 
-    public static final long DRAM = 0x00000000L;
+    public static final long DRAM = 0x80000000L;
 
     private final LongObjectMap<Object> locks = new LongObjectHashMap<>();
 
     private final SymbolTable symbols = new SymbolTable();
 
-    private final MMU mmu;
     private final Hart[] harts;
     private final IODevice[] devices;
 
@@ -57,8 +54,6 @@ public final class MachineImpl implements Machine {
 
         memoryCapacity = ((memoryCapacity + 0b111) & ~0b111);
 
-        mmu = new MMU(this);
-
         memory = new Memory(this,
                             DRAM,
                             DRAM + memoryCapacity,
@@ -77,12 +72,12 @@ public final class MachineImpl implements Machine {
         devices[0] = memory;
         devices[1] = deviceTreeMemory;
         devices[2] = new CLINT(this,
-                               0x20000000L,
-                               0x20010000L,
+                               0x02000000L,
+                               0x02010000L,
                                hartCount);
         devices[3] = new PLIC(this,
-                              0xC0000000L,
-                              0xC4000000L,
+                              0x0C000000L,
+                              0x10000000L,
                               hartCount,
                               32);
         devices[4] = new UART(this,
@@ -97,15 +92,17 @@ public final class MachineImpl implements Machine {
         }
 
         for (int j = 0; j < devices.length; ++j) {
+            final var b = devices[j];
             for (int i = j + 1; i < devices.length; ++i) {
-                if (devices[i].begin() < devices[j].end() && devices[j].begin() < devices[i].end()) {
+                final var a = devices[i];
+                if (a.begin() < b.end() && b.begin() < a.end()) {
                     Log.warn("device map overlap: %s [%08x;%08x] and %s [%08x;%08x]",
-                             devices[j],
-                             devices[j].begin(),
-                             devices[j].end(),
-                             devices[i],
-                             devices[i].begin(),
-                             devices[i].end());
+                             b,
+                             b.begin(),
+                             b.end(),
+                             a,
+                             a.begin(),
+                             a.end());
                 }
             }
         }
@@ -119,8 +116,8 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public @NotNull MMU mmu() {
-        return mmu;
+    public @NotNull Memory memory() {
+        return memory;
     }
 
     @Override
@@ -171,6 +168,11 @@ public final class MachineImpl implements Machine {
                 consumer.accept(type.cast(device));
             }
         }
+    }
+
+    @Override
+    public @NotNull Machine machine() {
+        return this;
     }
 
     @Override
@@ -380,64 +382,6 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public int fetch(final int hartid, final long pc, final boolean unsafe) {
-        var ppc = mmu.translate(hartid, pc, ACCESS_FETCH, harts[hartid].privilege(), unsafe);
-
-        if (ppc != pc) {
-            Log.info("virtual address %016x -> physical address %016x", pc, ppc);
-        }
-
-        if (unsafe && ppc == ~0L) {
-            Log.warn("fetch invalid virtual address: pc=%x", pc);
-            return 0;
-        }
-
-        if (memory.begin() <= ppc && ppc + 4 <= memory.end()) {
-            final var offset = (int) (ppc - memory.begin());
-            return (int) memory.read(offset, 4);
-        }
-
-        if (unsafe) {
-            Log.warn("fetch invalid address: pc=%x", ppc);
-            return 0;
-        }
-
-        throw new TrapException(0x01, ppc, "fetch invalid address: pc=%x", ppc);
-    }
-
-    @Override
-    public long read(final int hartid, final long vaddr, final int size, final boolean unsafe) {
-        final var paddr = mmu.translate(hartid, vaddr, ACCESS_READ, harts[hartid].privilege(), unsafe);
-
-        if (paddr != vaddr) {
-            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr);
-        }
-
-        if (unsafe && paddr == ~0L) {
-            Log.warn("read invalid virtual address: address=%x, size=%d", vaddr, size);
-            return 0L;
-        }
-
-        return pRead(paddr, size, unsafe);
-    }
-
-    @Override
-    public void write(final int hartid, final long vaddr, final int size, final long value, final boolean unsafe) {
-        final var paddr = mmu.translate(hartid, vaddr, ACCESS_WRITE, harts[hartid].privilege(), unsafe);
-
-        if (paddr != vaddr) {
-            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr);
-        }
-
-        if (unsafe && paddr == ~0L) {
-            Log.warn("write invalid virtual address: address=%x, size=%d, value=%x", vaddr, size, value);
-            return;
-        }
-
-        pWrite(paddr, size, value, unsafe);
-    }
-
-    @Override
     public long pRead(final long paddr, final int size, final boolean unsafe) {
         for (final var device : devices) {
             if (device.begin() <= paddr && paddr + size <= device.end()) {
@@ -450,7 +394,7 @@ public final class MachineImpl implements Machine {
             return 0L;
         }
 
-        throw new TrapException(0x05, paddr, "read invalid address: address=%x, size=%d", paddr, size);
+        throw new TrapException(0x05L, paddr, "read invalid address: address=%x, size=%d", paddr, size);
     }
 
     @Override
@@ -467,29 +411,9 @@ public final class MachineImpl implements Machine {
             return;
         }
 
-        throw new TrapException(0x07, paddr,
+        throw new TrapException(0x07L, paddr,
                                 "write invalid address: address=%x, size=%d, value=%x",
                                 paddr, size, value);
-    }
-
-    @Override
-    public void direct(int hartid, byte @NotNull [] data, long vaddr, boolean write) {
-        final var paddr = mmu.translate(hartid,
-                                        vaddr,
-                                        write ? ACCESS_WRITE : ACCESS_READ,
-                                        harts[hartid].privilege(),
-                                        true);
-
-        if (paddr != vaddr) {
-            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr);
-        }
-
-        if (paddr == ~0L) {
-            Log.warn("direct read/write invalid virtual address: address=%x, length=%d", vaddr, data.length);
-            return;
-        }
-
-        pDirect(data, paddr, write);
     }
 
     @Override

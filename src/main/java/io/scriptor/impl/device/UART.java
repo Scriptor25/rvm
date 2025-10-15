@@ -237,6 +237,11 @@ public final class UART implements IODevice {
     }
 
     @Override
+    public @NotNull Machine machine() {
+        return machine;
+    }
+
+    @Override
     public void dump(final @NotNull PrintStream out) {
     }
 

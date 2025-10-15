@@ -19,11 +19,14 @@ import static io.scriptor.util.ByteUtil.signExtend;
 public final class HartImpl implements Hart {
 
     private final Machine machine;
+
     private final int id;
 
-    private final GeneralPurposeRegisterFile gprFile = new GeneralPurposeRegisterFileImpl();
-    private final FloatingPointRegisterFile fprFile = new FloatingPointRegisterFileImpl();
-    private final ControlStatusRegisterFile csrFile = new ControlStatusRegisterFileImpl();
+    private final MMU mmu;
+
+    private final GeneralPurposeRegisterFile gprFile;
+    private final FloatingPointRegisterFile fprFile;
+    private final ControlStatusRegisterFile csrFile;
 
     private long pc;
     private int priv;
@@ -32,7 +35,14 @@ public final class HartImpl implements Hart {
 
     public HartImpl(final @NotNull Machine machine, final int id) {
         this.machine = machine;
+
         this.id = id;
+
+        this.mmu = new MMU(this);
+
+        this.gprFile = new GeneralPurposeRegisterFileImpl(machine);
+        this.fprFile = new FloatingPointRegisterFileImpl(machine);
+        this.csrFile = new ControlStatusRegisterFileImpl(machine);
     }
 
     private void printStackTrace(final @NotNull PrintStream out) {
@@ -50,8 +60,8 @@ public final class HartImpl implements Hart {
             final var symbol = machine.symbols().resolve(ra);
             out.printf(" %016x : %s%n", ra, symbol);
 
-            final var prev_fp = machine.read(id, fp, 8, true);
-            final var prev_ra = machine.read(id, fp + 8L, 8, true);
+            final var prev_fp = read(fp, 8, true);
+            final var prev_ra = read(fp + 8L, 8, true);
 
             fp = prev_fp;
             ra = prev_ra;
@@ -59,9 +69,14 @@ public final class HartImpl implements Hart {
     }
 
     @Override
+    public @NotNull Machine machine() {
+        return machine;
+    }
+
+    @Override
     public void dump(final @NotNull PrintStream out) {
 
-        final var instruction = machine.fetch(id, pc, true);
+        final var instruction = fetch(pc, true);
         out.printf("pc=%016x, instruction=%08x%n", pc, instruction);
 
         if (Registry.has(64, instruction)) {
@@ -97,10 +112,10 @@ public final class HartImpl implements Hart {
         final var sp = gprFile.getd(0x2);
         out.printf("stack (sp=%016x):%n", sp);
         for (long offset = -0x10; offset <= 0x10; offset += 0x8) {
-            final var address = sp + offset;
-            final var value   = machine.read(id, address, 8, true);
+            final var vaddr = sp + offset;
+            final var value = read(vaddr, 8, true);
 
-            out.printf("%016x : %016x%n", address, value);
+            out.printf("%016x : %016x%n", vaddr, value);
         }
 
         printStackTrace(out);
@@ -250,13 +265,13 @@ public final class HartImpl implements Hart {
     @Override
     public void step() {
         try {
-            final var instruction = machine.fetch(id, pc, false);
+            final var instruction = fetch(pc, false);
             final var definition  = Registry.get(64, instruction);
             pc = execute(instruction, definition);
         } catch (final TrapException e) {
             Log.error(e.getMessage());
             if (handle(e.getTrapCause(), e.getTrapValue())) {
-                throw new IllegalStateException();
+                throw new IllegalStateException(e);
             }
             machine.trap(id);
         }
@@ -373,31 +388,31 @@ public final class HartImpl implements Hart {
                     switch ((int) sysnum) {
                         case SEMIHOSTING_SYSOPEN -> {
                             // open file
-                            final var fname = machine.lstring(id, machine.ld(id, params));
-                            final var mode  = machine.ld(id, params + 0x08L);
-                            final var len   = machine.ld(id, params + 0x10L);
+                            final var fname = lstring(ld(params));
+                            final var mode  = ld(params + 0x08L);
+                            final var len   = ld(params + 0x10L);
 
                             gprFile.putd(0x0A, fopen(machine, fname, mode, len));
                         }
                         case SEMIHOSTING_SYSWRITEC -> {
                             // write character stdout
-                            final var ch = machine.lb(id, params);
+                            final var ch = lb(params);
 
                             System.out.write((byte) ch);
                         }
                         case SEMIHOSTING_SYSWRITE -> {
                             // write buffer fd
-                            final var fd   = machine.ld(id, params);
-                            final var memp = machine.ld(id, params + 0x08L);
-                            final var len  = machine.ld(id, params + 0x16L);
+                            final var fd   = ld(params);
+                            final var memp = ld(params + 0x08L);
+                            final var len  = ld(params + 0x16L);
 
                             gprFile.putd(0x0A, fwrite(machine, fd, memp, len));
                         }
                         case SEMIHOSTING_SYSREAD -> {
                             // read buffer fd
-                            final var fd   = machine.ld(id, params);
-                            final var memp = machine.ld(id, params + 0x08L);
-                            final var len  = machine.ld(id, params + 0x16L);
+                            final var fd   = ld(params);
+                            final var memp = ld(params + 0x08L);
+                            final var len  = ld(params + 0x16L);
 
                             gprFile.putd(0x0A, fread(machine, fd, memp, len));
                         }
@@ -427,14 +442,14 @@ public final class HartImpl implements Hart {
                     break;
                 }
 
-                throw new TrapException(0x03, pc, "breakpoint instruction");
+                throw new TrapException(0x03L, pc, "breakpoint instruction");
             }
 
             case "ecall" -> {
                 switch (priv) {
-                    case CSR_M -> throw new TrapException(0x0B, 0, "environment call from machine mode");
-                    case CSR_S -> throw new TrapException(0x09, 0, "environment call from supervisor mode");
-                    case CSR_U -> throw new TrapException(0x08, 0, "environment call from user mode");
+                    case CSR_M -> throw new TrapException(0x0BL, 0, "environment call from machine mode");
+                    case CSR_S -> throw new TrapException(0x09L, 0, "environment call from supervisor mode");
+                    case CSR_U -> throw new TrapException(0x08L, 0, "environment call from user mode");
                     default -> throw new IllegalStateException();
                 }
             }
@@ -878,9 +893,9 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                gprFile.putd(rd, machine.lb(id, address));
+                gprFile.putd(rd, lb(vaddr));
             }
             case "lh" -> {
                 definition.decode(instruction, values, "rd", "rs1", "imm");
@@ -889,9 +904,9 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                gprFile.putd(rd, machine.lh(id, address));
+                gprFile.putd(rd, lh(vaddr));
             }
             case "lw" -> {
                 definition.decode(instruction, values, "rd", "rs1", "imm");
@@ -900,9 +915,9 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                gprFile.putd(rd, machine.lw(id, address));
+                gprFile.putd(rd, lw(vaddr));
             }
             case "ld" -> {
                 definition.decode(instruction, values, "rd", "rs1", "imm");
@@ -911,9 +926,9 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                gprFile.putd(rd, machine.ld(id, address));
+                gprFile.putd(rd, ld(vaddr));
             }
             case "lbu" -> {
                 definition.decode(instruction, values, "rd", "rs1", "imm");
@@ -922,9 +937,9 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                gprFile.putd(rd, machine.lbu(id, address));
+                gprFile.putd(rd, lbu(vaddr));
             }
             case "lhu" -> {
                 definition.decode(instruction, values, "rd", "rs1", "imm");
@@ -933,9 +948,9 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                gprFile.putd(rd, machine.lhu(id, address));
+                gprFile.putd(rd, lhu(vaddr));
             }
             case "lwu" -> {
                 definition.decode(instruction, values, "rd", "rs1", "imm");
@@ -944,9 +959,9 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                gprFile.putd(rd, machine.lwu(id, address));
+                gprFile.putd(rd, lwu(vaddr));
             }
 
             case "sb" -> {
@@ -956,9 +971,9 @@ public final class HartImpl implements Hart {
                 final var rs2 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                machine.sb(id, address, (byte) gprFile.getd(rs2));
+                sb(vaddr, (byte) gprFile.getd(rs2));
             }
             case "sh" -> {
                 definition.decode(instruction, values, "rs1", "rs2", "imm");
@@ -967,9 +982,9 @@ public final class HartImpl implements Hart {
                 final var rs2 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                machine.sh(id, address, (short) gprFile.getd(rs2));
+                sh(vaddr, (short) gprFile.getd(rs2));
             }
             case "sw" -> {
                 definition.decode(instruction, values, "rs1", "rs2", "imm");
@@ -978,9 +993,9 @@ public final class HartImpl implements Hart {
                 final var rs2 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                machine.sw(id, address, gprFile.getw(rs2));
+                sw(vaddr, gprFile.getw(rs2));
             }
             case "sd" -> {
                 definition.decode(instruction, values, "rs1", "rs2", "imm");
@@ -989,9 +1004,9 @@ public final class HartImpl implements Hart {
                 final var rs2 = values[1];
                 final var imm = values[2];
 
-                final var address = gprFile.getd(rs1) + signExtend(imm, 12);
+                final var vaddr = gprFile.getd(rs1) + signExtend(imm, 12);
 
-                machine.sd(id, address, gprFile.getd(rs2));
+                sd(vaddr, gprFile.getd(rs2));
             }
 
             case "mul" -> {
@@ -1184,7 +1199,7 @@ public final class HartImpl implements Hart {
                 final var rd  = values[0];
                 final var rs1 = values[1];
 
-                final var value = machine.lw(id, gprFile.getd(rs1));
+                final var value = lw(gprFile.getd(rs1));
                 gprFile.putd(rd, value);
 
                 // TODO: reservation
@@ -1196,7 +1211,7 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                machine.sw(id, gprFile.getd(rs1), gprFile.getw(rs2));
+                sw(gprFile.getd(rs1), gprFile.getw(rs2));
                 gprFile.putd(rd, 0L);
 
                 // TODO: reservation
@@ -1207,7 +1222,7 @@ public final class HartImpl implements Hart {
                 final var rd  = values[0];
                 final var rs1 = values[1];
 
-                final var value = machine.ld(id, gprFile.getd(rs1));
+                final var value = ld(gprFile.getd(rs1));
                 gprFile.putd(rd, value);
 
                 // TODO: reservation
@@ -1219,7 +1234,7 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                machine.sd(id, gprFile.getd(rs1), gprFile.getd(rs2));
+                sd(gprFile.getd(rs1), gprFile.getd(rs2));
                 gprFile.putd(rd, 0L);
 
                 // TODO: reservation
@@ -1231,14 +1246,16 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                final var address = gprFile.getd(rs1);
-                final var aligned = address & ~0x3L;
+                final var vaddr = gprFile.getd(rs1);
+                if ((vaddr & 0x3L) != 0L) {
+                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                }
 
                 final int value;
-                synchronized (machine.acquireLock(aligned)) {
+                synchronized (machine.acquireLock(vaddr)) {
                     final var source = gprFile.getw(rs2);
-                    value = (int) machine.lw(id, aligned);
-                    machine.sw(id, aligned, source);
+                    value = (int) lw(vaddr);
+                    sw(vaddr, source);
                 }
 
                 gprFile.putw(rd, value);
@@ -1250,14 +1267,16 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                final var address = gprFile.getd(rs1);
-                final var aligned = address & ~0x7L;
+                final var vaddr = gprFile.getd(rs1);
+                if ((vaddr & 0x7L) != 0L) {
+                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                }
 
                 final long value;
-                synchronized (machine.acquireLock(aligned)) {
+                synchronized (machine.acquireLock(vaddr)) {
                     final var source = gprFile.getd(rs2);
-                    value = machine.ld(id, aligned);
-                    machine.sd(id, aligned, source);
+                    value = ld(vaddr);
+                    sd(vaddr, source);
                 }
 
                 gprFile.putd(rd, value);
@@ -1269,14 +1288,16 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                final var address = gprFile.getd(rs1);
-                final var aligned = address & ~0x3L;
+                final var vaddr = gprFile.getd(rs1);
+                if ((vaddr & 0x3L) != 0L) {
+                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                }
 
                 final int value;
-                synchronized (machine.acquireLock(aligned)) {
+                synchronized (machine.acquireLock(vaddr)) {
                     final var source = gprFile.getw(rs2);
-                    value = (int) machine.lw(id, aligned);
-                    machine.sw(id, aligned, value + source);
+                    value = (int) lw(vaddr);
+                    sw(vaddr, value + source);
                 }
 
                 gprFile.putw(rd, value);
@@ -1288,14 +1309,16 @@ public final class HartImpl implements Hart {
                 final var rs1 = values[1];
                 final var rs2 = values[2];
 
-                final var address = gprFile.getd(rs1);
-                final var aligned = address & ~0x7L;
+                final var vaddr = gprFile.getd(rs1);
+                if ((vaddr & 0x7L) != 0L) {
+                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                }
 
                 final long value;
-                synchronized (machine.acquireLock(aligned)) {
+                synchronized (machine.acquireLock(vaddr)) {
                     final var source = gprFile.getd(rs2);
-                    value = machine.ld(id, aligned);
-                    machine.sd(id, aligned, value + source);
+                    value = ld(vaddr);
+                    sd(vaddr, value + source);
                 }
 
                 gprFile.putd(rd, value);
@@ -1414,9 +1437,9 @@ public final class HartImpl implements Hart {
                 final var rd   = values[0];
                 final var uimm = values[1];
 
-                final var address = gprFile.getd(0x2) + uimm;
+                final var vaddr = gprFile.getd(0x2) + uimm;
 
-                gprFile.putd(rd, machine.lw(id, address));
+                gprFile.putd(rd, lw(vaddr));
             }
             case "c.ldsp" -> {
                 definition.decode(instruction, values, "rd", "uimm");
@@ -1424,9 +1447,9 @@ public final class HartImpl implements Hart {
                 final var rd   = values[0];
                 final var uimm = values[1];
 
-                final var address = gprFile.getd(0x2) + uimm;
+                final var vaddr = gprFile.getd(0x2) + uimm;
 
-                gprFile.putd(rd, machine.ld(id, address));
+                gprFile.putd(rd, ld(vaddr));
             }
             case "c.jr" -> {
                 definition.decode(instruction, values, "rs1");
@@ -1460,9 +1483,9 @@ public final class HartImpl implements Hart {
                 final var rs2  = values[0];
                 final var uimm = values[1];
 
-                final var address = gprFile.getd(0x2) + uimm;
+                final var vaddr = gprFile.getd(0x2) + uimm;
 
-                machine.sd(id, address, gprFile.getd(rs2));
+                sd(vaddr, gprFile.getd(rs2));
             }
             case "c.or" -> {
                 definition.decode(instruction, values, "rdp", "rs1p", "rs2p");
@@ -1480,9 +1503,9 @@ public final class HartImpl implements Hart {
                 final var rs1  = values[1] + 0x8;
                 final var uimm = values[2];
 
-                final var address = gprFile.getd(rs1) + uimm;
+                final var vaddr = gprFile.getd(rs1) + uimm;
 
-                gprFile.putd(rd, machine.lw(id, address));
+                gprFile.putd(rd, lw(vaddr));
             }
             case "c.ld" -> {
                 definition.decode(instruction, values, "rdp", "rs1p", "uimm");
@@ -1491,9 +1514,9 @@ public final class HartImpl implements Hart {
                 final var rs1  = values[1] + 0x8;
                 final var uimm = values[2];
 
-                final var address = gprFile.getd(rs1) + uimm;
+                final var vaddr = gprFile.getd(rs1) + uimm;
 
-                gprFile.putd(rd, machine.ld(id, address));
+                gprFile.putd(rd, ld(vaddr));
             }
             case "c.sw" -> {
                 definition.decode(instruction, values, "rs1p", "rs2p", "uimm");
@@ -1502,9 +1525,9 @@ public final class HartImpl implements Hart {
                 final var rs2  = values[1] + 0x8;
                 final var uimm = values[2];
 
-                final var address = gprFile.getd(rs1) + uimm;
+                final var vaddr = gprFile.getd(rs1) + uimm;
 
-                machine.sw(id, address, gprFile.getw(rs2));
+                sw(vaddr, gprFile.getw(rs2));
             }
             case "c.sd" -> {
                 definition.decode(instruction, values, "rs1p", "rs2p", "uimm");
@@ -1513,9 +1536,9 @@ public final class HartImpl implements Hart {
                 final var rs2  = values[1] + 0x8;
                 final var uimm = values[2];
 
-                final var address = gprFile.getd(rs1) + uimm;
+                final var vaddr = gprFile.getd(rs1) + uimm;
 
-                machine.sd(id, address, gprFile.getd(rs2));
+                sd(vaddr, gprFile.getd(rs2));
             }
             case "c.fld" -> {
                 definition.decode(instruction, values, "rdp", "rs1p", "uimm");
@@ -1524,9 +1547,9 @@ public final class HartImpl implements Hart {
                 final var rs1  = values[1] + 0x8;
                 final var uimm = values[2];
 
-                final var address = gprFile.getd(rs1) + uimm;
+                final var vaddr = gprFile.getd(rs1) + uimm;
 
-                fprFile.putdr(rd, machine.ld(id, address));
+                fprFile.putdr(rd, ld(vaddr));
             }
 
             case "c.addw" -> {
@@ -1591,7 +1614,7 @@ public final class HartImpl implements Hart {
                     break;
                 }
 
-                throw new TrapException(0x03, pc, "breakpoint instruction");
+                throw new TrapException(0x03L, pc, "breakpoint instruction");
             }
             case "c.fldsp" -> {
                 definition.decode(instruction, values, "rd", "uimm");
@@ -1599,9 +1622,9 @@ public final class HartImpl implements Hart {
                 final var rd   = values[0];
                 final var uimm = values[1];
 
-                final var address = gprFile.getd(0x2) + uimm;
+                final var vaddr = gprFile.getd(0x2) + uimm;
 
-                fprFile.putdr(rd, machine.ld(id, address));
+                fprFile.putdr(rd, ld(vaddr));
             }
 
             case "fmv.w.x" -> {
@@ -1630,10 +1653,10 @@ public final class HartImpl implements Hart {
                 final var vaddr = gprFile.getd(rs1);
                 final var asid  = gprFile.getd(rs2);
 
-                machine.mmu().flush(id, vaddr, asid);
+                mmu.flush(vaddr, asid);
             }
 
-            default -> throw new TrapException(0x02, instruction, "unsupported instruction %s", definition);
+            default -> throw new TrapException(0x02L, instruction, "unsupported instruction %s", definition);
         }
 
         return next;
@@ -1677,5 +1700,10 @@ public final class HartImpl implements Hart {
     @Override
     public @NotNull ControlStatusRegisterFile csrFile() {
         return csrFile;
+    }
+
+    @Override
+    public long translate(final long vaddr, @NotNull MMU.Access access, boolean unsafe) {
+        return mmu.translate(priv, vaddr, access, unsafe);
     }
 }

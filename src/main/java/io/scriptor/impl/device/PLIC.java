@@ -50,6 +50,11 @@ public final class PLIC implements IODevice {
     }
 
     @Override
+    public @NotNull Machine machine() {
+        return machine;
+    }
+
+    @Override
     public void dump(final @NotNull PrintStream out) {
         out.println("plic:");
         out.println(" - priority:");

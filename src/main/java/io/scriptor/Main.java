@@ -102,7 +102,7 @@ public final class Main {
         machine.entry(entry);
 
         context.getAll("--load", val -> {
-            final var parts    = val.split(":");
+            final var parts    = val.split("=");
             final var filename = parts[0];
             final var offset   = parts.length == 2 ? Long.parseUnsignedLong(parts[1], 0x10) : 0L;
             load(machine, filename, offset);
