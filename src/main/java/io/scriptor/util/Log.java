@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 
 public final class Log {
 
-    private static final int LEVEL = 2;
+    private static final int LEVEL = 0;
 
     private static final BlockingQueue<Consumer<PrintStream>> queue = new LinkedBlockingQueue<>();
     private static final Consumer<PrintStream> SHUTDOWN = out -> {

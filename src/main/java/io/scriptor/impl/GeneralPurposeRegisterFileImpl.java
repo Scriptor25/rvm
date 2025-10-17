@@ -1,6 +1,7 @@
 package io.scriptor.impl;
 
 import io.scriptor.machine.GeneralPurposeRegisterFile;
+import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
 import org.jetbrains.annotations.NotNull;
 
@@ -9,16 +10,16 @@ import java.util.Arrays;
 
 public final class GeneralPurposeRegisterFileImpl implements GeneralPurposeRegisterFile {
 
-    private final Machine machine;
+    private final Hart hart;
     private final long[] values = new long[32];
 
-    public GeneralPurposeRegisterFileImpl(final @NotNull Machine machine) {
-        this.machine = machine;
+    public GeneralPurposeRegisterFileImpl(final @NotNull Hart hart) {
+        this.hart = hart;
     }
 
     @Override
     public @NotNull Machine machine() {
-        return machine;
+        return hart.machine();
     }
 
     @Override

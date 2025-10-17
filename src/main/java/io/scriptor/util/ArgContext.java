@@ -8,7 +8,7 @@ import java.util.function.*;
 public class ArgContext {
 
     private static final Set<String> flags = Set.of("--debug");
-    private static final Set<String> options = Set.of("--memory", "--order", "--harts", "--load", "--entry");
+    private static final Set<String> options = Set.of("--memory", "--order", "--harts", "--load", "--entry", "--port");
 
     private final Map<String, List<String>> values = new HashMap<>();
 

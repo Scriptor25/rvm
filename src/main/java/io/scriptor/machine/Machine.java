@@ -40,10 +40,6 @@ public interface Machine extends Device {
 
     boolean breakpoint(int id);
 
-    void onTrap(@NotNull IntConsumer handler);
-
-    void trap(int id);
-
     @NotNull Object acquireLock(long address);
 
     void entry(long entry);

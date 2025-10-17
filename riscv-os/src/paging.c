@@ -69,7 +69,7 @@ void sv39_map_page(uint64_t* root, uint64_t vaddr, uint64_t paddr, uint64_t flag
 
     if (pg2[vpn0] & PTE_V)
     {
-        kprintf("re-mapping aready mapped page at vaddr=%x, pte=%x\r\n", vaddr, pg2[vpn0]);
+        kprintf("re-mapping aready mapped page at vaddr=%llx, pte=%llx\r\n", vaddr, pg2[vpn0]);
     }
 
     ppn = PPN(paddr);

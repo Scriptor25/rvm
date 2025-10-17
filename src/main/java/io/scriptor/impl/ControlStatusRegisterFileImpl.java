@@ -5,6 +5,7 @@ import com.carrotsearch.hppc.IntObjectMap;
 import com.carrotsearch.hppc.ObjectArrayList;
 import io.scriptor.machine.ControlStatusRegisterFile;
 import io.scriptor.machine.ControlStatusRegisterMeta;
+import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
@@ -19,19 +20,19 @@ import static io.scriptor.isa.CSR.unprivileged;
 
 public final class ControlStatusRegisterFileImpl implements ControlStatusRegisterFile {
 
-    private final Machine machine;
+    private final Hart hart;
     private final IntObjectMap<ControlStatusRegisterMeta> metadata = new IntObjectHashMap<>();
 
     private final long[] values = new long[0x1000];
     private final boolean[] present = new boolean[0x1000];
 
-    public ControlStatusRegisterFileImpl(final @NotNull Machine machine) {
-        this.machine = machine;
+    public ControlStatusRegisterFileImpl(final @NotNull Hart hart) {
+        this.hart = hart;
     }
 
     @Override
     public @NotNull Machine machine() {
-        return machine;
+        return hart.machine();
     }
 
     @Override
@@ -173,11 +174,11 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public long getd(int addr, final int priv) {
         if (!present[addr]) {
-            throw new TrapException(0x02L, addr, "read csr addr=%03x, priv=%x: not present", addr, priv);
+            throw new TrapException(hart.id(), 0x02L, addr, "read csr addr=%03x, priv=%x: not present", addr, priv);
         }
 
         if (unprivileged(addr, priv)) {
-            throw new TrapException(0x02L, addr, "read csr addr=%03x, priv=%x: unprivileged", addr, priv);
+            throw new TrapException(hart.id(), 0x02L, addr, "read csr addr=%03x, priv=%x: unprivileged", addr, priv);
         }
 
         final var meta = metadata.get(addr);
@@ -196,7 +197,7 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
         }
 
         if (!present[addr]) {
-            throw new TrapException(0x02L, addr, "subsequent read csr addr=%03x: not present", addr);
+            throw new TrapException(hart.id(), 0x02L, addr, "subsequent read csr addr=%03x: not present", addr);
         }
 
         final var value = values[addr] & mask;
@@ -219,7 +220,13 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void putd(int addr, final int priv, final long val) {
         if (!present[addr]) {
-            throw new TrapException(0x02L, addr, "write csr addr=%03x, priv=%x, val=%x: not present", addr, priv, val);
+            throw new TrapException(hart.id(),
+                                    0x02L,
+                                    addr,
+                                    "write csr addr=%03x, priv=%x, val=%x: not present",
+                                    addr,
+                                    priv,
+                                    val);
         }
 
         if (unprivileged(addr, priv)) {
@@ -228,7 +235,13 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
         }
 
         if (readonly(addr)) {
-            throw new TrapException(0x02L, addr, "write csr addr=%03x, priv=%x, val=%x: read-only", addr, priv, val);
+            throw new TrapException(hart.id(),
+                                    0x02L,
+                                    addr,
+                                    "write csr addr=%03x, priv=%x, val=%x: read-only",
+                                    addr,
+                                    priv,
+                                    val);
         }
 
         final var meta = metadata.get(addr);
@@ -236,7 +249,13 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
 
         if (meta.get() != null) {
             if (meta.set() == null) {
-                throw new TrapException(0x02L, addr, "write csr addr=%03x, priv=%x, val=%x: read-only", addr, priv, val);
+                throw new TrapException(hart.id(),
+                                        0x02L,
+                                        addr,
+                                        "write csr addr=%03x, priv=%x, val=%x: read-only",
+                                        addr,
+                                        priv,
+                                        val);
             }
             final var value = val & mask;
             for (final var hook : meta.setHooks()) {
@@ -251,7 +270,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
         }
 
         if (!present[addr]) {
-            throw new TrapException(0x02L, addr, "subsequent write csr addr=%03x, val=%x: not present", addr, val);
+            throw new TrapException(hart.id(),
+                                    0x02L,
+                                    addr,
+                                    "subsequent write csr addr=%03x, val=%x: not present",
+                                    addr,
+                                    val);
         }
 
         final var value = (values[addr] & ~mask) | (val & mask);

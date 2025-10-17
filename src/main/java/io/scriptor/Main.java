@@ -8,6 +8,7 @@ import io.scriptor.elf.ProgramHeader;
 import io.scriptor.elf.SectionHeader;
 import io.scriptor.gdb.GDBServer;
 import io.scriptor.impl.MachineImpl;
+import io.scriptor.impl.TrapException;
 import io.scriptor.impl.device.Memory;
 import io.scriptor.isa.Registry;
 import io.scriptor.machine.Machine;
@@ -115,9 +116,10 @@ public final class Main {
         machine.reset();
 
         final var debug = context.has("--debug");
+        final var port  = context.getInt("--port", Integer::parseUnsignedInt, () -> 1234);
 
         if (debug) {
-            try (final var gdb = new GDBServer(machine, 1234)) {
+            try (final var gdb = new GDBServer(machine, port)) {
                 while (gdb.step()) {
                     try {
                         machine.step();
@@ -126,7 +128,9 @@ public final class Main {
                         Log.inject(machine::dump);
                         Log.error("machine exception: %s", e);
 
-                        gdb.stop(-1, 0x00);
+                        if (e instanceof TrapException trap) {
+                            gdb.stop(trap.getId(), 0x05);
+                        }
                     }
                 }
             } catch (final IOException e) {

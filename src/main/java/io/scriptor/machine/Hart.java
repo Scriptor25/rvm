@@ -26,6 +26,8 @@ public interface Hart extends Device {
 
     void wake();
 
+    int id();
+
     long pc();
 
     void pc(final long pc);
@@ -123,7 +125,7 @@ public interface Hart extends Device {
             return (int) (machine().memory().read((int) (paddr - machine().memory().begin()), 4) & 0xFFFFFFFFL);
         }
 
-        throw new TrapException(0x01L, paddr, "fetch invalid address: address=%x", paddr);
+        throw new TrapException(id(), 0x01L, paddr, "fetch invalid address: address=%x", paddr);
     }
 
     default long read(final long vaddr, final int size, final boolean unsafe) {

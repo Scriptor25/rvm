@@ -184,6 +184,8 @@ public final class MachineImpl implements Machine {
         for (final var hart : harts) {
             hart.dump(out);
         }
+
+        dump(out, 0x80007000L, 0x1000L);
     }
 
     @Override
@@ -316,18 +318,6 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public void onTrap(final @NotNull IntConsumer handler) {
-        trapHandler = handler;
-    }
-
-    @Override
-    public void trap(final int id) {
-        if (trapHandler != null) {
-            trapHandler.accept(id);
-        }
-    }
-
-    @Override
     public @NotNull Object acquireLock(final long address) {
         if (locks.containsKey(address)) {
             return locks.get(address);
@@ -394,7 +384,7 @@ public final class MachineImpl implements Machine {
             return 0L;
         }
 
-        throw new TrapException(0x05L, paddr, "read invalid address: address=%x, size=%d", paddr, size);
+        throw new TrapException(-1, 0x05L, paddr, "read invalid address: address=%x, size=%d", paddr, size);
     }
 
     @Override
@@ -411,9 +401,13 @@ public final class MachineImpl implements Machine {
             return;
         }
 
-        throw new TrapException(0x07L, paddr,
+        throw new TrapException(-1,
+                                0x07L,
+                                paddr,
                                 "write invalid address: address=%x, size=%d, value=%x",
-                                paddr, size, value);
+                                paddr,
+                                size,
+                                value);
     }
 
     @Override

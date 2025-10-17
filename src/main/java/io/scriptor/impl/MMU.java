@@ -149,6 +149,14 @@ public final class MMU {
             final long root,
             final boolean unsafe
     ) {
+        Log.info("walk(levels=%d, priv=%d, vaddr=%016x, access=%s, asid=%x, root=%x)",
+                 levels,
+                 priv,
+                 vaddr,
+                 access,
+                 asid,
+                 root);
+
         {
             final var vpn = vaddr >>> PAGE_SHIFT;
 
@@ -159,31 +167,35 @@ public final class MMU {
             if (entry != null && entry.contains(vpn)) {
                 entry.pte = touch(priv, vaddr, access, unsafe, entry.pteaddr, entry.pte);
 
-                final var pgoffset = vaddr & (entry.pgsize - 1L);
-                return entry.pgbase | pgoffset;
+                final var pgsize   = entry.pgsize;
+                final var pgbase   = entry.pgbase;
+                final var pgoffset = vaddr & (pgsize - 1L);
+                final var ptevpn   = entry.vpn;
+                final var paddr    = pgbase | pgoffset;
+
+                Log.info("   => found translation cache: pgsize=%x, pgbase=%016x, pgoffset=%03x, ptevpn=%x, paddr=%x",
+                         pgsize,
+                         pgbase,
+                         pgoffset,
+                         ptevpn,
+                         paddr);
+
+                return paddr;
             }
         }
 
         var a = root << PAGE_SHIFT;
 
-        Log.info("walk(levels=%d, priv=%x, vaddr=%x, access=%s, asid=%x, root=%x)",
-                 levels,
-                 priv,
-                 vaddr,
-                 access,
-                 asid,
-                 root);
-
         for (int i = levels - 1; i >= 0; --i) {
             final var vpn = vpn(vaddr, i);
 
-            Log.info("  i=%d, a=%x, vpn=%x", i, a, vpn);
+            Log.info("  i=%d, a=%016x, vpn=%03x", i, a, vpn);
 
             final var pteaddr = a + vpn * 8L;
 
             var pte = hart.machine().pRead(pteaddr, 8, unsafe);
 
-            Log.info("   => pteaddr=%x, pte=%016x, V=%b, R=%b, W=%b, X=%b, U=%b, G=%b, A=%b, D=%b",
+            Log.info("   => pteaddr=%016x, pte=%016x, V=%b, R=%b, W=%b, X=%b, U=%b, G=%b, A=%b, D=%b",
                      pteaddr,
                      pte,
                      pteV(pte),
@@ -226,7 +238,7 @@ public final class MMU {
 
                 add(new Entry(pteaddr, pte, ptevpn, asid, pgbase, pgsize));
 
-                Log.info("   => ppn=%x, pgsize=%x, pgbase=%x, pgoffset=%x, ptevpn=%x, paddr=%x",
+                Log.info("   => ppn=%x, pgsize=%x, pgbase=%016x, pgoffset=%03x, ptevpn=%x, paddr=%016x",
                          ppn,
                          pgsize,
                          pgbase,
@@ -337,16 +349,17 @@ public final class MMU {
             final @NotNull String message
     ) {
         if (unsafe) {
-            Log.warn("page fault (priv=%x, vaddr=%016x, access=%s): %s",
+            Log.warn("page fault (priv=%d, vaddr=%016x, access=%s): %s",
                      priv,
                      vaddr,
                      access,
                      message);
             return;
         }
-        throw new TrapException(toCause(access),
+        throw new TrapException(hart.id(),
+                                toCause(access),
                                 vaddr,
-                                "page fault (priv=%x, vaddr=%016x, access=%s): %s",
+                                "page fault (priv=%d, vaddr=%016x, access=%s): %s",
                                 priv,
                                 vaddr,
                                 access,

@@ -40,9 +40,9 @@ public final class HartImpl implements Hart {
 
         this.mmu = new MMU(this);
 
-        this.gprFile = new GeneralPurposeRegisterFileImpl(machine);
-        this.fprFile = new FloatingPointRegisterFileImpl(machine);
-        this.csrFile = new ControlStatusRegisterFileImpl(machine);
+        this.gprFile = new GeneralPurposeRegisterFileImpl(this);
+        this.fprFile = new FloatingPointRegisterFileImpl(this);
+        this.csrFile = new ControlStatusRegisterFileImpl(this);
     }
 
     private void printStackTrace(final @NotNull PrintStream out) {
@@ -269,11 +269,12 @@ public final class HartImpl implements Hart {
             final var definition  = Registry.get(64, instruction);
             pc = execute(instruction, definition);
         } catch (final TrapException e) {
-            Log.error(e.getMessage());
             if (handle(e.getTrapCause(), e.getTrapValue())) {
-                throw new IllegalStateException(e);
+                if (e.getId() < 0) {
+                    throw new TrapException(id, e);
+                }
+                throw e;
             }
-            machine.trap(id);
         }
 
         interrupt();
@@ -442,14 +443,14 @@ public final class HartImpl implements Hart {
                     break;
                 }
 
-                throw new TrapException(0x03L, pc, "breakpoint instruction");
+                throw new TrapException(id, 0x03L, pc, "breakpoint instruction");
             }
 
             case "ecall" -> {
                 switch (priv) {
-                    case CSR_M -> throw new TrapException(0x0BL, 0, "environment call from machine mode");
-                    case CSR_S -> throw new TrapException(0x09L, 0, "environment call from supervisor mode");
-                    case CSR_U -> throw new TrapException(0x08L, 0, "environment call from user mode");
+                    case CSR_M -> throw new TrapException(id, 0x0BL, 0, "environment call from machine mode");
+                    case CSR_S -> throw new TrapException(id, 0x09L, 0, "environment call from supervisor mode");
+                    case CSR_U -> throw new TrapException(id, 0x08L, 0, "environment call from user mode");
                     default -> throw new IllegalStateException();
                 }
             }
@@ -1248,7 +1249,7 @@ public final class HartImpl implements Hart {
 
                 final var vaddr = gprFile.getd(rs1);
                 if ((vaddr & 0x3L) != 0L) {
-                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                    throw new TrapException(id, 0x06L, vaddr, "misaligned atomic address %x", vaddr);
                 }
 
                 final int value;
@@ -1269,7 +1270,7 @@ public final class HartImpl implements Hart {
 
                 final var vaddr = gprFile.getd(rs1);
                 if ((vaddr & 0x7L) != 0L) {
-                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                    throw new TrapException(id, 0x06L, vaddr, "misaligned atomic address %x", vaddr);
                 }
 
                 final long value;
@@ -1290,7 +1291,7 @@ public final class HartImpl implements Hart {
 
                 final var vaddr = gprFile.getd(rs1);
                 if ((vaddr & 0x3L) != 0L) {
-                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                    throw new TrapException(id, 0x06L, vaddr, "misaligned atomic address %x", vaddr);
                 }
 
                 final int value;
@@ -1311,7 +1312,7 @@ public final class HartImpl implements Hart {
 
                 final var vaddr = gprFile.getd(rs1);
                 if ((vaddr & 0x7L) != 0L) {
-                    throw new TrapException(0x06L, vaddr, "misaligned atomic address %x", vaddr);
+                    throw new TrapException(id, 0x06L, vaddr, "misaligned atomic address %x", vaddr);
                 }
 
                 final long value;
@@ -1614,7 +1615,7 @@ public final class HartImpl implements Hart {
                     break;
                 }
 
-                throw new TrapException(0x03L, pc, "breakpoint instruction");
+                throw new TrapException(id, 0x03L, pc, "breakpoint instruction");
             }
             case "c.fldsp" -> {
                 definition.decode(instruction, values, "rd", "uimm");
@@ -1656,7 +1657,7 @@ public final class HartImpl implements Hart {
                 mmu.flush(vaddr, asid);
             }
 
-            default -> throw new TrapException(0x02L, instruction, "unsupported instruction %s", definition);
+            default -> throw new TrapException(id, 0x02L, instruction, "unsupported instruction %s", definition);
         }
 
         return next;
@@ -1670,6 +1671,11 @@ public final class HartImpl implements Hart {
     @Override
     public void wake() {
         wfi = false;
+    }
+
+    @Override
+    public int id() {
+        return id;
     }
 
     @Override

@@ -5,25 +5,25 @@ ENTRY(start);
 SECTIONS {
 	/* Include entry point at start of binary */
 	.text : ALIGN(4K) {
-		PROVIDE(__text = .);
+		__text = .;
 		*(.init);
 		*(.text);
 	}
 	.bss : ALIGN(4K) {
-		PROVIDE(__bss = .);
+		__bss = .;
 		*(.bss);
 		. += 4096;
-		PROVIDE(__stack = .);
+		__stack = .;
 		. += 4096;
-		PROVIDE(__global = .);
+		__global = .;
 	}
 	.rodata : ALIGN(4K) {
-		PROVIDE(__rodata = .);
+		__rodata = .;
 		*(.rodata);
 	}
 	.data : ALIGN(4K) {
-		PROVIDE(__data = .);
+		__data = .;
 		*(.data);
 	}
-	PROVIDE(__wilderness = .);
+	__wilderness = .;
 }

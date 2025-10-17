@@ -98,10 +98,6 @@ public class GDBServer implements Closeable {
             machine.pause();
             stop(id, 0x05);
         });
-        machine.onTrap(id -> {
-            machine.pause();
-            stop(id, 0x05);
-        });
 
         channel = ServerSocketChannel.open();
         channel.configureBlocking(false);
@@ -111,6 +107,7 @@ public class GDBServer implements Closeable {
         channel.register(selector, SelectionKey.OP_ACCEPT);
 
         Log.info("GDB listening on port %d", port);
+        Log.info("local: %s", channel.getLocalAddress());
     }
 
     public boolean step() {
