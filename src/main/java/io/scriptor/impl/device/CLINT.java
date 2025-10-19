@@ -78,7 +78,7 @@ public final class CLINT implements IODevice {
 
             final var hart = machine.hart(id);
             hart.csrFile().putd(mip, CSR_M, pending);
-            if (pending != 0 && hart.wfi()) {
+            if (pending != 0 && hart.sleeping()) {
                 hart.wake();
             }
         }

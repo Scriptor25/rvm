@@ -18,14 +18,17 @@ public interface Semihosting {
     int SEMIHOSTING_SYSOPEN_MODE_APPEND = 0x8;
 
     static long fopen(final @NotNull Machine machine, final @NotNull String fname, final long mode, final long len) {
+        // TODO
         return -1;
     }
 
     static long fread(final @NotNull Machine machine, final long fd, final long memp, final long len) {
+        // TODO
         return 0L;
     }
 
     static long fwrite(final @NotNull Machine machine, final long fd, final long memp, final long len) {
+        // TODO
         return 0L;
     }
 }

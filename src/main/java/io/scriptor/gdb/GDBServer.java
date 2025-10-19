@@ -287,9 +287,7 @@ public class GDBServer implements Closeable {
                 machine.reset();
                 yield "OK";
             }
-            case 'D' -> {
-                yield "OK";
-            }
+            case 'D' -> "OK";
             case 'g' -> {
                 final var hart    = machine.hart(gId);
                 final var gprFile = hart.gprFile();

@@ -22,7 +22,7 @@ public interface Hart extends Device {
 
     long execute(final int instruction, final Instruction definition);
 
-    boolean wfi();
+    boolean sleeping();
 
     void wake();
 
@@ -121,8 +121,10 @@ public interface Hart extends Device {
             Log.info("virtual address %016x -> physical address %016x", vaddr, paddr);
         }
 
-        if (machine().memory().begin() <= paddr && paddr + 4 <= machine().memory().end()) {
-            return (int) (machine().memory().read((int) (paddr - machine().memory().begin()), 4) & 0xFFFFFFFFL);
+        final var device = machine().device(IODevice.class, paddr);
+
+        if (device != null && device.begin() <= paddr && paddr + 4 <= device.end()) {
+            return (int) (device.read((int) (paddr - device.begin()), 4) & 0xFFFFFFFFL);
         }
 
         throw new TrapException(id(), 0x01L, paddr, "fetch invalid address: address=%x", paddr);

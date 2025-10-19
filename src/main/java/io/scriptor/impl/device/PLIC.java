@@ -187,9 +187,7 @@ public final class PLIC implements IODevice {
                 return;
             }
             switch (context) {
-                case THRESHOLD -> {
-                    threshold[hart] = (int) (value & 0x7FFFFFFFL);
-                }
+                case THRESHOLD -> threshold[hart] = (int) (value & 0x7FFFFFFFL);
                 case CLAIM -> {
                     // TODO: implement claim
                 }

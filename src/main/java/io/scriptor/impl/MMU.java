@@ -16,12 +16,12 @@ public final class MMU {
 
     private static final class Entry {
 
-        long pteaddr;
+        final long pteaddr;
         long pte;
-        long vpn;
-        long asid;
-        long pgbase;
-        long pgsize;
+        final long vpn;
+        final long asid;
+        final long pgbase;
+        final long pgsize;
 
         private Entry(
                 final long pteaddr,

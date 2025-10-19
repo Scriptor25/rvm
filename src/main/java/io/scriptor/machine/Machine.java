@@ -4,6 +4,7 @@ import io.scriptor.elf.SymbolTable;
 import io.scriptor.impl.device.Memory;
 import io.scriptor.util.ExtendedInputStream;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.PrintStream;
@@ -27,6 +28,8 @@ public interface Machine extends Device {
     <T extends Device> @NotNull T device(@NotNull Class<T> type, int index);
 
     <T extends Device> void device(@NotNull Class<T> type, final @NotNull Consumer<T> consumer);
+
+    <T extends IODevice> @Nullable T device(@NotNull Class<T> type, long address);
 
     void dump(@NotNull PrintStream out, long paddr, long length);
 

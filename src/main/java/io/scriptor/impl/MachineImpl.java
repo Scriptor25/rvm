@@ -17,6 +17,7 @@ import io.scriptor.machine.Machine;
 import io.scriptor.util.ExtendedInputStream;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.PrintStream;
@@ -168,6 +169,16 @@ public final class MachineImpl implements Machine {
                 consumer.accept(type.cast(device));
             }
         }
+    }
+
+    @Override
+    public <T extends IODevice> @Nullable T device(final @NotNull Class<T> type, final long address) {
+        for (final var device : devices) {
+            if (type.isInstance(device) && device.begin() <= address && address < device.end()) {
+                return type.cast(device);
+            }
+        }
+        return null;
     }
 
     @Override

@@ -63,8 +63,4 @@ public record Header(
               .putInt(size_dt_strings)
               .putInt(size_dt_struct);
     }
-
-    public int size() {
-        return BYTES;
-    }
 }

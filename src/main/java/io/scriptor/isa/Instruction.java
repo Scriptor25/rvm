@@ -75,6 +75,44 @@ public record Instruction(
         values[2] = decode(instruction, label2);
     }
 
+    public void decode(
+            final int instruction,
+            final int @NotNull [] values,
+            final @NotNull String label0,
+            final @NotNull String label1,
+            final @NotNull String label2,
+            final @NotNull String label3
+    ) {
+        if (values.length < 4) {
+            throw new IllegalArgumentException();
+        }
+
+        values[0] = decode(instruction, label0);
+        values[1] = decode(instruction, label1);
+        values[2] = decode(instruction, label2);
+        values[3] = decode(instruction, label3);
+    }
+
+    public void decode(
+            final int instruction,
+            final int @NotNull [] values,
+            final @NotNull String label0,
+            final @NotNull String label1,
+            final @NotNull String label2,
+            final @NotNull String label3,
+            final @NotNull String label4
+    ) {
+        if (values.length < 5) {
+            throw new IllegalArgumentException();
+        }
+
+        values[0] = decode(instruction, label0);
+        values[1] = decode(instruction, label1);
+        values[2] = decode(instruction, label2);
+        values[3] = decode(instruction, label3);
+        values[4] = decode(instruction, label4);
+    }
+
     @Override
     public @NotNull String toString() {
         return "%s [%d -> %08x & %08x] %s".formatted(mnemonic, ilen, bits, mask, Arrays.toString(operands));
