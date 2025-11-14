@@ -293,6 +293,7 @@ public final class MachineImpl implements Machine {
 
         if (once) {
             active = false;
+            breakpoint(-1);
         }
     }
 
