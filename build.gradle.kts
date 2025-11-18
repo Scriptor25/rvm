@@ -74,7 +74,7 @@ val generateResourceDescriptor by tasks.registering {
     }
 }
 
-tasks.named("jar") {
+tasks.named("compileJava") {
     dependsOn(generateResourceDescriptor)
 }
 

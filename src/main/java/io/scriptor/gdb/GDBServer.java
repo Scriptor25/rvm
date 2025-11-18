@@ -267,8 +267,7 @@ public class GDBServer implements Closeable {
         }
 
         final var packet = "$%s#%02x".formatted(payload, checksum);
-        final var buffer = ByteBuffer.wrap(packet.getBytes());
-        client.write(buffer);
+        writeRaw(client, packet);
     }
 
     private @NotNull String handle(
