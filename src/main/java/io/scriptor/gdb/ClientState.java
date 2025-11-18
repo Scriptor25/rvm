@@ -14,4 +14,7 @@ public final class ClientState {
     public int checksum;
 
     public boolean noack = false;
+
+    public int stopId = -1;
+    public int stopCode = 0x00;
 }

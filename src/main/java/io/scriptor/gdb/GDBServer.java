@@ -96,7 +96,7 @@ public class GDBServer implements Closeable {
 
         machine.onBreakpoint(id -> {
             machine.pause();
-            stop(id, 0x05);
+            stop(client, id, 0x05);
         });
 
         channel = ServerSocketChannel.open();
@@ -138,12 +138,21 @@ public class GDBServer implements Closeable {
         }
     }
 
-    public void stop(final int id, final int code) {
+    public void stop(final @NotNull SocketChannel channel, final int id, final int code) {
+        final var state = (ClientState) channel.keyFor(selector).attachment();
+        state.stopId = id;
+        state.stopCode = code;
+
+        final var payload = id < 0 ? "S%02x".formatted(code) : "T%02xcore:%x;".formatted(code, id);
         try {
-            writePacket(client, "T%02xcore:%x;".formatted(code, id));
+            writePacket(channel, payload);
         } catch (final IOException e) {
             Log.error("gdb: %s", e);
         }
+    }
+
+    public void stop(final int id, final int code) {
+        stop(client, id, code);
     }
 
     @Override
@@ -230,7 +239,7 @@ public class GDBServer implements Closeable {
         if (b == 0x03) {
             // interrupt
             machine.pause();
-            writePacket(client, "S02");
+            stop(client, -1, 0x02);
             return;
         }
 
@@ -267,14 +276,9 @@ public class GDBServer implements Closeable {
             final @NotNull ClientState state
     ) throws InterruptedException {
         return switch (payload.charAt(0)) {
-            case '?' -> {
-                // S05 -> SIGTRAP
-                // S0b -> SIGSEGV
-                // S04 -> SIGILL
-                // S09 -> SIGKILL
-                // S00 -> no signal
-                yield "S05";
-            }
+            case '?' -> state.stopId < 0
+                        ? "S%02x".formatted(state.stopCode)
+                        : "T%02xcore:%x;".formatted(state.stopCode, state.stopId);
             case 'c' -> {
                 machine.spin();
                 yield "OK";
@@ -609,8 +613,9 @@ public class GDBServer implements Closeable {
                 yield switch (type) {
                     case 0 -> {
                         if (!breakpoints.containsKey(address)) {
-                            yield "E00";
+                            yield "";
                         }
+
                         final var data = breakpoints.get(address);
                         machine.hart(gId).write(address, length, data, true);
                         breakpoints.remove(address);
@@ -664,10 +669,12 @@ public class GDBServer implements Closeable {
                                     if (stream == null) {
                                         throw new FileNotFoundException(annex);
                                     }
+
                                     final var skip = stream.skip(offset);
                                     if (skip < offset) {
                                         yield "l";
                                     }
+
                                     final var data = new byte[length];
                                     final var read = stream.read(data, 0, length);
                                     yield "%c%s".formatted(read < length ? 'l' : 'm', new String(data, 0, read));
