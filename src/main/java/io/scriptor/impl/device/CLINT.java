@@ -31,10 +31,10 @@ public final class CLINT implements IODevice {
     private final long[] mtimecmp;
     private long mtime;
 
-    public CLINT(final @NotNull Machine machine, final long begin, final long end, final int hartCount) {
+    public CLINT(final @NotNull Machine machine, final long begin, final int hartCount) {
         this.machine = machine;
         this.begin = begin;
-        this.end = end;
+        this.end = begin + 0x10000L;
         this.hartCount = hartCount;
         this.msip = new int[hartCount];
         this.mtimecmp = new long[hartCount];

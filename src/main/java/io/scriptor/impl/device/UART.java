@@ -225,13 +225,12 @@ public final class UART implements IODevice {
     public UART(
             final @NotNull Machine machine,
             final long begin,
-            final long end,
             final @NotNull InputStream in,
             final @NotNull OutputStream out
     ) {
         this.machine = machine;
         this.begin = begin;
-        this.end = end;
+        this.end = begin + 0x100L;
         this.in = in;
         this.out = out;
     }

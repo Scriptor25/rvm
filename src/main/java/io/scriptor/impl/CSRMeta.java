@@ -1,4 +1,4 @@
-package io.scriptor.machine;
+package io.scriptor.impl;
 
 import com.carrotsearch.hppc.ObjectIndexedContainer;
 import org.jetbrains.annotations.NotNull;
@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
-public record ControlStatusRegisterMeta(
+public record CSRMeta(
         long mask,
         int base,
         @Nullable LongSupplier get,

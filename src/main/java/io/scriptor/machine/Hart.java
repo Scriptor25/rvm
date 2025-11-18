@@ -39,21 +39,21 @@ public interface Hart extends Device {
      *
      * @return the gpr file
      */
-    @NotNull GeneralPurposeRegisterFile gprFile();
+    @NotNull GPRFile gprFile();
 
     /**
      * get the harts fpr file
      *
      * @return the fpr file
      */
-    @NotNull FloatingPointRegisterFile fprFile();
+    @NotNull FPRFile fprFile();
 
     /**
      * get the harts csr file
      *
      * @return the csr file
      */
-    @NotNull ControlStatusRegisterFile csrFile();
+    @NotNull CSRFile csrFile();
 
     long translate(long vaddr, @NotNull Access access, boolean unsafe);
 

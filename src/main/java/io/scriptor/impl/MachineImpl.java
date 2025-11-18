@@ -55,37 +55,15 @@ public final class MachineImpl implements Machine {
 
         memoryCapacity = ((memoryCapacity + 0b111) & ~0b111);
 
-        memory = new Memory(this,
-                            DRAM,
-                            DRAM + memoryCapacity,
-                            memoryCapacity,
-                            memoryOrder,
-                            false);
-
-        deviceTreeMemory = new Memory(this,
-                                      0x100000000L,
-                                      0x100002000L,
-                                      0x2000,
-                                      memoryOrder,
-                                      true);
+        memory = new Memory(this, DRAM, memoryCapacity, memoryOrder, false);
+        deviceTreeMemory = new Memory(this, 0x100000000L, 0x2000, memoryOrder, true);
 
         devices = new IODevice[5];
         devices[0] = memory;
         devices[1] = deviceTreeMemory;
-        devices[2] = new CLINT(this,
-                               0x02000000L,
-                               0x02010000L,
-                               hartCount);
-        devices[3] = new PLIC(this,
-                              0x0C000000L,
-                              0x10000000L,
-                              hartCount,
-                              32);
-        devices[4] = new UART(this,
-                              0x10000000L,
-                              0x10000100L,
-                              System.in,
-                              System.out);
+        devices[2] = new CLINT(this, 0x02000000L, hartCount);
+        devices[3] = new PLIC(this, 0x0C000000L, hartCount, 32);
+        devices[4] = new UART(this, 0x10000000L, System.in, System.out);
 
         harts = new Hart[hartCount];
         for (int id = 0; id < hartCount; ++id) {

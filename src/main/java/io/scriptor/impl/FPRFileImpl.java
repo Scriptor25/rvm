@@ -1,6 +1,6 @@
 package io.scriptor.impl;
 
-import io.scriptor.machine.FloatingPointRegisterFile;
+import io.scriptor.machine.FPRFile;
 import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
 import org.jetbrains.annotations.NotNull;
@@ -8,12 +8,12 @@ import org.jetbrains.annotations.NotNull;
 import java.io.PrintStream;
 import java.util.Arrays;
 
-public final class FloatingPointRegisterFileImpl implements FloatingPointRegisterFile {
+public final class FPRFileImpl implements FPRFile {
 
     private final Hart hart;
     private final long[] values = new long[32];
 
-    public FloatingPointRegisterFileImpl(final @NotNull Hart hart) {
+    public FPRFileImpl(final @NotNull Hart hart) {
         this.hart = hart;
     }
 

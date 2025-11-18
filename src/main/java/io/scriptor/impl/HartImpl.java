@@ -24,9 +24,9 @@ public final class HartImpl implements Hart {
 
     private final MMU mmu;
 
-    private final GeneralPurposeRegisterFile gprFile;
-    private final FloatingPointRegisterFile fprFile;
-    private final ControlStatusRegisterFile csrFile;
+    private final GPRFile gprFile;
+    private final FPRFile fprFile;
+    private final CSRFile csrFile;
 
     private long pc;
     private int priv;
@@ -40,9 +40,9 @@ public final class HartImpl implements Hart {
 
         this.mmu = new MMU(this);
 
-        this.gprFile = new GeneralPurposeRegisterFileImpl(this);
-        this.fprFile = new FloatingPointRegisterFileImpl(this);
-        this.csrFile = new ControlStatusRegisterFileImpl(this);
+        this.gprFile = new GPRFileImpl(this);
+        this.fprFile = new FPRFileImpl(this);
+        this.csrFile = new CSRFileImpl(this);
     }
 
     private void printStackTrace(final @NotNull PrintStream out) {
@@ -1214,17 +1214,17 @@ public final class HartImpl implements Hart {
     }
 
     @Override
-    public @NotNull GeneralPurposeRegisterFile gprFile() {
+    public @NotNull GPRFile gprFile() {
         return gprFile;
     }
 
     @Override
-    public @NotNull FloatingPointRegisterFile fprFile() {
+    public @NotNull FPRFile fprFile() {
         return fprFile;
     }
 
     @Override
-    public @NotNull ControlStatusRegisterFile csrFile() {
+    public @NotNull CSRFile csrFile() {
         return csrFile;
     }
 

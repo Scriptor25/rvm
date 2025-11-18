@@ -1,6 +1,6 @@
 package io.scriptor.machine;
 
-public interface FloatingPointRegisterFile extends Device {
+public interface FPRFile extends Device {
 
     float getf(final int reg);
 

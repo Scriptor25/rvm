@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
-public interface ControlStatusRegisterFile extends Device {
+public interface CSRFile extends Device {
 
     void define(int addr);
 

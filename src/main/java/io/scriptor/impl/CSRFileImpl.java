@@ -3,8 +3,7 @@ package io.scriptor.impl;
 import com.carrotsearch.hppc.IntObjectHashMap;
 import com.carrotsearch.hppc.IntObjectMap;
 import com.carrotsearch.hppc.ObjectArrayList;
-import io.scriptor.machine.ControlStatusRegisterFile;
-import io.scriptor.machine.ControlStatusRegisterMeta;
+import io.scriptor.machine.CSRFile;
 import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
 import io.scriptor.util.Log;
@@ -18,15 +17,15 @@ import java.util.function.LongSupplier;
 import static io.scriptor.isa.CSR.readonly;
 import static io.scriptor.isa.CSR.unprivileged;
 
-public final class ControlStatusRegisterFileImpl implements ControlStatusRegisterFile {
+public final class CSRFileImpl implements CSRFile {
 
     private final Hart hart;
-    private final IntObjectMap<ControlStatusRegisterMeta> metadata = new IntObjectHashMap<>();
+    private final IntObjectMap<CSRMeta> metadata = new IntObjectHashMap<>();
 
     private final long[] values = new long[0x1000];
     private final boolean[] present = new boolean[0x1000];
 
-    public ControlStatusRegisterFileImpl(final @NotNull Hart hart) {
+    public CSRFileImpl(final @NotNull Hart hart) {
         this.hart = hart;
     }
 
@@ -63,12 +62,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void define(final int addr) {
         metadata.put(addr,
-                     new ControlStatusRegisterMeta(~0L,
-                                                   -1,
-                                                   null,
-                                                   null,
-                                                   new ObjectArrayList<>(),
-                                                   new ObjectArrayList<>()));
+                     new CSRMeta(~0L,
+                                 -1,
+                                 null,
+                                 null,
+                                 new ObjectArrayList<>(),
+                                 new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
@@ -76,12 +75,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void define(final int addr, final long mask) {
         metadata.put(addr,
-                     new ControlStatusRegisterMeta(mask,
-                                                   -1,
-                                                   null,
-                                                   null,
-                                                   new ObjectArrayList<>(),
-                                                   new ObjectArrayList<>()));
+                     new CSRMeta(mask,
+                                 -1,
+                                 null,
+                                 null,
+                                 new ObjectArrayList<>(),
+                                 new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
@@ -89,12 +88,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void define(final int addr, final long mask, final int base) {
         metadata.put(addr,
-                     new ControlStatusRegisterMeta(mask,
-                                                   base,
-                                                   null,
-                                                   null,
-                                                   new ObjectArrayList<>(),
-                                                   new ObjectArrayList<>()));
+                     new CSRMeta(mask,
+                                 base,
+                                 null,
+                                 null,
+                                 new ObjectArrayList<>(),
+                                 new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
@@ -102,12 +101,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void define(final int addr, final long mask, final int base, final long val) {
         metadata.put(addr,
-                     new ControlStatusRegisterMeta(mask,
-                                                   base,
-                                                   null,
-                                                   null,
-                                                   new ObjectArrayList<>(),
-                                                   new ObjectArrayList<>()));
+                     new CSRMeta(mask,
+                                 base,
+                                 null,
+                                 null,
+                                 new ObjectArrayList<>(),
+                                 new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = val & mask;
     }
@@ -115,12 +114,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void defineVal(final int addr, final long val) {
         metadata.put(addr,
-                     new ControlStatusRegisterMeta(~0L,
-                                                   -1,
-                                                   null,
-                                                   null,
-                                                   new ObjectArrayList<>(),
-                                                   new ObjectArrayList<>()));
+                     new CSRMeta(~0L,
+                                 -1,
+                                 null,
+                                 null,
+                                 new ObjectArrayList<>(),
+                                 new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = val;
     }
@@ -128,12 +127,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void define(final int addr, final @NotNull LongSupplier get) {
         metadata.put(addr,
-                     new ControlStatusRegisterMeta(~0L,
-                                                   -1,
-                                                   get,
-                                                   null,
-                                                   new ObjectArrayList<>(),
-                                                   new ObjectArrayList<>()));
+                     new CSRMeta(~0L,
+                                 -1,
+                                 get,
+                                 null,
+                                 new ObjectArrayList<>(),
+                                 new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
@@ -141,12 +140,12 @@ public final class ControlStatusRegisterFileImpl implements ControlStatusRegiste
     @Override
     public void define(final int addr, final @NotNull LongSupplier get, final @NotNull LongConsumer set) {
         metadata.put(addr,
-                     new ControlStatusRegisterMeta(~0L,
-                                                   -1,
-                                                   get,
-                                                   set,
-                                                   new ObjectArrayList<>(),
-                                                   new ObjectArrayList<>()));
+                     new CSRMeta(~0L,
+                                 -1,
+                                 get,
+                                 set,
+                                 new ObjectArrayList<>(),
+                                 new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }

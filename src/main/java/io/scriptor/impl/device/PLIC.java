@@ -35,10 +35,10 @@ public final class PLIC implements IODevice {
     private final int[][] enable;
     private final int[] threshold;
 
-    public PLIC(final @NotNull Machine machine, final long begin, final long end, final int hartCount, final int ndev) {
+    public PLIC(final @NotNull Machine machine, final long begin, final int hartCount, final int ndev) {
         this.machine = machine;
         this.begin = begin;
-        this.end = end;
+        this.end = begin + 0x4000000L;
         this.hartCount = hartCount;
         this.ndev = ndev;
 

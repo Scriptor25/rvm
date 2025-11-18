@@ -1,6 +1,6 @@
 package io.scriptor.machine;
 
-public interface GeneralPurposeRegisterFile extends Device {
+public interface GPRFile extends Device {
 
     /**
      * read a 4-byte value from a general purpose register.

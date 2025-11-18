@@ -24,14 +24,13 @@ public final class Memory implements IODevice {
     public Memory(
             final @NotNull Machine machine,
             final long begin,
-            final long end,
             final int capacity,
             final @NotNull ByteOrder order,
             final boolean readonly
     ) {
         this.machine = machine;
         this.begin = begin;
-        this.end = end;
+        this.end = begin + capacity;
         this.capacity = capacity;
         this.readonly = readonly;
         this.buffer = ByteBuffer.allocateDirect(capacity).order(order);
