@@ -11,9 +11,6 @@ import org.jetbrains.annotations.NotNull;
 import java.io.PrintStream;
 import java.util.Arrays;
 
-import static io.scriptor.isa.CSR.CSR_M;
-import static io.scriptor.isa.CSR.mip;
-
 public final class CLINT implements IODevice {
 
     private static final int MSIP_BASE = 0x0000;
@@ -27,18 +24,31 @@ public final class CLINT implements IODevice {
     private final long begin;
     private final long end;
     private final int hartCount;
-    private final int[] msip;
-    private final long[] mtimecmp;
+
     private long mtime;
+
+    private final long[] mtimecmp;
+
+    /**
+     * machine-level external interrupt pending bit
+     */
+    private final boolean[] meip;
+    /**
+     * machine-level software interrupt pending bit
+     */
+    private final boolean[] msip;
 
     public CLINT(final @NotNull Machine machine, final long begin, final int hartCount) {
         this.machine = machine;
         this.begin = begin;
         this.end = begin + 0x10000L;
         this.hartCount = hartCount;
-        this.msip = new int[hartCount];
+
+        this.mtime = 0L;
         this.mtimecmp = new long[hartCount];
-        this.mtime = 0;
+
+        this.meip = new boolean[hartCount];
+        this.msip = new boolean[hartCount];
     }
 
     @Override
@@ -49,39 +59,22 @@ public final class CLINT implements IODevice {
     @Override
     public void dump(final @NotNull PrintStream out) {
         out.printf("clint: mtime=%x%n", mtime);
-        for (int i = 0; i < hartCount; ++i) {
-            out.printf("#%-2d | msip=%x mtimecmp=%x%n", i, msip[i], mtimecmp[i]);
+        for (int id = 0; id < hartCount; ++id) {
+            out.printf("#%-2d | mtimecmp=%x meip=%b msip=%b%n", id, mtimecmp[id], meip[id], msip[id]);
         }
     }
 
     @Override
     public void reset() {
-        Arrays.fill(msip, 0);
-        Arrays.fill(mtimecmp, ~0L);
-
         mtime = 0L;
+        Arrays.fill(mtimecmp, ~0L);
+        Arrays.fill(meip, false);
+        Arrays.fill(msip, false);
     }
 
     @Override
     public void step() {
-        mtime++;
-
-        for (int id = 0; id < hartCount; ++id) {
-            final var timerPending    = Long.compareUnsigned(mtime, mtimecmp[id]) >= 0;
-            final var softwarePending = msip[id] != 0L;
-
-            var pending = 0L;
-            if (timerPending)
-                pending |= (1L << 7);
-            if (softwarePending)
-                pending |= (1L << 3);
-
-            final var hart = machine.hart(id);
-            hart.csrFile().putd(mip, CSR_M, pending);
-            if (pending != 0 && hart.sleeping()) {
-                hart.wake();
-            }
-        }
+        ++mtime;
     }
 
     @Override
@@ -90,11 +83,11 @@ public final class CLINT implements IODevice {
 
         final var ie = new int[4 * hartCount];
         for (int i = 0; i < hartCount; ++i) {
-            final var cpuI = context.get(machine.hart(i));
-            ie[i << 2] = cpuI;
-            ie[(i << 2) + 1] = 0x03;
-            ie[(i << 2) + 2] = cpuI;
-            ie[(i << 2) + 3] = 0x07;
+            final var cpu = context.get(machine.hart(i));
+            ie[i * 4] = cpu;
+            ie[i * 4 + 1] = 0x03;
+            ie[i * 4 + 2] = cpu;
+            ie[i * 4 + 3] = 0x07;
         }
 
         builder.name("clint@%x".formatted(begin))
@@ -115,13 +108,13 @@ public final class CLINT implements IODevice {
     }
 
     @Override
-    public long read(final int offset, final int size) { // TODO: check size
+    public long read(final int offset, final int size) {
         if (offset >= MSIP_BASE && offset < MTIMECMP_BASE && size == 4) {
             final var hart = (offset - MSIP_BASE) / MSIP_STRIDE;
             if (hart >= hartCount) {
                 return 0L;
             }
-            return msip[hart] & 0xFFFFFFFFL;
+            return msip[hart] ? 1L : 0L;
         }
 
         if (offset >= MTIMECMP_BASE && offset < CONTEXT_BASE && size == 8) {
@@ -141,13 +134,13 @@ public final class CLINT implements IODevice {
     }
 
     @Override
-    public void write(final int offset, final int size, final long value) { // TODO: check size, check read-only
+    public void write(final int offset, final int size, final long value) {
         if (offset >= MSIP_BASE && offset < MTIMECMP_BASE && size == 4) {
             final var hart = (offset - MSIP_BASE) / MSIP_STRIDE;
             if (hart >= hartCount) {
                 return;
             }
-            msip[hart] = (int) (value & 0xFFFFFFFFL);
+            msip[hart] = value != 0L;
             return;
         }
 
@@ -168,15 +161,31 @@ public final class CLINT implements IODevice {
         return "clint@%x".formatted(begin);
     }
 
-    public void mtimecmp(final int id, final long value) {
-        mtimecmp[id] = value;
+    public long mtime() {
+        return mtime;
     }
 
     public long mtimecmp(final int id) {
         return mtimecmp[id];
     }
 
-    public long mtime() {
-        return mtime;
+    public void mtimecmp(final int id, final long value) {
+        mtimecmp[id] = value;
+    }
+
+    public boolean meip(final int id) {
+        return meip[id];
+    }
+
+    public boolean mtip(final int id) {
+        return Long.compareUnsigned(mtime, mtimecmp[id]) >= 0;
+    }
+
+    public boolean msip(final int id) {
+        return msip[id];
+    }
+
+    public void msip(final int id, final boolean value) {
+        msip[id] = value;
     }
 }

@@ -5,9 +5,12 @@ import io.scriptor.fdt.NodeBuilder;
 import io.scriptor.machine.Device;
 import io.scriptor.machine.IODevice;
 import io.scriptor.machine.Machine;
+import io.scriptor.util.ByteUtil;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -43,6 +46,7 @@ public final class Memory implements IODevice {
 
     @Override
     public void dump(final @NotNull PrintStream out) {
+        ByteUtil.dump(out, buffer);
     }
 
     @Override
@@ -53,10 +57,18 @@ public final class Memory implements IODevice {
     public void build(final @NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
         final var phandle = context.push(this);
 
-        builder.name("memory@%x".formatted(begin))
-               .prop(pb -> pb.name("phandle").data(phandle))
-               .prop(pb -> pb.name("device_type").data("memory"))
-               .prop(pb -> pb.name("reg").data(begin, end - begin));
+        if (readonly) {
+            builder.name("rom@%x".formatted(begin))
+                   .prop(pb -> pb.name("phandle").data(phandle))
+                   .prop(pb -> pb.name("reg").data(begin, end - begin))
+                   .prop(pb -> pb.name("no-map").data())
+                   .prop(pb -> pb.name("readonly").data());
+        } else {
+            builder.name("memory@%x".formatted(begin))
+                   .prop(pb -> pb.name("phandle").data(phandle))
+                   .prop(pb -> pb.name("device_type").data("memory"))
+                   .prop(pb -> pb.name("reg").data(begin, end - begin));
+        }
     }
 
     @Override
@@ -129,5 +141,11 @@ public final class Memory implements IODevice {
 
     public @NotNull ByteBuffer buffer() {
         return buffer;
+    }
+
+    public void export(final String filename) throws IOException {
+        try (final var stream = new FileOutputStream(filename)) {
+            stream.getChannel().write(buffer);
+        }
     }
 }

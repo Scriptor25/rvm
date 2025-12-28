@@ -17,9 +17,9 @@ public interface CSRFile extends Device {
 
     void defineVal(int addr, long val);
 
-    void define(int addr, @NotNull LongSupplier get);
+    void define(int addr, long mask, @NotNull LongSupplier get);
 
-    void define(int addr, @NotNull LongSupplier get, @NotNull LongConsumer set);
+    void define(int addr, long mask, @NotNull LongSupplier get, @NotNull LongConsumer set);
 
     void hookGet(int addr, @NotNull LongConsumer hook);
 

@@ -120,7 +120,7 @@ public final class Main {
 
         if (debug) {
             try (final var gdb = new GDBServer(machine, port)) {
-                while (gdb.step()) {
+                while (gdb.step())
                     try {
                         machine.step();
                     } catch (final Exception e) {
@@ -128,11 +128,9 @@ public final class Main {
                         Log.inject(machine::dump);
                         Log.error("machine exception: %s", e);
 
-                        if (e instanceof TrapException trap) {
+                        if (e instanceof TrapException trap)
                             gdb.stop(trap.getId(), 0x05);
-                        }
                     }
-                }
             } catch (final IOException e) {
                 Log.error("failed to create gdb stub: %s", e);
             }
@@ -141,9 +139,8 @@ public final class Main {
 
         try {
             machine.spin();
-            while (true) {
+            while (true)
                 machine.step();
-            }
         } catch (final Exception e) {
             machine.pause();
             Log.inject(machine::dump);
@@ -221,62 +218,6 @@ public final class Main {
             Log.error("failed to load file '%s' (offset %x): %s", filename, offset, e);
             throw new RuntimeException(e);
         }
-    }
-
-    private static void dump(final @NotNull ByteBuffer buffer) {
-
-        final var CHUNK = 0x10;
-
-        var allZero      = false;
-        var allZeroBegin = 0L;
-
-        while (buffer.hasRemaining()) {
-
-            final var begin = buffer.position();
-            final var chunk = Math.min(buffer.remaining(), CHUNK);
-
-            final var bytes = new byte[chunk];
-            buffer.get(bytes);
-
-            boolean allZeroP = true;
-            for (int j = 0; j < chunk; ++j)
-                if (bytes[j] != 0) {
-                    allZeroP = false;
-                    break;
-                }
-
-            if (allZero && !allZeroP) {
-                allZero = false;
-                System.out.printf("%08x - %08x%n", allZeroBegin, begin - 1);
-            } else if (!allZero && allZeroP) {
-                allZero = true;
-                allZeroBegin = begin;
-                continue;
-            } else if (allZero) {
-                continue;
-            }
-
-            System.out.printf("%08x |", begin);
-
-            for (int j = 0; j < chunk; ++j) {
-                System.out.printf(" %02X", bytes[j]);
-            }
-            for (int j = chunk; j < CHUNK; ++j) {
-                System.out.print(" 00");
-            }
-
-            System.out.print(" | ");
-
-            for (int j = 0; j < chunk; ++j) {
-                System.out.print(bytes[j] >= 0x20 ? (char) bytes[j] : '.');
-            }
-            for (int j = chunk; j < CHUNK; ++j) {
-                System.out.print('.');
-            }
-
-            System.out.println();
-        }
-        System.out.println("(END)");
     }
 
     private Main() {

@@ -38,19 +38,17 @@ public final class CSRFileImpl implements CSRFile {
     public void dump(final @NotNull PrintStream out) {
         int j = 0;
         for (int i = 0; i < values.length; ++i) {
-            if (!present[i]) {
+            if (!present[i])
                 continue;
-            }
 
             out.printf("%03x: %016x  ", i, values[i]);
 
-            if (++j % 4 == 0) {
+            if (++j % 4 == 0)
                 out.println();
-            }
         }
-        if (j % 4 != 0) {
+
+        if (j % 4 != 0)
             out.println();
-        }
     }
 
     @Override
@@ -125,9 +123,9 @@ public final class CSRFileImpl implements CSRFile {
     }
 
     @Override
-    public void define(final int addr, final @NotNull LongSupplier get) {
+    public void define(final int addr, long mask, final @NotNull LongSupplier get) {
         metadata.put(addr,
-                     new CSRMeta(~0L,
+                     new CSRMeta(mask,
                                  -1,
                                  get,
                                  null,
@@ -138,9 +136,9 @@ public final class CSRFileImpl implements CSRFile {
     }
 
     @Override
-    public void define(final int addr, final @NotNull LongSupplier get, final @NotNull LongConsumer set) {
+    public void define(final int addr, long mask, final @NotNull LongSupplier get, final @NotNull LongConsumer set) {
         metadata.put(addr,
-                     new CSRMeta(~0L,
+                     new CSRMeta(mask,
                                  -1,
                                  get,
                                  set,
@@ -172,37 +170,47 @@ public final class CSRFileImpl implements CSRFile {
 
     @Override
     public long getd(int addr, final int priv) {
-        if (!present[addr]) {
-            throw new TrapException(hart.id(), 0x02L, addr, "read csr addr=%03x, priv=%x: not present", addr, priv);
-        }
+        if (!present[addr])
+            throw new TrapException(hart.id(),
+                                    0x02L,
+                                    addr,
+                                    "read csr addr=%03x, priv=%x: not present",
+                                    addr,
+                                    priv);
 
-        if (unprivileged(addr, priv)) {
-            throw new TrapException(hart.id(), 0x02L, addr, "read csr addr=%03x, priv=%x: unprivileged", addr, priv);
-        }
+        if (unprivileged(addr, priv))
+            // throw new TrapException(hart.id(),
+            //                         0x02L,
+            //                         addr,
+            //                         "read csr addr=%03x, priv=%x: unprivileged",
+            //                         addr,
+            //                         priv);
+            Log.warn("read csr addr=%03x, priv=%x: unprivileged", addr, priv);
 
         final var meta = metadata.get(addr);
         final var mask = meta.mask();
 
         if (meta.get() != null) {
             final var value = meta.get().getAsLong() & mask;
-            for (final var hook : meta.getHooks()) {
+            for (final var hook : meta.getHooks())
                 hook.value.accept(value);
-            }
             return value;
         }
 
-        for (int base; present[addr] && (base = metadata.get(addr).base()) >= 0; ) {
+        for (int base; present[addr] && (base = metadata.get(addr).base()) >= 0; )
             addr = base;
-        }
 
-        if (!present[addr]) {
-            throw new TrapException(hart.id(), 0x02L, addr, "subsequent read csr addr=%03x: not present", addr);
-        }
+        if (!present[addr])
+            throw new TrapException(hart.id(),
+                                    0x02L,
+                                    addr,
+                                    "subsequent read csr addr=%03x: not present",
+                                    addr);
 
         final var value = values[addr] & mask;
-        for (final var hook : meta.getHooks()) {
+        for (final var hook : meta.getHooks())
             hook.value.accept(value);
-        }
+
         return value;
     }
 
@@ -218,7 +226,7 @@ public final class CSRFileImpl implements CSRFile {
 
     @Override
     public void putd(int addr, final int priv, final long val) {
-        if (!present[addr]) {
+        if (!present[addr])
             throw new TrapException(hart.id(),
                                     0x02L,
                                     addr,
@@ -226,14 +234,18 @@ public final class CSRFileImpl implements CSRFile {
                                     addr,
                                     priv,
                                     val);
-        }
 
-        if (unprivileged(addr, priv)) {
-            Log.error("write csr addr=%03x, priv=%x, val=%x: unprivileged", addr, priv, val);
-            return;
-        }
+        if (unprivileged(addr, priv))
+            // throw new TrapException(hart.id(),
+            //                         0x02L,
+            //                         addr,
+            //                         "write csr addr=%03x, priv=%x, val=%x: unprivileged",
+            //                         addr,
+            //                         priv,
+            //                         val);
+            Log.warn("write csr addr=%03x, priv=%x, val=%x: unprivileged", addr, priv, val);
 
-        if (readonly(addr)) {
+        if (readonly(addr))
             throw new TrapException(hart.id(),
                                     0x02L,
                                     addr,
@@ -241,13 +253,12 @@ public final class CSRFileImpl implements CSRFile {
                                     addr,
                                     priv,
                                     val);
-        }
 
         final var meta = metadata.get(addr);
         final var mask = meta.mask();
 
         if (meta.get() != null) {
-            if (meta.set() == null) {
+            if (meta.set() == null)
                 throw new TrapException(hart.id(),
                                         0x02L,
                                         addr,
@@ -255,32 +266,30 @@ public final class CSRFileImpl implements CSRFile {
                                         addr,
                                         priv,
                                         val);
-            }
+
             final var value = val & mask;
-            for (final var hook : meta.setHooks()) {
+            for (final var hook : meta.setHooks())
                 hook.value.accept(value);
-            }
+
             meta.set().accept(value);
             return;
         }
 
-        for (int base; present[addr] && (base = metadata.get(addr).base()) >= 0; ) {
+        for (int base; present[addr] && (base = metadata.get(addr).base()) >= 0; )
             addr = base;
-        }
 
-        if (!present[addr]) {
+        if (!present[addr])
             throw new TrapException(hart.id(),
                                     0x02L,
                                     addr,
                                     "subsequent write csr addr=%03x, val=%x: not present",
                                     addr,
                                     val);
-        }
 
         final var value = (values[addr] & ~mask) | (val & mask);
-        for (final var hook : meta.setHooks()) {
+        for (final var hook : meta.setHooks())
             hook.value.accept(value);
-        }
+
         values[addr] = value;
     }
 }

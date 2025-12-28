@@ -20,11 +20,7 @@ dependencies {
 
 java {
     sourceCompatibility = JavaVersion.VERSION_24
-    targetCompatibility = JavaVersion.VERSION_24
-
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
+    targetCompatibility = JavaVersion.VERSION_25
 }
 
 application {

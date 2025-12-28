@@ -250,7 +250,7 @@ public final class MachineImpl implements Machine {
 
         for (final var hart : harts) {
             hart.reset(entry);
-            hart.gprFile().putd(0x0A, 0x00000000L); // boot hart id
+            hart.gprFile().putd(0x0A, hart.id()); // boot hart id
             hart.gprFile().putd(0x0B, deviceTreeMemory.begin()); // device tree address
         }
     }
@@ -444,9 +444,8 @@ public final class MachineImpl implements Machine {
                               .prop(pb -> pb.name("compatible").data("simple-bus"))
                               .prop(pb -> pb.name("ranges").data());
 
-                            for (final var device : devices) {
+                            for (final var device : devices)
                                 nb.node(builder -> device.build(context, builder));
-                            }
                         })
                 )
                 .build(tree -> FDT.write(tree, buffer));

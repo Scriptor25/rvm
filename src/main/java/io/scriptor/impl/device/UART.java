@@ -222,6 +222,8 @@ public final class UART implements IODevice {
     private final InputStream in;
     private final OutputStream out;
 
+    private long ier, fcr, lcr, mcr, scr;
+
     public UART(
             final @NotNull Machine machine,
             final long begin,
@@ -261,7 +263,7 @@ public final class UART implements IODevice {
                .prop(pb -> pb.name("clock-frequency").data(0x384000))
                .prop(pb -> pb.name("current-speed").data(0x1c200))
                .prop(pb -> pb.name("reg-shift").data(0x00))
-               .prop(pb -> pb.name("reg-io-width").data(0x04))
+               .prop(pb -> pb.name("reg-io-width").data(0x01))
                .prop(pb -> pb.name("interrupts").data(0x01))
                .prop(pb -> pb.name("interrupt-parent").data(plic0));
     }
@@ -281,7 +283,13 @@ public final class UART implements IODevice {
         try {
             return switch (offset) {
                 case UART_RBR -> in.available() > 0 ? (in.read() & 0xFFL) : -1L;
-                case UART_LSR -> UART_LSR_THRE | (in.available() > 0 ? UART_LSR_DR : 0);
+                case UART_IER -> ier;
+                case UART_IIR -> UART_IIR_INT_PENDING;
+                case UART_LCR -> lcr;
+                case UART_MCR -> mcr;
+                case UART_LSR -> UART_LSR_THRE | UART_LSR_TEMT | (in.available() > 0 ? UART_LSR_DR : 0);
+                case UART_MSR -> 0L;
+                case UART_SCR -> scr;
                 default -> {
                     Log.error("invalid uart read offset=%x, size=%d", offset, size);
                     yield 0L;
@@ -301,6 +309,11 @@ public final class UART implements IODevice {
                     out.write((int) (value & 0xFFL));
                     out.flush();
                 }
+                case UART_IER -> ier = value;
+                case UART_FCR -> fcr = value;
+                case UART_LCR -> lcr = value;
+                case UART_MCR -> mcr = value;
+                case UART_SCR -> scr = value;
                 default -> Log.error("invalid uart write offset=%x, size=%d, value=%x", offset, size, value);
             }
         } catch (final IOException e) {

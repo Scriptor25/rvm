@@ -14,6 +14,8 @@ start:
 	la gp, __global
 .option pop
 
+    bnez a0, trap
+
 	/* Reset satp */
 	csrw satp, zero
 

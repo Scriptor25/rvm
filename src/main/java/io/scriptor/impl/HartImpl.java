@@ -123,6 +123,8 @@ public final class HartImpl implements Hart {
 
     @Override
     public void reset(final long entry) {
+        final var clint = machine.device(CLINT.class);
+
         gprFile.reset();
         fprFile.reset();
         csrFile.reset();
@@ -165,10 +167,14 @@ public final class HartImpl implements Hart {
 
         // machine interrupt control
 
-        csrFile.define(mie, 0x88888L);
-        csrFile.define(mip, 0x88888L);
-        csrFile.define(sie, 0x22L);
-        csrFile.define(sip, 0x22L);
+        csrFile.define(mie, 0x2AAAL);
+        csrFile.define(mip, 0x2AAAL,
+                       () -> (clint.meip(id) ? 1L : 0L) << 11
+                             | (clint.mtip(id) ? 1L : 0L) << 7
+                             | (clint.msip(id) ? 1L : 0L) << 3,
+                       value -> clint.msip(id, ((value >> 3) & 0b1L) != 0L));
+        csrFile.define(sie, 0x2222L, mie);
+        csrFile.define(sip, 0x2222L, mip);
 
         // machine trap handling
 
@@ -233,10 +239,8 @@ public final class HartImpl implements Hart {
 
         // clint control/status
 
-        final var clint = machine.device(CLINT.class);
-
-        csrFile.define(time, clint::mtime);
-        csrFile.define(stimecmp, () -> clint.mtimecmp(id), val -> clint.mtimecmp(id, val));
+        csrFile.define(time, -1L, clint::mtime);
+        csrFile.define(stimecmp, -1L, () -> clint.mtimecmp(id), val -> clint.mtimecmp(id, val));
 
         csrFile.define(mcounteren, 0xFFFFFFFFL, -1, 0xFFFFFFFFL);
         csrFile.define(mcountinhibit, 0xFFFFFFFFL, -1, 0L);
@@ -265,6 +269,8 @@ public final class HartImpl implements Hart {
     @Override
     public void step() {
         try {
+            interrupt();
+
             final var instruction = fetch(pc, false);
             final var definition  = Registry.get(64, instruction);
             pc = execute(instruction, definition);
@@ -276,8 +282,6 @@ public final class HartImpl implements Hart {
                 throw e;
             }
         }
-
-        interrupt();
     }
 
     @Override
@@ -354,16 +358,10 @@ public final class HartImpl implements Hart {
     }
 
     private void interrupt() {
-        final var clint = machine.device(CLINT.class);
-
-        if (csrFile.getd(mie, CSR_M) != 0L && clint.mtimecmp(id) != 0L
-            && Long.compareUnsigned(clint.mtimecmp(id), clint.mtime()) <= 0) {
-            csrFile.putd(mcause, CSR_M, 1L << 63 | 7L);
-            csrFile.putd(mepc, CSR_M, pc);
-            csrFile.putd(mtval, CSR_M, 0L);
-
-            pc = csrFile.getd(mtvec, CSR_M);
-        }
+        // check if any interrupts are pending and enabled
+        final var masked = csrFile.getd(mip, CSR_M) & csrFile.getd(mie, CSR_M);
+        if (masked != 0L)
+            throw new TrapException(id, (1L << 63) | masked, 0L, "");
     }
 
     private final int[] values = new int[5];
@@ -1280,7 +1278,7 @@ public final class HartImpl implements Hart {
     }
 
     private void wfi() {
-        wfi = (csrFile.getd(mip, priv) & csrFile.getd(mie, priv)) == 0;
+        wfi = true;
     }
 
     private void sctrclr() {
@@ -1848,20 +1846,58 @@ public final class HartImpl implements Hart {
 
     //region RV32 MULTIPLY
 
+    private static long mulhu64(final long x, final long y) {
+        final var x_lo = x & 0xFFFFFFFFL;
+        final var x_hi = x >>> 32;
+        final var y_lo = y & 0xFFFFFFFFL;
+        final var y_hi = y >>> 32;
+
+        final var lo_lo = x_lo * y_lo;
+        final var hi_lo = x_hi * y_lo;
+        final var lo_hi = x_lo * y_hi;
+        final var hi_hi = x_hi * y_hi;
+
+        final var mid = (hi_lo & 0xFFFFFFFFL) + (lo_hi & 0xFFFFFFFFL) + (lo_lo >>> 32);
+
+        return hi_hi + (hi_lo >>> 32) + (lo_hi >>> 32) + (mid >>> 32);
+    }
+
+    private static long mulh64(final long x, final long y) {
+        final var neg = (x < 0) ^ (y < 0);
+
+        final var ux = x < 0 ? -x : x;
+        final var uy = y < 0 ? -y : y;
+
+        final var high = mulhu64(ux, uy);
+
+        return neg ? ~high + ((ux * uy != 0) ? 1 : 0) : high;
+    }
+
+    private static long mulhsu64(final long x, final long y) {
+        final var neg = x < 0;
+
+        final var ux = x < 0 ? -x : x;
+        final var uy = y; // already unsigned
+
+        final var high = mulhu64(ux, uy);
+
+        return neg ? ~high + ((ux * uy != 0) ? 1 : 0) : high;
+    }
+
     private void mul(final int rd, final int rs1, final int rs2) {
         gprFile.putd(rd, gprFile.getd(rs1) * gprFile.getd(rs2));
     }
 
     private void mulh(final int rd, final int rs1, final int rs2) {
-        unsupported("mulh");
+        gprFile.putd(rd, mulh64(gprFile.getd(rs1), gprFile.getd(rs2)));
     }
 
     private void mulhsu(final int rd, final int rs1, final int rs2) {
-        unsupported("mulhsu");
+        gprFile.putd(rd, mulhsu64(gprFile.getd(rs1), gprFile.getd(rs2)));
     }
 
     private void mulhu(final int rd, final int rs1, final int rs2) {
-        unsupported("mulhu");
+        gprFile.putd(rd, mulhu64(gprFile.getd(rs1), gprFile.getd(rs2)));
     }
 
     private void div(final int rd, final int rs1, final int rs2) {
@@ -1981,7 +2017,19 @@ public final class HartImpl implements Hart {
     }
 
     private void amoor_d(final int rd, final int rs1, final int rs2, final int aq, final int rl) {
-        unsupported("amoor.d");
+        final var vaddr = gprFile.getd(rs1);
+        if ((vaddr & 0x7L) != 0L) {
+            throw new TrapException(id, 0x06L, vaddr, "misaligned atomic address %x", vaddr);
+        }
+
+        final long value;
+        synchronized (machine.acquireLock(vaddr)) {
+            final var source = gprFile.getd(rs2);
+            value = ld(vaddr);
+            sd(vaddr, value | source);
+        }
+
+        gprFile.putd(rd, value);
     }
 
     private void amomin_d(final int rd, final int rs1, final int rs2, final int aq, final int rl) {
@@ -2087,15 +2135,49 @@ public final class HartImpl implements Hart {
     }
 
     private void divw(final int rd, final int rs1, final int rs2) {
-        unsupported("divw");
+        final var lhs = gprFile.getw(rs1);
+        final var rhs = gprFile.getw(rs2);
+
+        if (rhs == 0) {
+            gprFile.putw(rd, -1);
+            return;
+        }
+
+        if (lhs == Integer.MIN_VALUE && rhs == -1) {
+            gprFile.putw(rd, lhs);
+            return;
+        }
+
+        gprFile.putw(rd, lhs / rhs);
     }
 
     private void divuw(final int rd, final int rs1, final int rs2) {
-        unsupported("divuw");
+        final var lhs = gprFile.getw(rs1);
+        final var rhs = gprFile.getw(rs2);
+
+        if (rhs == 0L) {
+            gprFile.putw(rd, ~0);
+            return;
+        }
+
+        gprFile.putw(rd, Integer.divideUnsigned(lhs, rhs));
     }
 
     private void remw(final int rd, final int rs1, final int rs2) {
-        unsupported("remw");
+        final var lhs = gprFile.getw(rs1);
+        final var rhs = gprFile.getw(rs2);
+
+        if (rhs == 0) {
+            gprFile.putw(rd, lhs);
+            return;
+        }
+
+        if (lhs == Integer.MIN_VALUE && rhs == -1) {
+            gprFile.putw(rd, 0);
+            return;
+        }
+
+        gprFile.putw(rd, lhs % rhs);
     }
 
     private void remuw(final int rd, final int rs1, final int rs2) {
