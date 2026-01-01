@@ -4,9 +4,9 @@
 
 /* do not touch a0 and a1, contain boot hart id and pointer to fdt! */
 
-.type start, @function
-.global start
-start:
+.type _start, @function
+.global _start
+_start:
 	.cfi_startproc
 
 .option push

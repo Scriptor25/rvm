@@ -23,7 +23,7 @@ public interface CSRFile extends Device {
 
     void hookGet(int addr, @NotNull LongConsumer hook);
 
-    void hookSet(int addr, @NotNull LongConsumer hook);
+    void hookPut(int addr, @NotNull LongConsumer hook);
 
     /**
      * read a 4-byte value from a control/status register.

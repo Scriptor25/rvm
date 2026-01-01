@@ -13,13 +13,6 @@ import static io.scriptor.util.ByteUtil.signExtend;
 
 public interface Hart extends Device {
 
-    @Override
-    default void reset() {
-        reset(0L);
-    }
-
-    void reset(final long entry);
-
     long execute(final int instruction, final Instruction definition);
 
     boolean sleeping();
@@ -112,7 +105,7 @@ public interface Hart extends Device {
     default int fetch(final long vaddr, final boolean unsafe) {
         final var paddr = translate(vaddr, FETCH, unsafe);
 
-        if (unsafe && paddr == ~0L) {
+        if (unsafe && paddr == -1L) {
             Log.warn("fetch invalid virtual address: address=%x", vaddr);
             return 0;
         }
@@ -123,9 +116,8 @@ public interface Hart extends Device {
 
         final var device = machine().device(IODevice.class, paddr);
 
-        if (device != null && device.begin() <= paddr && paddr + 4 <= device.end()) {
+        if (device != null && device.begin() <= paddr && paddr + 4 <= device.end())
             return (int) (device.read((int) (paddr - device.begin()), 4) & 0xFFFFFFFFL);
-        }
 
         throw new TrapException(id(), 0x01L, paddr, "fetch invalid address: address=%x", paddr);
     }
@@ -133,7 +125,7 @@ public interface Hart extends Device {
     default long read(final long vaddr, final int size, final boolean unsafe) {
         final var paddr = translate(vaddr, READ, unsafe);
 
-        if (unsafe && paddr == ~0L) {
+        if (unsafe && paddr == -1L) {
             Log.warn("read invalid virtual address: address=%x, size=%d", vaddr, size);
             return 0L;
         }
@@ -148,7 +140,7 @@ public interface Hart extends Device {
     default void write(final long vaddr, final int size, final long value, final boolean unsafe) {
         final var paddr = translate(vaddr, WRITE, unsafe);
 
-        if (unsafe && paddr == ~0L) {
+        if (unsafe && paddr == -1L) {
             Log.warn("write invalid virtual address: address=%x, size=%d, value=%x", vaddr, size, value);
             return;
         }
@@ -163,7 +155,7 @@ public interface Hart extends Device {
     default void direct(final byte @NotNull [] data, final long vaddr, final boolean write) {
         final var paddr = translate(vaddr, write ? WRITE : READ, true);
 
-        if (paddr == ~0L) {
+        if (paddr == -1L) {
             Log.warn("direct read/write invalid virtual address: address=%x, length=%d", vaddr, data.length);
             return;
         }

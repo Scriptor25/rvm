@@ -1,34 +1,36 @@
 package io.scriptor;
 
-import com.carrotsearch.hppc.ObjectArrayList;
-import com.carrotsearch.hppc.ObjectIndexedContainer;
+import io.scriptor.conf.*;
 import io.scriptor.elf.Header;
 import io.scriptor.elf.Identity;
 import io.scriptor.elf.ProgramHeader;
 import io.scriptor.elf.SectionHeader;
 import io.scriptor.gdb.GDBServer;
-import io.scriptor.impl.MachineImpl;
 import io.scriptor.impl.TrapException;
+import io.scriptor.impl.device.CLINT;
 import io.scriptor.impl.device.Memory;
+import io.scriptor.impl.device.PLIC;
+import io.scriptor.impl.device.UART;
 import io.scriptor.isa.Registry;
+import io.scriptor.machine.Device;
 import io.scriptor.machine.Machine;
+import io.scriptor.machine.MachineConfig;
 import io.scriptor.util.ArgContext;
 import io.scriptor.util.ChannelInputStream;
 import io.scriptor.util.ExtendedInputStream;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.NoSuchElementException;
+import java.util.function.Function;
 
 import static io.scriptor.elf.ELF.readSymbols;
 import static io.scriptor.util.ByteUtil.readString;
 import static io.scriptor.util.Resource.read;
-import static io.scriptor.util.Unit.*;
 import static java.util.function.Predicate.not;
 
 public final class Main {
@@ -57,66 +59,142 @@ public final class Main {
         logThread.join();
     }
 
-    private static @NotNull Machine init(final @NotNull ArgContext context) {
-        final ObjectIndexedContainer<String> isa = new ObjectArrayList<>();
-        isa.add("types");
-
-        read("index.txt", stream -> {
+    private static @NotNull Machine init(final @NotNull ArgContext args) {
+        final var registry = Registry.getInstance();
+        read(true, "index.list", stream -> {
             final var reader = new BufferedReader(new InputStreamReader(stream));
             reader.lines()
                   .map(String::trim)
                   .filter(not(String::isEmpty))
                   .filter(line -> line.endsWith(".isa"))
-                  .forEach(isa::add);
+                  .forEach(name -> read(true, name, registry::parse));
         });
 
-        final var registry = Registry.getInstance();
-        for (final var name : isa) {
-            read(name.value, registry::parse);
-        }
+        final var resource     = !args.has("--config");
+        final var resourceName = resource ? "config/default.conf" : args.get("--config");
 
-        final var memoryCapacity = context.getInt("--memory", val -> {
-            final var value = val.substring(0, val.length() - 1);
-            final var unit  = val.substring(val.length() - 1);
+        return read(resource, resourceName, stream -> {
+            final var machineConfig = new MachineConfig();
 
-            final var multiplier = Integer.parseUnsignedInt(value, 10);
+            final var parser = new Parser(stream);
+            final var root   = parser.parse();
 
-            return switch (unit) {
-                case "K" -> KiB(multiplier);
-                case "M" -> MiB(multiplier);
-                case "G" -> GiB(multiplier);
-                default -> throw new IllegalArgumentException();
-            };
-        }, () -> MiB(32));
+            if (root.has("mode")) {
+                final var mode = root.get(IntegerNode.class, "mode").value().intValue();
+                machineConfig.mode(mode);
+            }
 
-        final var memoryOrder = context.get("--order", val -> switch (val) {
-            case "le" -> ByteOrder.LITTLE_ENDIAN;
-            case "be" -> ByteOrder.BIG_ENDIAN;
-            default -> throw new IllegalArgumentException();
-        }, ByteOrder::nativeOrder);
+            if (root.has("harts")) {
+                final var harts = root.get(IntegerNode.class, "harts").value().intValue();
+                machineConfig.harts(harts);
+            }
 
-        final var hartCount = context.getInt("--harts", val -> Integer.parseUnsignedInt(val, 10), () -> 1);
+            if (root.has("order")) {
+                final var order = root.get(StringNode.class, "order").value();
+                machineConfig.order(switch (order) {
+                    case "le" -> ByteOrder.LITTLE_ENDIAN;
+                    case "be" -> ByteOrder.BIG_ENDIAN;
+                    default -> throw new NoSuchElementException(order);
+                });
+            }
 
-        final Machine machine = new MachineImpl(memoryCapacity, memoryOrder, hartCount);
+            args.getAll("--load", val -> {
+                final var parts    = val.split("=");
+                final var filename = parts[0];
+                final var offset = parts.length == 2
+                                   ? Long.parseUnsignedLong(parts[1], 0x10)
+                                   : 0L;
+                final Function<Machine, Device> generator = m -> load(m, filename, offset);
+                machineConfig.device(generator);
+            });
 
-        final var entry = context.getLong("--entry", val -> Long.parseUnsignedLong(val, 0x10), () -> 0L);
-        machine.entry(entry);
+            if (root.has("devices")) {
+                final var devices = root.get(ArrayNode.class, "devices");
+                for (final var entry : devices) {
+                    final var node = entry.value;
+                    final var type = node.get(StringNode.class, "type").value();
 
-        context.getAll("--load", val -> {
-            final var parts    = val.split("=");
-            final var filename = parts[0];
-            final var offset   = parts.length == 2 ? Long.parseUnsignedLong(parts[1], 0x10) : 0L;
-            load(machine, filename, offset);
+                    final Function<Machine, Device> generator = switch (type) {
+                        case "clint" -> {
+                            final var begin = node.get(IntegerNode.class, "begin").value();
+                            yield m -> new CLINT(m, begin);
+                        }
+                        case "plic" -> {
+                            final var begin = node.get(IntegerNode.class, "begin").value();
+                            final var ndev  = node.get(IntegerNode.class, "ndev").value();
+                            yield m -> new PLIC(m, begin, ndev.intValue());
+                        }
+                        case "uart" -> {
+                            final var begin = node.get(IntegerNode.class, "begin").value();
+
+                            final var inNode = node.get(ObjectNode.class, "in");
+                            final var inType = inNode.get(StringNode.class, "type").value();
+
+                            final boolean closeIn;
+                            final InputStream in = switch (inType) {
+                                case "system" -> {
+                                    closeIn = false;
+
+                                    yield System.in;
+                                }
+                                case "file" -> {
+                                    closeIn = true;
+
+                                    final var name = inNode.get(StringNode.class, "name").value();
+                                    yield new FileInputStream(name);
+                                }
+                                default -> throw new NoSuchElementException("type=%s".formatted(inType));
+                            };
+
+                            final var outNode = node.get(ObjectNode.class, "out");
+                            final var outType = outNode.get(StringNode.class, "type").value();
+
+                            final boolean closeOut;
+                            final OutputStream out = switch (outType) {
+                                case "system" -> {
+                                    closeOut = false;
+
+                                    yield System.out;
+                                }
+                                case "file" -> {
+                                    closeOut = true;
+
+                                    final var name = outNode.get(StringNode.class, "name").value();
+                                    final var append = outNode.has("append")
+                                                       ? outNode.get(BooleanNode.class, "append").value()
+                                                       : false;
+                                    yield new FileOutputStream(name, append);
+                                }
+                                default -> throw new NoSuchElementException("type=%s".formatted(outType));
+                            };
+
+                            yield m -> new UART(m, begin, in, closeIn, out, closeOut);
+                        }
+                        case "memory" -> {
+                            final var begin    = node.get(IntegerNode.class, "begin").value();
+                            final var capacity = node.get(IntegerNode.class, "capacity").value();
+                            final var readonly = node.has("readonly")
+                                                 ? node.get(BooleanNode.class, "readonly").value()
+                                                 : false;
+
+                            yield m -> new Memory(m, begin, capacity.intValue(), readonly);
+                        }
+                        default -> throw new NoSuchElementException("type=%s".formatted(type));
+                    };
+
+                    machineConfig.device(generator);
+                }
+            }
+
+            return machineConfig.configure();
         });
-
-        return machine;
     }
 
-    private static void run(final @NotNull ArgContext context, final @NotNull Machine machine) {
+    private static void run(final @NotNull ArgContext args, final @NotNull Machine machine) {
         machine.reset();
 
-        final var debug = context.has("--debug");
-        final var port  = context.getInt("--port", Integer::parseUnsignedInt, () -> 1234);
+        final var debug = args.has("--debug");
+        final var port  = args.getInt("--port", Integer::parseUnsignedInt, () -> 1234);
 
         if (debug) {
             try (final var gdb = new GDBServer(machine, port)) {
@@ -146,9 +224,15 @@ public final class Main {
             Log.inject(machine::dump);
             Log.error("machine exception: %s", e);
         }
+
+        try {
+            machine.close();
+        } catch (final Exception e) {
+            Log.error("closing machine: %s", e);
+        }
     }
 
-    private static void load(
+    private static @NotNull Device load(
             final @NotNull Machine machine,
             final @NotNull String filename,
             final long offset
@@ -162,12 +246,6 @@ public final class Main {
 
             if (elf) {
                 final var header = Header.read(identity, stream);
-
-                machine.entry(header.entry() + offset);
-                machine.offset(offset);
-                machine.device(Memory.class, memory -> {
-                    memory.buffer().order(identity.order());
-                });
 
                 final var phtab = new ProgramHeader[header.phnum()];
                 final var shtab = new SectionHeader[header.shnum()];
@@ -204,15 +282,47 @@ public final class Main {
                     readSymbols(identity, stream, dynsym, dynstr, symbols, offset);
                 }
 
+                long begin = -1L, end = 0L;
+
                 for (final var ph : phtab) {
-                    if (ph.type() == 0x01) {
-                        stream.seek(ph.offset());
-                        machine.segment(stream, ph.paddr() + offset, (int) ph.filesz(), (int) ph.memsz());
-                    }
+                    if (ph.type() != 0x01)
+                        continue;
+
+                    if (Long.compareUnsigned(begin, ph.paddr()) > 0)
+                        begin = ph.paddr();
+                    if (Long.compareUnsigned(end, ph.paddr() + ph.memsz()) < 0)
+                        end = ph.paddr() + ph.memsz();
                 }
+
+                final var rom = new Memory(machine, begin + offset, (int) (end - begin), false);
+
+                for (final var ph : phtab) {
+                    if (ph.type() != 0x01)
+                        continue;
+
+                    stream.seek(ph.offset());
+
+                    final var data = new byte[(int) ph.filesz()];
+                    final var read = stream.read(data);
+                    if (read != data.length)
+                        Log.warn("stream read %d, requested %d", read, data.length);
+
+                    rom.direct(data, (int) (ph.paddr() - begin), true);
+                }
+
+                return rom;
             } else {
                 stream.seek(0L);
-                machine.segment(stream, offset, (int) stream.size(), (int) stream.size());
+
+                final var rom = new Memory(machine, offset, (int) stream.size(), false);
+
+                final var data = new byte[(int) stream.size()];
+                final var read = stream.read(data);
+                if (read != data.length)
+                    Log.warn("stream read %d, requested %d", read, data.length);
+
+                rom.direct(data, 0, true);
+                return rom;
             }
         } catch (final IOException e) {
             Log.error("failed to load file '%s' (offset %x): %s", filename, offset, e);

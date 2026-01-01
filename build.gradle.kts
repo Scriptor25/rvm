@@ -43,7 +43,7 @@ graalvmNative {
 
 val generateResourceDescriptor by tasks.registering {
     val source = layout.buildDirectory.dir("resources/main")
-    val index = source.map { it.file("index.txt") }
+    val index = source.map { it.file("index.list") }
 
     outputs.file(index)
     dependsOn(tasks.named("processResources"))
@@ -61,7 +61,7 @@ val generateResourceDescriptor by tasks.registering {
                 .filter { it.isFile }
                 .forEach { file ->
                     val path = directory.toPath().relativize(file.toPath()).toString()
-                    if (path != "index.txt") {
+                    if (path != "index.list") {
                         writer.write(path.replace(File.separatorChar, '/'))
                         writer.newLine()
                     }

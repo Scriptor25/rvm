@@ -220,7 +220,9 @@ public final class UART implements IODevice {
     private final long begin;
     private final long end;
     private final InputStream in;
+    private final boolean closeIn;
     private final OutputStream out;
+    private final boolean closeOut;
 
     private long ier, fcr, lcr, mcr, scr;
 
@@ -228,13 +230,17 @@ public final class UART implements IODevice {
             final @NotNull Machine machine,
             final long begin,
             final @NotNull InputStream in,
-            final @NotNull OutputStream out
+            final boolean closeIn,
+            final @NotNull OutputStream out,
+            final boolean closeOut
     ) {
         this.machine = machine;
         this.begin = begin;
         this.end = begin + 0x100L;
         this.in = in;
+        this.closeIn = closeIn;
         this.out = out;
+        this.closeOut = closeOut;
     }
 
     @Override
@@ -252,7 +258,7 @@ public final class UART implements IODevice {
 
     @Override
     public void build(final @NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
-        final var phandle = context.push(this);
+        final var phandle = context.get(this);
 
         final var plic0 = context.get(machine.device(PLIC.class));
 
@@ -324,5 +330,13 @@ public final class UART implements IODevice {
     @Override
     public @NotNull String toString() {
         return "serial@%x".formatted(begin);
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (closeIn)
+            in.close();
+        if (closeOut)
+            out.close();
     }
 }

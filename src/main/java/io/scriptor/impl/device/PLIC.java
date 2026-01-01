@@ -37,20 +37,18 @@ public final class PLIC implements IODevice {
     private final Machine machine;
     private final long begin;
     private final long end;
-    private final int hartCount;
-    private final int deviceCount;
+    private final int ndev;
 
     private final int[] priority;
     private final int[] pending;
 
     private final Context[] contexts;
 
-    public PLIC(final @NotNull Machine machine, final long begin, final int hartCount, final int deviceCount) {
+    public PLIC(final @NotNull Machine machine, final long begin, final int ndev) {
         this.machine = machine;
         this.begin = begin;
         this.end = begin + 0x4000000L;
-        this.hartCount = hartCount;
-        this.deviceCount = deviceCount;
+        this.ndev = ndev;
 
         this.priority = new int[SOURCE_COUNT];
         this.pending = new int[SOURCE_COUNT >> 2];
@@ -83,10 +81,10 @@ public final class PLIC implements IODevice {
 
     @Override
     public void build(final @NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
-        final var phandle = context.push(this);
+        final var phandle = context.get(this);
 
-        final var ie = new int[2 * hartCount];
-        for (int i = 0; i < hartCount; ++i) {
+        final var ie = new int[2 * machine.harts()];
+        for (int i = 0; i < machine.harts(); ++i) {
             final var cpu = context.get(machine.hart(i));
             ie[i * 2] = cpu;
             ie[i * 2 + 1] = 0x0B;
@@ -98,7 +96,7 @@ public final class PLIC implements IODevice {
                .prop(pb -> pb.name("reg").data(begin, end - begin))
                .prop(pb -> pb.name("interrupt-controller").data())
                .prop(pb -> pb.name("#interrupt-cells").data(0x01))
-               .prop(pb -> pb.name("riscv,ndev").data(deviceCount))
+               .prop(pb -> pb.name("riscv,ndev").data(ndev))
                .prop(pb -> pb.name("interrupts-extended").data(ie));
     }
 

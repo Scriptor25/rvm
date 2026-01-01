@@ -648,7 +648,6 @@ public class GDBServer implements Closeable {
             case 'q' -> switch (payload) {
                 case "qC" -> "QC-1";
                 case "qfThreadInfo", "qsThreadInfo" -> "l";
-                case "qOffsets" -> "Text=%1$08x;Data=%1$08x;Bss=%1$08x".formatted(machine.offset());
                 default -> {
                     if (payload.startsWith("qSupported")) {
                         yield "swbreak+;qXfer:features:read+;QStartNoAckMode+";

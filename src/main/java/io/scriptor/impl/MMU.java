@@ -108,7 +108,7 @@ public final class MMU {
             case 10 -> sv57(priv, vaddr, access, asid, ppn, unsafe);
             default -> {
                 pageFault(priv, vaddr, access, unsafe, "unsupported mode %d".formatted(mode));
-                yield ~0L;
+                yield -1L;
             }
         };
     }
@@ -209,12 +209,12 @@ public final class MMU {
 
             if (!pteV(pte)) {
                 pageFault(priv, vaddr, access, unsafe, "invalid entry");
-                return ~0L;
+                return -1L;
             }
 
             if (!pteR(pte) && pteW(pte)) {
                 pageFault(priv, vaddr, access, unsafe, "reserved entry type");
-                return ~0L;
+                return -1L;
             }
 
             if (pteR(pte) || pteX(pte)) {
@@ -253,7 +253,7 @@ public final class MMU {
         }
 
         pageFault(priv, vaddr, access, unsafe, "missing entry");
-        return ~0L;
+        return -1L;
     }
 
     private long sv39(

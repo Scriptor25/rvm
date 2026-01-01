@@ -122,14 +122,14 @@ public final class HartImpl implements Hart {
     }
 
     @Override
-    public void reset(final long entry) {
+    public void reset() {
         final var clint = machine.device(CLINT.class);
 
         gprFile.reset();
         fprFile.reset();
         csrFile.reset();
 
-        pc = entry;
+        pc = 0L;
         priv = CSR_M;
         wfi = false;
         semihosting = false;
@@ -272,13 +272,15 @@ public final class HartImpl implements Hart {
             interrupt();
 
             final var instruction = fetch(pc, false);
-            final var definition  = Registry.get(64, instruction);
+            if (!Registry.has(64, instruction))
+                unsupported(Integer.toHexString(instruction));
+
+            final var definition = Registry.get(64, instruction);
             pc = execute(instruction, definition);
         } catch (final TrapException e) {
             if (handle(e.getTrapCause(), e.getTrapValue())) {
-                if (e.getId() < 0) {
+                if (e.getId() < 0)
                     throw new TrapException(id, e);
-                }
                 throw e;
             }
         }
@@ -286,11 +288,11 @@ public final class HartImpl implements Hart {
 
     @Override
     public void build(final @NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
-        final var phandle = context.push(this);
+        final var phandle = context.get(this);
 
         builder.name("cpu@%d".formatted(id))
                .prop(pb -> pb.name("device_type").data("cpu"))
-               .prop(pb -> pb.name("reg").data(0x00))
+               .prop(pb -> pb.name("reg").data(id))
                .prop(pb -> pb.name("status").data("okay"))
                .prop(pb -> pb.name("compatible").data("riscv"))
                .prop(pb -> pb.name("riscv,isa").data("rv64imafdqc_zifencei_zicsr"))
@@ -308,60 +310,86 @@ public final class HartImpl implements Hart {
         final var interrupt = (cause & (1L << 63)) != 0L;
         final var code      = (int) (cause & 0x7FFFFFFFL);
 
-        final int target;
-        if (interrupt) {
-            target = ((csrFile.getd(mideleg, CSR_M) & (1L << code)) != 0) ? CSR_S : CSR_M;
-        } else {
-            target = ((csrFile.getd(medeleg, CSR_M) & (1L << code)) != 0) ? CSR_S : CSR_M;
-        }
+        final var delegate = interrupt
+                             ? ((csrFile.getd(mideleg, CSR_M) & (1L << code)) != 0L)
+                             : ((csrFile.getd(medeleg, CSR_M) & (1L << code)) != 0L);
 
+        final var target = (priv < CSR_M && delegate) ? CSR_S : CSR_M;
+
+        var status = csrFile.getd(mstatus, CSR_M);
         if (target == CSR_M) {
             csrFile.putd(mepc, CSR_M, pc);
             csrFile.putd(mcause, CSR_M, cause);
             csrFile.putd(mtval, CSR_M, tval);
+
+            status = (status & ~(1L << 7)) | (((status >> 3) & 1L) << 7);
+            status &= ~(1L << 3);
+            status = (status & ~(3L << 11)) | ((long) priv << 11);
         } else {
             csrFile.putd(sepc, CSR_S, pc);
             csrFile.putd(scause, CSR_S, cause);
             csrFile.putd(stval, CSR_S, tval);
-        }
 
-        var status = csrFile.getd(mstatus, CSR_M);
-        if (target == CSR_M) {
-            final var mie = (status >> 3) & 1L;
-            status &= ~(1L << 3);
-            status |= CSR_M << 11;
-            status |= mie << 7;
-        } else {
-            final var sie = (status >> 1) & 1L;
+            status = (status & ~(1L << 5)) | (((status >> 1) & 1L) << 5);
             status &= ~(1L << 1);
-            status |= CSR_S << 8;
-            status |= sie << 5;
+            status = (status & ~(1L << 8)) | ((long) priv << 8);
         }
         csrFile.putd(mstatus, CSR_M, status);
 
-        final var tvec = target == CSR_M ? csrFile.getd(mtvec, CSR_M) : csrFile.getd(stvec, CSR_S);
-        if (tvec == 0L) {
+        final var tvec = target == CSR_M
+                         ? csrFile.getd(mtvec, CSR_M)
+                         : csrFile.getd(stvec, CSR_S);
+        if (tvec == 0L)
             return true;
-        }
 
         final var base = tvec & ~0b11L;
         final var mode = tvec & 0b11L;
 
-        if (mode == 0b01 && interrupt) {
-            pc = base + 4L * code;
-        } else {
-            pc = base;
-        }
+        Log.info("TRAP: priv=%d satp=%016x stvec=%016x pc=%016x",
+                 priv,
+                 csrFile.getd(satp, CSR_S),
+                 csrFile.getd(stvec, CSR_S),
+                 pc);
+
+        pc = (interrupt && mode == 0b01)
+             ? base + 4L * code
+             : base;
 
         priv = target;
         return false;
     }
 
     private void interrupt() {
+        final var status = csrFile.getd(mstatus, CSR_M);
+
+        switch (priv) {
+            case CSR_M -> {
+                if (((status >> 3) & 1L) == 0L)
+                    return;
+            }
+            case CSR_S -> {
+                if (((status >> 1) & 1L) == 0L)
+                    return;
+            }
+            default -> {
+                return;
+            }
+        }
+
         // check if any interrupts are pending and enabled
-        final var masked = csrFile.getd(mip, CSR_M) & csrFile.getd(mie, CSR_M);
-        if (masked != 0L)
-            throw new TrapException(id, (1L << 63) | masked, 0L, "");
+        final var pending = csrFile.getd(mip, CSR_M) & csrFile.getd(mie, CSR_M);
+        if (pending == 0L)
+            return;
+
+        final var code = Long.numberOfTrailingZeros(pending);
+
+        final var delegate = priv < CSR_M && ((csrFile.getd(mideleg, CSR_M) & (1L << code)) != 0L);
+        final var target   = delegate ? CSR_S : CSR_M;
+
+        if (target < priv)
+            return;
+
+        throw new TrapException(id, (1L << 63) | code, 0L, "");
     }
 
     private final int[] values = new int[5];
@@ -1231,6 +1259,13 @@ public final class HartImpl implements Hart {
         return mmu.translate(priv, vaddr, access, unsafe);
     }
 
+    @Override
+    public void close() throws Exception {
+        gprFile.close();
+        fprFile.close();
+        csrFile.close();
+    }
+
     private void unsupported(final @NotNull String name) {
         throw new TrapException(id, 0x02L, 0x00L, "unsupported instruction %s", name);
     }
@@ -1922,7 +1957,7 @@ public final class HartImpl implements Hart {
         final var rhs = gprFile.getd(rs2);
 
         if (rhs == 0L) {
-            gprFile.putd(rd, ~0L);
+            gprFile.putd(rd, -1L);
             return;
         }
 

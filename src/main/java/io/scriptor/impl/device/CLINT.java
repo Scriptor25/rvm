@@ -23,7 +23,6 @@ public final class CLINT implements IODevice {
     private final Machine machine;
     private final long begin;
     private final long end;
-    private final int hartCount;
 
     private long mtime;
 
@@ -38,17 +37,16 @@ public final class CLINT implements IODevice {
      */
     private final boolean[] msip;
 
-    public CLINT(final @NotNull Machine machine, final long begin, final int hartCount) {
+    public CLINT(final @NotNull Machine machine, final long begin) {
         this.machine = machine;
         this.begin = begin;
         this.end = begin + 0x10000L;
-        this.hartCount = hartCount;
 
         this.mtime = 0L;
-        this.mtimecmp = new long[hartCount];
+        this.mtimecmp = new long[machine.harts()];
 
-        this.meip = new boolean[hartCount];
-        this.msip = new boolean[hartCount];
+        this.meip = new boolean[machine.harts()];
+        this.msip = new boolean[machine.harts()];
     }
 
     @Override
@@ -59,15 +57,14 @@ public final class CLINT implements IODevice {
     @Override
     public void dump(final @NotNull PrintStream out) {
         out.printf("clint: mtime=%x%n", mtime);
-        for (int id = 0; id < hartCount; ++id) {
+        for (int id = 0; id < machine.harts(); ++id)
             out.printf("#%-2d | mtimecmp=%x meip=%b msip=%b%n", id, mtimecmp[id], meip[id], msip[id]);
-        }
     }
 
     @Override
     public void reset() {
         mtime = 0L;
-        Arrays.fill(mtimecmp, ~0L);
+        Arrays.fill(mtimecmp, -1L);
         Arrays.fill(meip, false);
         Arrays.fill(msip, false);
     }
@@ -79,10 +76,10 @@ public final class CLINT implements IODevice {
 
     @Override
     public void build(final @NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
-        final var phandle = context.push(this);
+        final var phandle = context.get(this);
 
-        final var ie = new int[4 * hartCount];
-        for (int i = 0; i < hartCount; ++i) {
+        final var ie = new int[4 * machine.harts()];
+        for (int i = 0; i < machine.harts(); ++i) {
             final var cpu = context.get(machine.hart(i));
             ie[i * 4] = cpu;
             ie[i * 4 + 1] = 0x03;
@@ -111,23 +108,20 @@ public final class CLINT implements IODevice {
     public long read(final int offset, final int size) {
         if (offset >= MSIP_BASE && offset < MTIMECMP_BASE && size == 4) {
             final var hart = (offset - MSIP_BASE) / MSIP_STRIDE;
-            if (hart >= hartCount) {
+            if (hart >= machine.harts())
                 return 0L;
-            }
             return msip[hart] ? 1L : 0L;
         }
 
         if (offset >= MTIMECMP_BASE && offset < CONTEXT_BASE && size == 8) {
             final var hart = (offset - MTIMECMP_BASE) / MTIMECMP_STRIDE;
-            if (hart >= hartCount) {
+            if (hart >= machine.harts())
                 return 0L;
-            }
             return mtimecmp[hart];
         }
 
-        if (offset == MTIME_OFFSET && size == 8) {
+        if (offset == MTIME_OFFSET && size == 8)
             return mtime;
-        }
 
         Log.error("invalid clint read offset=%x, size=%d", offset, size);
         return 0L;
@@ -137,18 +131,16 @@ public final class CLINT implements IODevice {
     public void write(final int offset, final int size, final long value) {
         if (offset >= MSIP_BASE && offset < MTIMECMP_BASE && size == 4) {
             final var hart = (offset - MSIP_BASE) / MSIP_STRIDE;
-            if (hart >= hartCount) {
+            if (hart >= machine.harts())
                 return;
-            }
             msip[hart] = value != 0L;
             return;
         }
 
         if (offset >= MTIMECMP_BASE && offset < CONTEXT_BASE && size == 8) {
             final var hart = (offset - MTIMECMP_BASE) / MTIMECMP_STRIDE;
-            if (hart >= hartCount) {
+            if (hart >= machine.harts())
                 return;
-            }
             mtimecmp[hart] = value;
             return;
         }

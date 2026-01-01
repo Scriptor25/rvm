@@ -1,33 +1,30 @@
 package io.scriptor.machine;
 
 import io.scriptor.elf.SymbolTable;
-import io.scriptor.impl.device.Memory;
-import io.scriptor.util.ExtendedInputStream;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
-import java.util.function.Consumer;
+import java.nio.ByteOrder;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
 
 public interface Machine extends Device {
 
+    @NotNull ByteOrder order();
+
     @NotNull SymbolTable symbols();
 
-    @NotNull Memory memory();
+    int harts();
 
     @NotNull Hart hart(int id);
 
     <T extends Device> @NotNull T device(@NotNull Class<T> type);
 
-    <T extends Device> @NotNull T device(@NotNull Class<T> type, final @NotNull Predicate<T> predicate);
-
     <T extends Device> @NotNull T device(@NotNull Class<T> type, int index);
 
-    <T extends Device> void device(@NotNull Class<T> type, final @NotNull Consumer<T> consumer);
+    <T extends Device> void device(@NotNull Class<T> type, @NotNull Predicate<T> predicate);
 
     <T extends IODevice> @Nullable T device(@NotNull Class<T> type, long address);
 
@@ -44,16 +41,6 @@ public interface Machine extends Device {
     boolean breakpoint(int id);
 
     @NotNull Object acquireLock(long address);
-
-    void entry(long entry);
-
-    long entry();
-
-    void offset(long offset);
-
-    long offset();
-
-    void segment(@NotNull ExtendedInputStream stream, long address, int size, int allocate) throws IOException;
 
     long pRead(long paddr, int size, boolean unsafe);
 

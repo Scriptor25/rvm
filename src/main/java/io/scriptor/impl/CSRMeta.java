@@ -13,6 +13,6 @@ public record CSRMeta(
         @Nullable LongSupplier get,
         @Nullable LongConsumer set,
         @NotNull ObjectIndexedContainer<LongConsumer> getHooks,
-        @NotNull ObjectIndexedContainer<LongConsumer> setHooks
+        @NotNull ObjectIndexedContainer<LongConsumer> putHooks
 ) {
 }

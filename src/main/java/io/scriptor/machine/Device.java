@@ -19,4 +19,7 @@ public interface Device {
 
     default void build(@NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
     }
+
+    default void close() throws Exception {
+    }
 }

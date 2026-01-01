@@ -8,7 +8,7 @@ import java.util.function.*;
 public class ArgContext {
 
     private static final Set<String> flags = Set.of("--debug");
-    private static final Set<String> options = Set.of("--memory", "--order", "--harts", "--load", "--entry", "--port");
+    private static final Set<String> options = Set.of("--config", "--load", "--port");
 
     private final Map<String, List<String>> values = new HashMap<>();
 
@@ -40,10 +40,15 @@ public class ArgContext {
             final @NotNull Function<String, T> present,
             final @NotNull Supplier<T> empty
     ) {
-        if (values.containsKey(name) && !values.get(name).isEmpty()) {
+        if (values.containsKey(name) && !values.get(name).isEmpty())
             return present.apply(values.get(name).getFirst());
-        }
         return empty.get();
+    }
+
+    public String get(final @NotNull String name) {
+        if (values.containsKey(name) && !values.get(name).isEmpty())
+            return values.get(name).getFirst();
+        throw new NoSuchElementException(name);
     }
 
     public int getInt(

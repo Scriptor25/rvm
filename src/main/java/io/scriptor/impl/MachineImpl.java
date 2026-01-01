@@ -6,87 +6,79 @@ import io.scriptor.elf.SymbolTable;
 import io.scriptor.fdt.BuilderContext;
 import io.scriptor.fdt.FDT;
 import io.scriptor.fdt.TreeBuilder;
-import io.scriptor.impl.device.CLINT;
 import io.scriptor.impl.device.Memory;
-import io.scriptor.impl.device.PLIC;
 import io.scriptor.impl.device.UART;
 import io.scriptor.machine.Device;
 import io.scriptor.machine.Hart;
 import io.scriptor.machine.IODevice;
 import io.scriptor.machine.Machine;
-import io.scriptor.util.ExtendedInputStream;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.NoSuchElementException;
-import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
 
 public final class MachineImpl implements Machine {
 
-    public static final long DRAM = 0x80000000L;
-
     private final LongObjectMap<Object> locks = new LongObjectHashMap<>();
 
     private final SymbolTable symbols = new SymbolTable();
 
+    private final ByteOrder order;
+
     private final Hart[] harts;
-    private final IODevice[] devices;
+    private final Device[] devices;
 
-    private final Memory memory;
-    private final Memory deviceTreeMemory;
-
-    private long entry;
-    private long offset;
+    private final Memory dt;
 
     private boolean once;
     private boolean active;
 
     private IntConsumer breakpointHandler;
-    private IntConsumer trapHandler;
 
-    public MachineImpl(int memoryCapacity, final @NotNull ByteOrder memoryOrder, final int hartCount) {
+    public MachineImpl(final int harts, final ByteOrder order, final @NotNull Function<Machine, Device>[] devices) {
 
-        memoryCapacity = ((memoryCapacity + 0b111) & ~0b111);
+        this.order = order;
 
-        memory = new Memory(this, DRAM, memoryCapacity, memoryOrder, false);
-        deviceTreeMemory = new Memory(this, 0x100000000L, 0x2000, memoryOrder, true);
-
-        devices = new IODevice[5];
-        devices[0] = memory;
-        devices[1] = deviceTreeMemory;
-        devices[2] = new CLINT(this, 0x02000000L, hartCount);
-        devices[3] = new PLIC(this, 0x0C000000L, hartCount, 32);
-        devices[4] = new UART(this, 0x10000000L, System.in, System.out);
-
-        harts = new Hart[hartCount];
-        for (int id = 0; id < hartCount; ++id) {
-            harts[id] = new HartImpl(this, id);
+        this.harts = new Hart[harts];
+        for (int id = 0; id < harts; ++id) {
+            this.harts[id] = new HartImpl(this, id);
         }
 
-        for (int j = 0; j < devices.length; ++j) {
-            final var b = devices[j];
-            for (int i = j + 1; i < devices.length; ++i) {
-                final var a = devices[i];
-                if (a.begin() < b.end() && b.begin() < a.end()) {
-                    Log.warn("device map overlap: %s [%08x;%08x] and %s [%08x;%08x]",
-                             b,
-                             b.begin(),
-                             b.end(),
-                             a,
-                             a.begin(),
-                             a.end());
+        this.devices = new Device[devices.length];
+        for (int i = 0; i < devices.length; ++i)
+            this.devices[i] = devices[i].apply(this);
+
+        for (int j = 0; j < this.devices.length; ++j) {
+            final var b = this.devices[j];
+            if (b instanceof IODevice iob)
+                for (int i = j + 1; i < this.devices.length; ++i) {
+                    final var a = this.devices[i];
+                    if (a instanceof IODevice ioa)
+                        if (ioa.begin() < iob.end() && iob.begin() < ioa.end())
+                            Log.warn("device map overlap: %s [%08x;%08x] and %s [%08x;%08x]",
+                                     iob,
+                                     iob.begin(),
+                                     iob.end(),
+                                     ioa,
+                                     ioa.begin(),
+                                     ioa.end());
                 }
-            }
         }
 
-        generateDeviceTree(deviceTreeMemory.buffer());
+        this.dt = new Memory(this, 0x100000000L, 0x2000, true);
+        generateDeviceTree(this.dt.buffer());
+    }
+
+    @Override
+    public @NotNull ByteOrder order() {
+        return order;
     }
 
     @Override
@@ -95,67 +87,47 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public @NotNull Memory memory() {
-        return memory;
+    public int harts() {
+        return harts.length;
     }
 
     @Override
     public @NotNull Hart hart(final int id) {
-        if (id < 0 || id >= harts.length) {
+        if (id < 0 || id >= harts.length)
             throw new IllegalArgumentException();
-        }
         return harts[id];
     }
 
     @Override
     public <T extends Device> @NotNull T device(final @NotNull Class<T> type) {
-        for (final var device : devices) {
-            if (type.isInstance(device)) {
+        for (final var device : devices)
+            if (type.isInstance(device))
                 return type.cast(device);
-            }
-        }
-        throw new NoSuchElementException();
-    }
-
-    @Override
-    public <T extends Device> @NotNull T device(final @NotNull Class<T> type, final @NotNull Predicate<T> predicate) {
-        for (final var device : devices) {
-            if (type.isInstance(device)) {
-                final var t = type.cast(device);
-                if (predicate.test(t)) {
-                    return t;
-                }
-            }
-        }
         throw new NoSuchElementException();
     }
 
     @Override
     public <T extends Device> @NotNull T device(final @NotNull Class<T> type, int index) {
-        for (final var device : devices) {
-            if (type.isInstance(device) && index-- <= 0) {
+        for (final var device : devices)
+            if (type.isInstance(device) && index-- <= 0)
                 return type.cast(device);
-            }
-        }
         throw new NoSuchElementException();
     }
 
     @Override
-    public <T extends Device> void device(final @NotNull Class<T> type, final @NotNull Consumer<T> consumer) {
-        for (final var device : devices) {
-            if (type.isInstance(device)) {
-                consumer.accept(type.cast(device));
-            }
-        }
+    public <T extends Device> void device(final @NotNull Class<T> type, final @NotNull Predicate<T> function) {
+        for (final var device : devices)
+            if (type.isInstance(device))
+                if (function.test(type.cast(device)))
+                    return;
     }
 
     @Override
     public <T extends IODevice> @Nullable T device(final @NotNull Class<T> type, final long address) {
-        for (final var device : devices) {
-            if (type.isInstance(device) && device.begin() <= address && address < device.end()) {
-                return type.cast(device);
-            }
-        }
+        for (final var device : devices)
+            if (device instanceof IODevice iodevice)
+                if (type.isInstance(iodevice) && iodevice.begin() <= address && address < iodevice.end())
+                    return type.cast(iodevice);
         return null;
     }
 
@@ -166,13 +138,11 @@ public final class MachineImpl implements Machine {
 
     @Override
     public void dump(final @NotNull PrintStream out) {
-        for (final var device : devices) {
+        for (final var device : devices)
             device.dump(out);
-        }
 
-        for (final var hart : harts) {
+        for (final var hart : harts)
             hart.dump(out);
-        }
 
         dump(out, 0x80007000L, 0x1000L);
     }
@@ -212,27 +182,22 @@ public final class MachineImpl implements Machine {
                 allZero = true;
                 allZeroBegin = i;
                 continue;
-            } else if (allZero) {
+            } else if (allZero)
                 continue;
-            }
 
             out.printf("%016x |", paddr + i);
 
-            for (int j = 0; j < chunk; ++j) {
+            for (int j = 0; j < chunk; ++j)
                 out.printf(" %02x", buffer[j]);
-            }
-            for (int j = chunk; j < CHUNK; ++j) {
+            for (int j = chunk; j < CHUNK; ++j)
                 out.print(" 00");
-            }
 
             out.print(" | ");
 
-            for (int j = 0; j < chunk; ++j) {
+            for (int j = 0; j < chunk; ++j)
                 out.print(buffer[j] >= 0x20 ? (char) buffer[j] : '.');
-            }
-            for (int j = chunk; j < CHUNK; ++j) {
+            for (int j = chunk; j < CHUNK; ++j)
                 out.print('.');
-            }
 
             out.println();
         }
@@ -244,30 +209,26 @@ public final class MachineImpl implements Machine {
         once = false;
         active = false;
 
-        for (final var device : devices) {
+        for (final var device : devices)
             device.reset();
-        }
 
         for (final var hart : harts) {
-            hart.reset(entry);
+            hart.reset();
             hart.gprFile().putd(0x0A, hart.id()); // boot hart id
-            hart.gprFile().putd(0x0B, deviceTreeMemory.begin()); // device tree address
+            hart.gprFile().putd(0x0B, dt.begin()); // device tree address
         }
     }
 
     @Override
     public void step() {
-        if (!active) {
+        if (!active)
             return;
-        }
 
-        for (final var device : devices) {
+        for (final var device : devices)
             device.step();
-        }
 
-        for (final var hart : harts) {
+        for (final var hart : harts)
             hart.step();
-        }
 
         if (once) {
             active = false;
@@ -309,9 +270,8 @@ public final class MachineImpl implements Machine {
 
     @Override
     public @NotNull Object acquireLock(final long address) {
-        if (locks.containsKey(address)) {
+        if (locks.containsKey(address))
             return locks.get(address);
-        }
 
         final var lock = new Object();
         locks.put(address, lock);
@@ -319,55 +279,14 @@ public final class MachineImpl implements Machine {
     }
 
     @Override
-    public void entry(final long entry) {
-        this.entry = entry;
-    }
-
-    @Override
-    public long entry() {
-        return entry;
-    }
-
-    @Override
-    public void offset(final long offset) {
-        this.offset = offset;
-    }
-
-    @Override
-    public long offset() {
-        return offset;
-    }
-
-    @Override
-    public void segment(
-            final @NotNull ExtendedInputStream stream,
-            final long address,
-            final int size,
-            final int allocate
-    ) throws IOException {
-        if (memory.begin() <= address && address + allocate <= memory.end()) {
-            final var data = new byte[allocate];
-            final var read = stream.read(data, 0, size);
-            if (read != size) {
-                Log.warn("end of stream: %d != %d", read, size);
-            }
-
-            final var offset = (int) (address - memory.begin());
-            memory.direct(data, offset, true);
-
-            return;
-        }
-
-        Log.error("memory write out of bounds: segment address=%x, size=%d, allocate=%d", address, size, allocate);
-    }
-
-    @Override
     public long pRead(final long paddr, final int size, final boolean unsafe) {
-        for (final var device : devices) {
-            if (device.begin() <= paddr && paddr + size <= device.end()) {
-                return device.read((int) (paddr - device.begin()), size);
-            }
-        }
+        if (dt.begin() <= paddr && paddr + size <= dt.end())
+            return dt.read((int) (paddr - dt.begin()), size);
+
+        for (final var device : devices)
+            if (device instanceof IODevice iodevice)
+                if (iodevice.begin() <= paddr && paddr + size <= iodevice.end())
+                    return iodevice.read((int) (paddr - iodevice.begin()), size);
 
         if (unsafe) {
             Log.warn("read invalid address: address=%x, size=%d", paddr, size);
@@ -379,12 +298,17 @@ public final class MachineImpl implements Machine {
 
     @Override
     public void pWrite(final long paddr, final int size, final long value, final boolean unsafe) {
-        for (final var device : devices) {
-            if (device.begin() <= paddr && paddr + size <= device.end()) {
-                device.write((int) (paddr - device.begin()), size, value);
-                return;
-            }
+        if (dt.begin() <= paddr && paddr + size <= dt.end()) {
+            dt.write((int) (paddr - dt.begin()), size, value);
+            return;
         }
+
+        for (final var device : devices)
+            if (device instanceof IODevice iodevice)
+                if (iodevice.begin() <= paddr && paddr + size <= iodevice.end()) {
+                    iodevice.write((int) (paddr - iodevice.begin()), size, value);
+                    return;
+                }
 
         if (unsafe) {
             Log.warn("write invalid address: address=%x, size=%d, value=%x", paddr, size, value);
@@ -402,11 +326,17 @@ public final class MachineImpl implements Machine {
 
     @Override
     public void pDirect(final byte @NotNull [] data, final long paddr, final boolean write) {
-        if (memory.begin() <= paddr && paddr + data.length <= memory.end()) {
-            final var offset = (int) (paddr - memory.begin());
-            memory.direct(data, offset, write);
+        if (dt.begin() <= paddr && paddr + data.length <= dt.end()) {
+            dt.direct(data, (int) (paddr - dt.begin()), write);
             return;
         }
+
+        for (final var device : devices)
+            if (device instanceof Memory memory)
+                if (memory.begin() <= paddr && paddr + data.length <= memory.end()) {
+                    memory.direct(data, (int) (paddr - memory.begin()), write);
+                    return;
+                }
 
         Log.warn("direct read/write invalid address: address=%x, length=%d", paddr, data.length);
     }
@@ -424,8 +354,55 @@ public final class MachineImpl implements Machine {
                         .prop(pb -> pb.name("#size-cells").data(0x02))
                         .prop(pb -> pb.name("compatible").data("rvm,riscv-virt"))
                         .prop(pb -> pb.name("model").data("RVM"))
-                        .node(nb -> nb.name("chosen")
-                                      .prop(pb -> pb.name("stdout-path").data("/soc/serial@10000000"))
+                        .node(nb -> nb
+                                .name("chosen")
+                                .prop(pb -> pb.name("stdout-path").data("/soc/serial@10000000"))
+                                .node(nb1 -> nb1
+                                        .name("opensbi-domains")
+                                        .prop(pb -> pb.name("compatible").data("opensbi,domain,config"))
+                                        .node(nb2 -> nb2
+                                                .name("tmemory")
+                                                .prop(pb -> pb.name("phandle").data(-0x1))
+                                                .prop(pb -> pb.name("compatible").data("opensbi,domain,memregion"))
+                                                .prop(pb -> pb.name("base").data(0x80000000L))
+                                                .prop(pb -> pb.name("order").data(20))
+                                        )
+                                        .node(nb2 -> nb2
+                                                .name("umemory")
+                                                .prop(pb -> pb.name("phandle").data(-0x2))
+                                                .prop(pb -> pb.name("compatible").data("opensbi,domain,memregion"))
+                                                .prop(pb -> pb.name("base").data(0x0L))
+                                                .prop(pb -> pb.name("order").data(64))
+                                        )
+                                        .node(nb2 -> nb2
+                                                .name("tuart")
+                                                .prop(pb -> pb.name("phandle").data(-0x3))
+                                                .prop(pb -> pb.name("compatible").data("opensbi,domain,memregion"))
+                                                .prop(pb -> pb.name("base").data(0x20000000L))
+                                                .prop(pb -> pb.name("order").data(12))
+                                                .prop(pb -> pb.name("mmio").data())
+                                                .prop(pb -> pb.name("devices").data(context.get(device(UART.class))))
+                                        )
+                                        .node(nb2 -> nb2
+                                                .name("tdomain")
+                                                .prop(pb -> pb.name("phandle").data(-0x4))
+                                                .prop(pb -> pb.name("compatible").data("opensbi,domain,instance"))
+                                                .prop(pb -> pb.name("possible-harts").data(context.get(harts[0])))
+                                                .prop(pb -> pb.name("regions").data(-0x1, 0x3F, -0x3, 0x3F))
+                                                .prop(pb -> pb.name("boot-hart").data(context.get(harts[0])))
+                                                .prop(pb -> pb.name("next-arg1").data(0L))
+                                                .prop(pb -> pb.name("next-addr").data(0x80000000L))
+                                                .prop(pb -> pb.name("next-mode").data(1))
+                                                .prop(pb -> pb.name("system-reset-allowed").data())
+                                                .prop(pb -> pb.name("system-suspend-allowed").data())
+                                        )
+                                        .node(nb2 -> nb2
+                                                .name("udomain")
+                                                .prop(pb -> pb.name("phandle").data(-0x5))
+                                                .prop(pb -> pb.name("compatible").data("opensbi,domain,instance"))
+                                                .prop(pb -> pb.name("possible-harts").data(context.get(harts[0])))
+                                                .prop(pb -> pb.name("regions").data(-0x1, 0x00, -0x3, 0x00, -0x2, 0x3F))
+                                        ))
                         )
                         .node(nb -> {
                             nb.name("cpus")
@@ -434,7 +411,10 @@ public final class MachineImpl implements Machine {
                               .prop(pb -> pb.name("timebase-frequency").data(0x989680));
 
                             for (final var hart : harts) {
-                                nb.node(builder -> hart.build(context, builder));
+                                nb.node(builder -> hart.build(context,
+                                                              builder.prop(pb -> pb
+                                                                      .name("opensbi-domain")
+                                                                      .data(-0x4))));
                             }
                         })
                         .node(nb -> {
@@ -449,5 +429,13 @@ public final class MachineImpl implements Machine {
                         })
                 )
                 .build(tree -> FDT.write(tree, buffer));
+    }
+
+    @Override
+    public void close() throws Exception {
+        for (final var hart : harts)
+            hart.close();
+        for (final var device : devices)
+            device.close();
     }
 }

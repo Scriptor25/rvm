@@ -5,7 +5,6 @@ import io.scriptor.fdt.NodeBuilder;
 import io.scriptor.machine.Device;
 import io.scriptor.machine.IODevice;
 import io.scriptor.machine.Machine;
-import io.scriptor.util.ByteUtil;
 import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,7 +12,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 public final class Memory implements IODevice {
 
@@ -28,7 +26,6 @@ public final class Memory implements IODevice {
             final @NotNull Machine machine,
             final long begin,
             final int capacity,
-            final @NotNull ByteOrder order,
             final boolean readonly
     ) {
         this.machine = machine;
@@ -36,7 +33,8 @@ public final class Memory implements IODevice {
         this.end = begin + capacity;
         this.capacity = capacity;
         this.readonly = readonly;
-        this.buffer = ByteBuffer.allocateDirect(capacity).order(order);
+        this.buffer = ByteBuffer.allocateDirect(capacity)
+                                .order(machine.order());
     }
 
     @Override
@@ -46,7 +44,7 @@ public final class Memory implements IODevice {
 
     @Override
     public void dump(final @NotNull PrintStream out) {
-        ByteUtil.dump(out, buffer);
+        // ByteUtil.dump(out, buffer);
     }
 
     @Override
@@ -55,7 +53,7 @@ public final class Memory implements IODevice {
 
     @Override
     public void build(final @NotNull BuilderContext<Device> context, final @NotNull NodeBuilder builder) {
-        final var phandle = context.push(this);
+        final var phandle = context.get(this);
 
         if (readonly) {
             builder.name("rom@%x".formatted(begin))

@@ -6,7 +6,6 @@ import com.carrotsearch.hppc.ObjectArrayList;
 import io.scriptor.machine.CSRFile;
 import io.scriptor.machine.Hart;
 import io.scriptor.machine.Machine;
-import io.scriptor.util.Log;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.PrintStream;
@@ -59,91 +58,41 @@ public final class CSRFileImpl implements CSRFile {
 
     @Override
     public void define(final int addr) {
-        metadata.put(addr,
-                     new CSRMeta(~0L,
-                                 -1,
-                                 null,
-                                 null,
-                                 new ObjectArrayList<>(),
-                                 new ObjectArrayList<>()));
-        present[addr] = true;
-        values[addr] = 0L;
+        define(addr, -1L, -1, 0L);
     }
 
     @Override
     public void define(final int addr, final long mask) {
-        metadata.put(addr,
-                     new CSRMeta(mask,
-                                 -1,
-                                 null,
-                                 null,
-                                 new ObjectArrayList<>(),
-                                 new ObjectArrayList<>()));
-        present[addr] = true;
-        values[addr] = 0L;
+        define(addr, mask, -1, 0L);
     }
 
     @Override
     public void define(final int addr, final long mask, final int base) {
-        metadata.put(addr,
-                     new CSRMeta(mask,
-                                 base,
-                                 null,
-                                 null,
-                                 new ObjectArrayList<>(),
-                                 new ObjectArrayList<>()));
-        present[addr] = true;
-        values[addr] = 0L;
+        define(addr, mask, base, 0L);
     }
 
     @Override
     public void define(final int addr, final long mask, final int base, final long val) {
-        metadata.put(addr,
-                     new CSRMeta(mask,
-                                 base,
-                                 null,
-                                 null,
-                                 new ObjectArrayList<>(),
-                                 new ObjectArrayList<>()));
+        metadata.put(addr, new CSRMeta(mask, base, null, null, new ObjectArrayList<>(), new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = val & mask;
     }
 
     @Override
     public void defineVal(final int addr, final long val) {
-        metadata.put(addr,
-                     new CSRMeta(~0L,
-                                 -1,
-                                 null,
-                                 null,
-                                 new ObjectArrayList<>(),
-                                 new ObjectArrayList<>()));
-        present[addr] = true;
-        values[addr] = val;
+        define(addr, -1L, -1, val);
     }
 
     @Override
     public void define(final int addr, long mask, final @NotNull LongSupplier get) {
-        metadata.put(addr,
-                     new CSRMeta(mask,
-                                 -1,
-                                 get,
-                                 null,
-                                 new ObjectArrayList<>(),
-                                 new ObjectArrayList<>()));
+        metadata.put(addr, new CSRMeta(mask, -1, get, null, new ObjectArrayList<>(), new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
 
     @Override
     public void define(final int addr, long mask, final @NotNull LongSupplier get, final @NotNull LongConsumer set) {
-        metadata.put(addr,
-                     new CSRMeta(mask,
-                                 -1,
-                                 get,
-                                 set,
-                                 new ObjectArrayList<>(),
-                                 new ObjectArrayList<>()));
+        metadata.put(addr, new CSRMeta(mask, -1, get, set, new ObjectArrayList<>(), new ObjectArrayList<>()));
         present[addr] = true;
         values[addr] = 0L;
     }
@@ -154,8 +103,8 @@ public final class CSRFileImpl implements CSRFile {
     }
 
     @Override
-    public void hookSet(final int addr, final @NotNull LongConsumer hook) {
-        metadata.get(addr).setHooks().add(hook);
+    public void hookPut(final int addr, final @NotNull LongConsumer hook) {
+        metadata.get(addr).putHooks().add(hook);
     }
 
     @Override
@@ -171,21 +120,10 @@ public final class CSRFileImpl implements CSRFile {
     @Override
     public long getd(int addr, final int priv) {
         if (!present[addr])
-            throw new TrapException(hart.id(),
-                                    0x02L,
-                                    addr,
-                                    "read csr addr=%03x, priv=%x: not present",
-                                    addr,
-                                    priv);
+            error(addr, "read csr addr=%03x, priv=%x: not present", addr, priv);
 
         if (unprivileged(addr, priv))
-            // throw new TrapException(hart.id(),
-            //                         0x02L,
-            //                         addr,
-            //                         "read csr addr=%03x, priv=%x: unprivileged",
-            //                         addr,
-            //                         priv);
-            Log.warn("read csr addr=%03x, priv=%x: unprivileged", addr, priv);
+            error(addr, "read csr addr=%03x, priv=%x: unprivileged", addr, priv);
 
         final var meta = metadata.get(addr);
         final var mask = meta.mask();
@@ -201,12 +139,7 @@ public final class CSRFileImpl implements CSRFile {
             addr = base;
 
         if (!present[addr])
-            throw new TrapException(hart.id(),
-                                    0x02L,
-                                    addr,
-                                    "subsequent read csr addr=%03x: not present",
-                                    addr);
-
+            error(addr, "subsequent read csr addr=%03x: not present", addr);
         final var value = values[addr] & mask;
         for (final var hook : meta.getHooks())
             hook.value.accept(value);
@@ -227,32 +160,13 @@ public final class CSRFileImpl implements CSRFile {
     @Override
     public void putd(int addr, final int priv, final long val) {
         if (!present[addr])
-            throw new TrapException(hart.id(),
-                                    0x02L,
-                                    addr,
-                                    "write csr addr=%03x, priv=%x, val=%x: not present",
-                                    addr,
-                                    priv,
-                                    val);
+            error(addr, "write csr addr=%03x, priv=%x, val=%x: not present", addr, priv, val);
 
         if (unprivileged(addr, priv))
-            // throw new TrapException(hart.id(),
-            //                         0x02L,
-            //                         addr,
-            //                         "write csr addr=%03x, priv=%x, val=%x: unprivileged",
-            //                         addr,
-            //                         priv,
-            //                         val);
-            Log.warn("write csr addr=%03x, priv=%x, val=%x: unprivileged", addr, priv, val);
+            error(addr, "write csr addr=%03x, priv=%x, val=%x: unprivileged", addr, priv, val);
 
         if (readonly(addr))
-            throw new TrapException(hart.id(),
-                                    0x02L,
-                                    addr,
-                                    "write csr addr=%03x, priv=%x, val=%x: read-only",
-                                    addr,
-                                    priv,
-                                    val);
+            error(addr, "write csr addr=%03x, priv=%x, val=%x: read-only", addr, priv, val);
 
         final var meta = metadata.get(addr);
         final var mask = meta.mask();
@@ -268,7 +182,7 @@ public final class CSRFileImpl implements CSRFile {
                                         val);
 
             final var value = val & mask;
-            for (final var hook : meta.setHooks())
+            for (final var hook : meta.putHooks())
                 hook.value.accept(value);
 
             meta.set().accept(value);
@@ -279,17 +193,16 @@ public final class CSRFileImpl implements CSRFile {
             addr = base;
 
         if (!present[addr])
-            throw new TrapException(hart.id(),
-                                    0x02L,
-                                    addr,
-                                    "subsequent write csr addr=%03x, val=%x: not present",
-                                    addr,
-                                    val);
+            error(addr, "subsequent write csr addr=%03x, val=%x: not present", addr, val);
 
         final var value = (values[addr] & ~mask) | (val & mask);
-        for (final var hook : meta.setHooks())
+        for (final var hook : meta.putHooks())
             hook.value.accept(value);
 
         values[addr] = value;
+    }
+
+    private void error(final long addr, final @NotNull String format, final @NotNull Object... args) {
+        throw new TrapException(hart.id(), 0x02L, addr, format, args);
     }
 }
