@@ -1,8 +1,7 @@
 plugins {
-    id("java")
-    id("application")
+    kotlin("jvm")
 
-    id("org.graalvm.buildtools.native") version "0.11.0"
+    application
 }
 
 group = "io.scriptor"
@@ -13,32 +12,16 @@ repositories {
 }
 
 dependencies {
-    compileOnly(libs.jetbrains.annotations)
-
-    implementation("com.carrotsearch:hppc:0.10.0")
+    implementation(kotlin("stdlib-jdk8"))
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_24
-    targetCompatibility = JavaVersion.VERSION_25
+kotlin {
+    jvmToolchain(25)
 }
 
 application {
     mainClass = "io.scriptor.Main"
-
     applicationName = "rvm"
-}
-
-graalvmNative {
-    toolchainDetection = true
-
-    binaries {
-        named("main") {
-            resources {
-                includedPatterns = listOf(".*")
-            }
-        }
-    }
 }
 
 val generateResourceDescriptor by tasks.registering {
@@ -59,8 +42,8 @@ val generateResourceDescriptor by tasks.registering {
         file.bufferedWriter(Charsets.UTF_8).use { writer ->
             directory.walkTopDown()
                 .filter { it.isFile }
-                .forEach { file ->
-                    val path = directory.toPath().relativize(file.toPath()).toString()
+                .forEach {
+                    val path = directory.toPath().relativize(it.toPath()).toString()
                     if (path != "index.list") {
                         writer.write(path.replace(File.separatorChar, '/'))
                         writer.newLine()
@@ -71,9 +54,5 @@ val generateResourceDescriptor by tasks.registering {
 }
 
 tasks.named("compileJava") {
-    dependsOn(generateResourceDescriptor)
-}
-
-tasks.named("nativeCompile") {
     dependsOn(generateResourceDescriptor)
 }

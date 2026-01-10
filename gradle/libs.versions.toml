@@ -1,2 +1,0 @@
-[libraries]
-jetbrains-annotations = { group = "org.jetbrains", name = "annotations", version = "26.0.2" }
