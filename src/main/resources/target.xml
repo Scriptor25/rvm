@@ -75,7 +75,7 @@
         <reg name="f30" bitsize="64" type="ieee_double" group="float"/>
         <reg name="f31" bitsize="64" type="ieee_double" group="float"/>
         <!-- floating point control/status register -->
-        <reg name="fcsr" bitsize="32" type="uint32" group="float"/>
+        <reg name="fcsr" bitsize="64" type="uint64" group="float"/>
     </feature>
 
     <feature name="org.gnu.gdb.riscv.csr">

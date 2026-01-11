@@ -12,7 +12,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.PrintStream
 
-@OptIn(ExperimentalUnsignedTypes::class)
 class UART : IODevice {
 
     override val machine: Machine
@@ -55,6 +54,7 @@ class UART : IODevice {
     override fun reset() {
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
@@ -126,12 +126,12 @@ class UART : IODevice {
 
     companion object {
         /**
-         * receiver buffer register [ro]
+         * receiver buffer register (ro)
          */
         private const val UART_RBR = 0x00U
 
         /**
-         * transmitter holding register [wo]
+         * transmitter holding register (wo)
          */
         private const val UART_THR = 0x00U
 
@@ -141,12 +141,12 @@ class UART : IODevice {
         private const val UART_IER = 0x01U
 
         /**
-         * interrupt identification register [ro]
+         * interrupt identification register (ro)
          */
         private const val UART_IIR = 0x02U
 
         /**
-         * fifo control register [wo]
+         * fifo control register (wo)
          */
         private const val UART_FCR = 0x02U
 

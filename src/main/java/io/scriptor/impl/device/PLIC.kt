@@ -9,10 +9,10 @@ import io.scriptor.util.Log
 import io.scriptor.util.Log.format
 import java.io.PrintStream
 
-@OptIn(ExperimentalUnsignedTypes::class)
 class PLIC : IODevice {
 
     internal class Context {
+        @OptIn(ExperimentalUnsignedTypes::class)
         val enable: UIntArray = UIntArray(0x20)
         var threshold: UInt = 0U
         var claim: UInt = 0U
@@ -25,7 +25,9 @@ class PLIC : IODevice {
 
     private val ndev: UInt
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private val priority: UIntArray = UIntArray(SOURCE_COUNT)
+    @OptIn(ExperimentalUnsignedTypes::class)
     private val pending: UIntArray = UIntArray(SOURCE_COUNT ushr 2)
 
     private val contexts: Array<Context> = Array(CONTEXT_COUNT) { Context() }
@@ -41,6 +43,7 @@ class PLIC : IODevice {
     override fun dump(out: PrintStream) {
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun reset() {
         priority.fill(0U)
         pending.fill(0U)
@@ -52,6 +55,7 @@ class PLIC : IODevice {
         }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
@@ -73,6 +77,7 @@ class PLIC : IODevice {
             .prop { it.name("interrupts-extended").data(*ie) }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun read(offset: UInt, size: UInt): ULong {
         if (offset in PRIORITY_BASE..<PENDING_BASE && size == 4U) {
             val index = (offset - PRIORITY_BASE) / 4U
@@ -121,6 +126,7 @@ class PLIC : IODevice {
         return 0UL
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun write(offset: UInt, size: UInt, value: ULong) {
         if (offset in PRIORITY_BASE..<PENDING_BASE && size == 4U) {
             val index = (offset - PRIORITY_BASE) / 4U

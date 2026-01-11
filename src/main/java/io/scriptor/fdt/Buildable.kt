@@ -4,6 +4,7 @@ import java.util.function.Consumer
 import java.util.function.Function
 
 interface Buildable<T> {
+
     fun build(): T
 
     fun build(consumer: Consumer<T>) {

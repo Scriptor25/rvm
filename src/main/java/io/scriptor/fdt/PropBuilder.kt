@@ -2,7 +2,8 @@ package io.scriptor.fdt
 
 import java.nio.ByteBuffer
 
-class PropBuilder private constructor() : Buildable<Prop> {
+class PropBuilder : Buildable<Prop> {
+
     private var name: String? = null
     private var data: Writable? = null
 
@@ -125,8 +126,9 @@ class PropBuilder private constructor() : Buildable<Prop> {
 
     fun data(data: String): PropBuilder {
         val bytes = data.toByteArray()
-        val buffer = ByteArray(bytes.size)
+        val buffer = ByteArray(bytes.size + 1)
         System.arraycopy(bytes, 0, buffer, 0, bytes.size)
+        buffer[bytes.size] = 0
         return data(*buffer)
     }
 
@@ -134,11 +136,5 @@ class PropBuilder private constructor() : Buildable<Prop> {
         checkNotNull(name) { "missing prop name" }
         checkNotNull(data) { "missing prop data" }
         return Prop(name!!, data!!)
-    }
-
-    companion object {
-        fun create(): PropBuilder {
-            return PropBuilder()
-        }
     }
 }

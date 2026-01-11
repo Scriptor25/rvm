@@ -2,7 +2,7 @@ package io.scriptor.fdt
 
 import java.util.function.Consumer
 
-class NodeBuilder private constructor() : Buildable<Node> {
+class NodeBuilder : Buildable<Node> {
 
     private var name: String? = null
     private val props: MutableList<Prop> = ArrayList()
@@ -19,7 +19,7 @@ class NodeBuilder private constructor() : Buildable<Node> {
     }
 
     fun prop(consumer: Consumer<PropBuilder>): NodeBuilder {
-        val builder: PropBuilder = PropBuilder.create()
+        val builder = PropBuilder()
         consumer.accept(builder)
         this.props.add(builder.build())
         return this
@@ -31,7 +31,7 @@ class NodeBuilder private constructor() : Buildable<Node> {
     }
 
     fun node(consumer: Consumer<NodeBuilder>): NodeBuilder {
-        val builder: NodeBuilder = create()
+        val builder = NodeBuilder()
         consumer.accept(builder)
         this.nodes.add(builder.build())
         return this
@@ -41,11 +41,5 @@ class NodeBuilder private constructor() : Buildable<Node> {
         checkNotNull(name) { "missing node name" }
 
         return Node(name!!, props.toTypedArray(), nodes.toTypedArray())
-    }
-
-    companion object {
-        fun create(): NodeBuilder {
-            return NodeBuilder()
-        }
     }
 }

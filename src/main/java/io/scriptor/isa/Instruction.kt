@@ -2,17 +2,16 @@ package io.scriptor.isa
 
 import io.scriptor.util.Log.format
 
-@OptIn(ExperimentalUnsignedTypes::class)
 data class Instruction(
     val mnemonic: String,
     val ilen: UInt,
-    val mask: UInt,
-    val bits: UInt,
+    val mask: Int,
+    val bits: Int,
     val restriction: UInt,
     val operands: Array<Operand>,
 ) {
 
-    fun test(value: UInt): Boolean {
+    fun test(value: Int): Boolean {
         if (bits != (value and mask)) {
             return false
         }
@@ -24,7 +23,7 @@ data class Instruction(
         return true
     }
 
-    fun decode(instruction: UInt, label: String): UInt {
+    fun decode(instruction: Int, label: String): Int {
         for (operand in operands) {
             if (operand.label == label) {
                 return operand.extract(instruction)
@@ -33,12 +32,57 @@ data class Instruction(
         throw NoSuchElementException(label)
     }
 
-    fun decode(instruction: UInt, values: UIntArray, vararg labels: String) {
-        require(values.size >= labels.size)
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun decode(instruction: UInt, values: UIntArray, label0: String) {
+        require(values.size >= 1)
 
-        for (i in labels.indices) {
-            values[i] = decode(instruction, labels[i])
-        }
+        values[0] = decode(instruction.toInt(), label0).toUInt()
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun decode(instruction: UInt, values: UIntArray, label0: String, label1: String) {
+        require(values.size >= 2)
+
+        values[0] = decode(instruction.toInt(), label0).toUInt()
+        values[1] = decode(instruction.toInt(), label1).toUInt()
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun decode(instruction: UInt, values: UIntArray, label0: String, label1: String, label2: String) {
+        require(values.size >= 3)
+
+        values[0] = decode(instruction.toInt(), label0).toUInt()
+        values[1] = decode(instruction.toInt(), label1).toUInt()
+        values[2] = decode(instruction.toInt(), label2).toUInt()
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun decode(instruction: UInt, values: UIntArray, label0: String, label1: String, label2: String, label3: String) {
+        require(values.size >= 4)
+
+        values[0] = decode(instruction.toInt(), label0).toUInt()
+        values[1] = decode(instruction.toInt(), label1).toUInt()
+        values[2] = decode(instruction.toInt(), label2).toUInt()
+        values[3] = decode(instruction.toInt(), label3).toUInt()
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun decode(
+        instruction: UInt,
+        values: UIntArray,
+        label0: String,
+        label1: String,
+        label2: String,
+        label3: String,
+        label4: String,
+    ) {
+        require(values.size >= 5)
+
+        values[0] = decode(instruction.toInt(), label0).toUInt()
+        values[1] = decode(instruction.toInt(), label1).toUInt()
+        values[2] = decode(instruction.toInt(), label2).toUInt()
+        values[3] = decode(instruction.toInt(), label3).toUInt()
+        values[4] = decode(instruction.toInt(), label4).toUInt()
     }
 
     override fun toString(): String {

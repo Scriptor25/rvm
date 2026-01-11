@@ -8,8 +8,6 @@ import java.util.function.Consumer
 
 object Log {
 
-    private const val LEVEL = 1
-
     private val queue: BlockingQueue<Consumer<PrintStream>> = LinkedBlockingQueue<Consumer<PrintStream>>()
     private val SHUTDOWN = Consumer<PrintStream> { it.println("LOG SHUTDOWN") }
 
@@ -31,38 +29,40 @@ object Log {
         queue.add(SHUTDOWN)
     }
 
+    var level = 2U
+
     fun info(message: String) {
-        if (LEVEL >= 2) {
+        if (level >= 2U) {
             queue.add { it.println("[ info ] $message") }
         }
     }
 
     fun info(format: String, vararg args: Any?) {
-        if (LEVEL >= 2) {
+        if (level >= 2U) {
             info(format(format, *args))
         }
     }
 
     fun warn(message: String) {
-        if (LEVEL >= 1) {
+        if (level >= 1U) {
             queue.add { it.println("[ warning ] $message") }
         }
     }
 
     fun warn(format: String, vararg args: Any?) {
-        if (LEVEL >= 1) {
+        if (level >= 1U) {
             warn(format(format, *args))
         }
     }
 
     fun error(message: String) {
-        if (LEVEL >= 0) {
+        if (level >= 0U) {
             queue.add { it.println("[ error ] $message") }
         }
     }
 
     fun error(format: String, vararg args: Any?) {
-        if (LEVEL >= 0) {
+        if (level >= 0U) {
             error(format(format, *args))
         }
     }

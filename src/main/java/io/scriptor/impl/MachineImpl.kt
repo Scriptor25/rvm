@@ -11,6 +11,7 @@ import io.scriptor.machine.Hart
 import io.scriptor.machine.IODevice
 import io.scriptor.machine.Machine
 import io.scriptor.util.Log
+import io.scriptor.util.Log.format
 import java.io.PrintStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -19,7 +20,6 @@ import java.util.function.IntConsumer
 import java.util.function.Predicate
 import kotlin.math.min
 
-@OptIn(ExperimentalUnsignedTypes::class)
 class MachineImpl : Machine {
 
     override val machine: Machine
@@ -65,33 +65,68 @@ class MachineImpl : Machine {
 
         this.dt = Memory(this, 0x100000000UL, 0x2000U, true)
         generateDeviceTree(this.dt.buffer())
+
+        // TODO: remove
+        this.dt.export("out.dtb")
     }
 
     override fun <T : Device> device(type: Class<T>): T {
-        for (device in devices) if (type.isInstance(device)) return type.cast(device)
+        for (device in devices) {
+            if (type.isInstance(device)) {
+                return type.cast(device)
+            }
+        }
         throw NoSuchElementException()
     }
 
     override fun <T : Device> device(type: Class<T>, index: Int): T {
         var index = index
-        for (device in devices)
-            if (type.isInstance(device) && index-- <= 0)
+        for (device in devices) {
+            if (type.isInstance(device)
+                && index-- <= 0
+            ) {
                 return type.cast(device)
+            }
+        }
         throw NoSuchElementException()
     }
 
     override fun <T : Device> device(type: Class<T>, predicate: Predicate<T>) {
-        for (device in devices)
-            if (type.isInstance(device))
-                if (predicate.test(type.cast(device)))
-                    return
+        for (device in devices) {
+            if (type.isInstance(device)
+                && predicate.test(type.cast(device))
+            ) {
+                return
+            }
+        }
     }
 
     override fun <T : IODevice> device(type: Class<T>, address: ULong): T? {
-        for (device in devices)
-            if (device is IODevice)
-                if (type.isInstance(device) && device.begin <= address && address < device.end)
-                    return type.cast(device)
+        for (device in devices) {
+            if (device is IODevice
+                && address in device.begin..<device.end
+                && type.isInstance(device)
+            ) {
+                return type.cast(device)
+            }
+        }
+        return null
+    }
+
+    override fun <T : IODevice> device(
+        type: Class<T>,
+        address: ULong,
+        capacity: UInt,
+    ): T? {
+        for (device in devices) {
+            if (device is IODevice
+                && address in device.begin..<device.end
+                && capacity <= (device.end - device.begin).toUInt()
+                && type.isInstance(device)
+            ) {
+                return type.cast(device)
+            }
+        }
         return null
     }
 
@@ -133,7 +168,7 @@ class MachineImpl : Machine {
 
             if (allZero && !allZeroP) {
                 allZero = false
-                out.printf("%016x - %016x%n", allZeroBegin, i - 1U)
+                out.println(format("%016x - %016x", allZeroBegin, i - 1U))
             } else if (!allZero && allZeroP) {
                 allZero = true
                 allZeroBegin = i
@@ -144,9 +179,9 @@ class MachineImpl : Machine {
                 continue
             }
 
-            out.printf("%016x |", paddr + i)
+            out.print(format("%016x |", paddr + i))
 
-            for (j in 0..<chunk) out.printf(" %02x", buffer[j])
+            for (j in 0..<chunk) out.print(format(" %02x", buffer[j]))
             for (j in chunk..<CHUNK) out.print(" 00")
 
             out.print(" | ")
@@ -289,11 +324,11 @@ class MachineImpl : Machine {
         Log.warn("direct read/write invalid address: address=%x, length=%d", paddr, data.size)
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun generateDeviceTree(buffer: ByteBuffer) {
         val context = BuilderContext<Device>()
 
-        TreeBuilder
-            .create()
+        TreeBuilder()
             .root {
                 it
                     .name("")
@@ -304,7 +339,7 @@ class MachineImpl : Machine {
                     .node {
                         it
                             .name("chosen")
-                            .prop { it.name("stdout-path").data("/soc/serial@10000000") }
+                            .prop { it.name("stdout-path").data("/soc/${this[UART::class.java]}") }
                             .node {
                                 it
                                     .name("opensbi-domains")
@@ -312,7 +347,7 @@ class MachineImpl : Machine {
                                     .node {
                                         it
                                             .name("tmemory")
-                                            .prop { it.name("phandle").data(-0x1) }
+                                            .prop { it.name("phandle").data(-0x2) }
                                             .prop { it.name("compatible").data("opensbi,domain,memregion") }
                                             .prop { it.name("base").data(0x80000000L) }
                                             .prop { it.name("order").data(20) }
@@ -320,7 +355,7 @@ class MachineImpl : Machine {
                                     .node {
                                         it
                                             .name("umemory")
-                                            .prop { it.name("phandle").data(-0x2) }
+                                            .prop { it.name("phandle").data(-0x3) }
                                             .prop { it.name("compatible").data("opensbi,domain,memregion") }
                                             .prop { it.name("base").data(0x0L) }
                                             .prop { it.name("order").data(64) }
@@ -328,22 +363,20 @@ class MachineImpl : Machine {
                                     .node {
                                         it
                                             .name("tuart")
-                                            .prop { it.name("phandle").data(-0x3) }
+                                            .prop { it.name("phandle").data(-0x4) }
                                             .prop { it.name("compatible").data("opensbi,domain,memregion") }
                                             .prop { it.name("base").data(0x20000000L) }
                                             .prop { it.name("order").data(12) }
                                             .prop { it.name("mmio").data() }
-                                            .prop { pb ->
-                                                pb.name("devices").data(context.get(this[UART::class.java]))
-                                            }
+                                            .prop { it.name("devices").data(context.get(this[UART::class.java])) }
                                     }
                                     .node {
                                         it
                                             .name("tdomain")
-                                            .prop { it.name("phandle").data(-0x4) }
+                                            .prop { it.name("phandle").data(-0x5) }
                                             .prop { it.name("compatible").data("opensbi,domain,instance") }
                                             .prop { it.name("possible-harts").data(context.get(harts[0])) }
-                                            .prop { it.name("regions").data(-0x1, 0x3F, -0x3, 0x3F) }
+                                            .prop { it.name("regions").data(-0x2, 0x3F, -0x4, 0x3F) }
                                             .prop { it.name("boot-hart").data(context.get(harts[0])) }
                                             .prop { it.name("next-arg1").data(0L) }
                                             .prop { it.name("next-addr").data(0x80000000L) }
@@ -354,10 +387,10 @@ class MachineImpl : Machine {
                                     .node {
                                         it
                                             .name("udomain")
-                                            .prop { pb -> pb.name("phandle").data(-0x5) }
+                                            .prop { pb -> pb.name("phandle").data(-0x6) }
                                             .prop { pb -> pb.name("compatible").data("opensbi,domain,instance") }
                                             .prop { pb -> pb.name("possible-harts").data(context.get(harts[0])) }
-                                            .prop { pb -> pb.name("regions").data(-0x1, 0x00, -0x3, 0x00, -0x2, 0x3F) }
+                                            .prop { pb -> pb.name("regions").data(-0x2, 0x00, -0x4, 0x00, -0x3, 0x3F) }
                                     }
                             }
                     }
@@ -366,11 +399,12 @@ class MachineImpl : Machine {
                             .prop { it.name("#address-cells").data(0x01) }
                             .prop { it.name("#size-cells").data(0x00) }
                             .prop { it.name("timebase-frequency").data(0x989680) }
+
                         for (hart in harts) {
                             it.node { builder ->
                                 hart.build(
                                     context,
-                                    builder.prop { it.name("opensbi-domain").data(-0x4) },
+                                    builder.prop { it.name("opensbi-domain").data(-0x5) },
                                 )
                             }
                         }
@@ -382,8 +416,11 @@ class MachineImpl : Machine {
                             .prop { it.name("#size-cells").data(0x02) }
                             .prop { it.name("compatible").data("simple-bus") }
                             .prop { it.name("ranges").data() }
-                        for (device in devices) it.node { builder ->
-                            device.build(context, builder)
+
+                        for (device in devices) {
+                            it.node { builder ->
+                                device.build(context, builder)
+                            }
                         }
                     }
             }

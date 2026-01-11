@@ -3,6 +3,7 @@ package io.scriptor.fdt
 import java.nio.ByteBuffer
 
 data class Node(val name: String, val props: Array<Prop>, val nodes: Array<Node>) {
+
     fun write(buffer: ByteBuffer, strings: StringTable) {
         buffer.putInt(Constant.FDT_BEGIN_NODE.toInt())
 

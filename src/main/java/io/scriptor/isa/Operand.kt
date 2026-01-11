@@ -5,19 +5,19 @@ import io.scriptor.util.Log.format
 data class Operand(
     val label: String,
     val segments: Array<Segment>,
-    val exclude: MutableSet<UInt>,
+    val exclude: MutableSet<Int>,
 ) {
-    fun excludes(value: UInt): Boolean {
-        return exclude.contains(extract(value))
+    fun excludes(value: Int): Boolean {
+        return extract(value) in exclude
     }
 
-    fun extract(instruction: UInt): UInt {
-        var result = 0u
+    fun extract(instruction: Int): Int {
+        var result = 0
         for (segment in segments) {
-            val width = (segment.hi - segment.lo) + 1u
-            val mask = (1u shl width.toInt()) - 1u
-            val bits = (instruction shr segment.lo.toInt()) and mask
-            result = result or (bits shl segment.shift.toInt())
+            val width = (segment.hi - segment.lo) + 1
+            val mask = (1 shl width) - 1
+            val bits = (instruction shr segment.lo) and mask
+            result = result or (bits shl segment.shift)
         }
         return result
     }

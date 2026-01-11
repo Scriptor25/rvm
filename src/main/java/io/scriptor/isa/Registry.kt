@@ -44,30 +44,32 @@ class Registry private constructor() {
     companion object {
         val instance: Registry = Registry()
 
-        fun has(mode: UInt, value: UInt): Boolean {
+        fun contains(mode: UInt, value: UInt): Boolean = contains(mode, value.toInt())
+
+        fun contains(mode: UInt, value: Int): Boolean {
             for (instruction in instance.instructions) {
-                if ((instruction.restriction == 0u || instruction.restriction == mode) && instruction.test(value)) {
+                if ((instruction.restriction == 0U || instruction.restriction == mode) && instruction.test(value)) {
                     return true
                 }
             }
             return false
         }
 
-        fun get(mode: UInt, value: UInt): Instruction {
+        operator fun get(mode: UInt, value: UInt): Instruction = get(mode, value.toInt())
+
+        operator fun get(mode: UInt, value: Int): Instruction {
             var candidate: Instruction? = null
 
             for (instruction in instance.instructions) {
-                if ((instruction.restriction != 0u && instruction.restriction != mode) || !instruction.test(value)) {
-                    continue
+                if ((instruction.restriction == 0U || instruction.restriction == mode) && instruction.test(value)) {
+                    check(candidate == null) {
+                        format("ambiguous candidates for instruction %08x: %s and %s", value, candidate, instruction)
+                    }
+                    candidate = instruction
                 }
-                check(candidate == null) {
-                    format("ambiguous candidates for instruction %08x: %s and %s", value, candidate, instruction)
-                }
-                candidate = instruction
             }
 
             checkNotNull(candidate) { format("no candidate for instruction %08x", value) }
-
             return candidate
         }
 
@@ -90,9 +92,9 @@ class Registry private constructor() {
                 val mSegment: Matcher = SEGMENT_PATTERN.matcher(segment)
                 require(mSegment.matches())
 
-                val hi = mSegment.group(1).toUInt()
-                val lo = if (mSegment.group(2) != null) mSegment.group(2).toUInt() else hi
-                val shift = if (mSegment.group(3) != null) mSegment.group(3).toUInt() else 0u
+                val hi = mSegment.group(1).toInt()
+                val lo = if (mSegment.group(2) != null) mSegment.group(2).toInt() else hi
+                val shift = if (mSegment.group(3) != null) mSegment.group(3).toInt() else 0
 
                 segments.add(Segment(hi, lo, shift))
             }
@@ -113,7 +115,7 @@ class Registry private constructor() {
                     if (value.isBlank()) {
                         continue
                     }
-                    operand.exclude.add(value.trim { it <= ' ' }.toUInt(0x10))
+                    operand.exclude.add(value.trim { it <= ' ' }.toInt(0x10))
                 }
             }
 
@@ -147,21 +149,21 @@ class Registry private constructor() {
                 .trim { it <= ' ' }
                 .replace("\\s+".toRegex(), "")
 
-            val ilen = (value.length.toUInt() + 7u) shr 3
+            val ilen = (value.length.toUInt() + 7U) shr 3
 
-            var mask = 0u
-            var bits = 0u
+            var mask = 0
+            var bits = 0
             for (i in 0..<value.length) {
                 val c = value[(value.length - 1) - i]
                 if (c == '0' || c == '1') {
-                    mask = mask or (1u shl i)
+                    mask = mask or (1 shl i)
                     if (c == '1') {
-                        bits = bits or (1u shl i)
+                        bits = bits or (1 shl i)
                     }
                 }
             }
 
-            val restriction = if (mInstruction.group(3) != null) mInstruction.group(3).toUInt() else 0u
+            val restriction = if (mInstruction.group(3) != null) mInstruction.group(3).toUInt() else 0U
             val operands: MutableList<Operand> = ArrayList()
 
             if (mInstruction.group(4) != null) {

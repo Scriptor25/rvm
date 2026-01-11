@@ -16,7 +16,6 @@ import io.scriptor.util.Log.info
 import java.io.IOException
 import java.io.PrintStream
 
-@OptIn(ExperimentalUnsignedTypes::class)
 class HartImpl : Hart {
 
     override val machine: Machine
@@ -30,10 +29,12 @@ class HartImpl : Hart {
 
     private val mmu: MMU = MMU(this)
 
+    private var ppc = 0UL
     private var priv = CSR.CSR_M
     private var wfi = false
     private var semihosting = false
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private val values = UIntArray(5)
 
     constructor(machine: Machine, id: Int) {
@@ -45,16 +46,16 @@ class HartImpl : Hart {
         var ra = gprFile.getdu(0x1U)
         var fp = gprFile.getdu(0x8U)
 
-        out.printf("stack trace (pc=%016x, ra=%016x, fp=%016x):%n", pc, ra, fp)
+        out.println(format("stack trace (pc=%016x, ra=%016x, fp=%016x):", pc, ra, fp))
 
         run {
             val symbol = machine.symbols.resolve(pc)
-            out.printf(" %016x : %s%n", pc, symbol)
+            out.println(format(" %016x : %s", pc, symbol))
         }
 
         while (fp != 0UL) {
             val symbol = machine.symbols.resolve(ra)
-            out.printf(" %016x : %s%n", ra, symbol)
+            out.println(format(" %016x : %s", ra, symbol))
 
             val prev_fp = read(fp, 8U, true)
             val prev_ra = read(fp + 8UL, 8U, true)
@@ -66,10 +67,10 @@ class HartImpl : Hart {
 
     override fun dump(out: PrintStream) {
         val instruction = fetch(pc, true)
-        out.printf("pc=%016x, instruction=%08x%n", pc, instruction)
+        out.println(format("pc=%016x, instruction=%08x", pc, instruction))
 
-        if (Registry.has(64U, instruction)) {
-            val definition = Registry.get(64U, instruction)
+        if (Registry.contains(64U, instruction)) {
+            val definition = Registry[64U, instruction]
 
             val display = StringBuilder()
             display.append(definition.mnemonic)
@@ -77,10 +78,10 @@ class HartImpl : Hart {
                 display.append(", ")
                     .append(operand.label)
                     .append('=')
-                    .append(operand.extract(instruction).toHexString())
+                    .append(operand.extract(instruction.toInt()).toHexString())
             }
 
-            out.printf("  %s%n", display)
+            out.println(format("  %s", display))
         }
 
         out.println("gpr file:")
@@ -92,23 +93,25 @@ class HartImpl : Hart {
         out.println("csr file:")
         csrFile.dump(out)
 
-        out.printf(
-            "mstatus=%x, mtvec=%x, mcause=%x, mepc=%x%n",
-            csrFile.getdu(CSR.mstatus, CSR.CSR_M),
-            csrFile.getdu(CSR.mtvec, CSR.CSR_M),
-            csrFile.getdu(CSR.mcause, CSR.CSR_M),
-            csrFile.getdu(CSR.mepc, CSR.CSR_M),
+        out.println(
+            format(
+                "mstatus=%x, mtvec=%x, mcause=%x, mepc=%x",
+                csrFile[CSR.mstatus, CSR.CSR_M],
+                csrFile[CSR.mtvec, CSR.CSR_M],
+                csrFile[CSR.mcause, CSR.CSR_M],
+                csrFile[CSR.mepc, CSR.CSR_M],
+            ),
         )
 
         val sp = gprFile.getdu(0x2U)
-        out.printf("stack (sp=%016x):%n", sp)
+        out.println(format("stack (sp=%016x):", sp))
 
         var offset = -0x10L
         while (offset <= 0x10L) {
             val vaddr = (sp.toLong() + offset).toULong()
             val value = read(vaddr, 8U, true)
 
-            out.printf("%016x : %016x%n", vaddr, value)
+            out.println(format("%016x : %016x", vaddr, value))
             offset += 0x8
         }
 
@@ -257,10 +260,12 @@ class HartImpl : Hart {
             interrupt()
 
             val instruction = fetch(pc, false)
-            if (!Registry.has(64U, instruction))
+            if (!Registry.contains(64U, instruction))
                 unsupported(instruction.toHexString())
 
-            val definition = Registry.get(64U, instruction)
+            val definition = Registry[64U, instruction]
+
+            ppc = pc
             pc = execute(instruction, definition)
         } catch (e: TrapException) {
             if (handle(e.trapCause, e.trapValue)) {
@@ -270,6 +275,7 @@ class HartImpl : Hart {
         }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
@@ -295,13 +301,13 @@ class HartImpl : Hart {
         val interrupt = (cause and (1UL shl 63)) != 0UL
 
         val delegate = if (interrupt)
-            ((csrFile.getdu(CSR.mideleg, CSR.CSR_M) and (1UL shl cause.toInt())) != 0UL)
+            ((csrFile[CSR.mideleg, CSR.CSR_M] and (1UL shl cause.toInt())) != 0UL)
         else
-            ((csrFile.getdu(CSR.medeleg, CSR.CSR_M) and (1UL shl cause.toInt())) != 0UL)
+            ((csrFile[CSR.medeleg, CSR.CSR_M] and (1UL shl cause.toInt())) != 0UL)
 
         val target = if (priv < CSR.CSR_M && delegate) CSR.CSR_S else CSR.CSR_M
 
-        var status = csrFile.getdu(CSR.mstatus, CSR.CSR_M)
+        var status = csrFile[CSR.mstatus, CSR.CSR_M]
         if (target == CSR.CSR_M) {
             csrFile[CSR.mepc, CSR.CSR_M] = pc
             csrFile[CSR.mcause, CSR.CSR_M] = cause
@@ -322,9 +328,9 @@ class HartImpl : Hart {
         csrFile[CSR.mstatus, CSR.CSR_M] = status
 
         val tvec = if (target == CSR.CSR_M)
-            csrFile.getdu(CSR.mtvec, CSR.CSR_M)
+            csrFile[CSR.mtvec, CSR.CSR_M]
         else
-            csrFile.getdu(CSR.stvec, CSR.CSR_S)
+            csrFile[CSR.stvec, CSR.CSR_S]
         if (tvec == 0UL) {
             return true
         }
@@ -332,22 +338,28 @@ class HartImpl : Hart {
         val base = tvec and 3UL.inv()
         val mode = tvec and 3UL
 
+        val pcp = if (interrupt && mode == 1UL) base + 4UL * cause else base
+
         info(
-            "TRAP: priv=%d satp=%016x stvec=%016x pc=%016x",
+            "handle trap cause=%016x tval=%016x priv=%d satp=%016x mtvec=%016x stvec=%016x pc=%016x pc'=%016x",
+            cause,
+            tval,
             priv,
-            csrFile.getdu(CSR.satp, CSR.CSR_S),
-            csrFile.getdu(CSR.stvec, CSR.CSR_S),
+            csrFile[CSR.satp, CSR.CSR_M],
+            csrFile[CSR.mtvec, CSR.CSR_M],
+            csrFile[CSR.stvec, CSR.CSR_M],
             pc,
+            pcp,
         )
 
-        pc = if (interrupt && mode == 1UL) base + 4UL * cause else base
-
+        pc = pcp
         priv = target
+
         return false
     }
 
     private fun interrupt() {
-        val status = csrFile.getdu(CSR.mstatus, CSR.CSR_M)
+        val status = csrFile[CSR.mstatus, CSR.CSR_M]
 
         when (priv) {
             CSR.CSR_M -> {
@@ -368,14 +380,14 @@ class HartImpl : Hart {
         }
 
         // check if any interrupts are pending and enabled
-        val pending = csrFile.getdu(CSR.mip, CSR.CSR_M) and csrFile.getdu(CSR.mie, CSR.CSR_M)
+        val pending = csrFile[CSR.mip, CSR.CSR_M] and csrFile[CSR.mie, CSR.CSR_M]
         if (pending == 0UL) {
             return
         }
 
         val code = pending.countTrailingZeroBits().toULong()
 
-        val delegate = priv < CSR.CSR_M && ((csrFile.getdu(CSR.mideleg, CSR.CSR_M) and (1UL shl code.toInt())) != 0UL)
+        val delegate = priv < CSR.CSR_M && ((csrFile[CSR.mideleg, CSR.CSR_M] and (1UL shl code.toInt())) != 0UL)
         val target = if (delegate) CSR.CSR_S else CSR.CSR_M
 
         if (target < priv) return
@@ -383,6 +395,7 @@ class HartImpl : Hart {
         throw TrapException(id, (1UL shl 63) or code, 0UL, "")
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun execute(instruction: UInt, definition: Instruction): ULong {
         if (wfi) {
             return pc
@@ -1319,7 +1332,7 @@ class HartImpl : Hart {
     //region PRIVILEGED
 
     private fun sret(): ULong {
-        var status = csrFile.getdu(CSR.sstatus, priv)
+        var status = csrFile[CSR.sstatus, priv]
 
         val spp = ((status shr 8) and 1UL).toUInt()
         val spie = (status and (1UL shl 5)) != 0UL
@@ -1333,11 +1346,11 @@ class HartImpl : Hart {
 
         csrFile[CSR.sstatus, CSR.CSR_M] = status
 
-        return csrFile.getdu(CSR.sepc, CSR.CSR_M)
+        return csrFile[CSR.sepc, CSR.CSR_M]
     }
 
     private fun mret(): ULong {
-        var status = csrFile.getdu(CSR.mstatus, priv)
+        var status = csrFile[CSR.mstatus, priv]
 
         val mpp = ((status shr 11) and 3UL).toUInt()
         val mpie = (status and (1UL shl 7)) != 0UL
@@ -1351,7 +1364,7 @@ class HartImpl : Hart {
 
         csrFile[CSR.mstatus, CSR.CSR_M] = status
 
-        return csrFile.getdu(CSR.mepc, CSR.CSR_M)
+        return csrFile[CSR.mepc, CSR.CSR_M]
     }
 
     private fun mnret() {
@@ -1647,12 +1660,12 @@ class HartImpl : Hart {
 
     //region RV32 INTEGER
 
-    private fun lui(rd: UInt, imm: UInt) {
-        gprFile[rd] = imm.toInt()
+    private fun lui(rd: UInt, uimm: UInt) {
+        gprFile[rd] = signExtendLong(uimm, 32)
     }
 
-    private fun auipc(rd: UInt, imm: UInt) {
-        gprFile[rd] = pc.toLong() + imm.toLong()
+    private fun auipc(rd: UInt, uimm: UInt) {
+        gprFile[rd] = pc.toLong() + signExtendLong(uimm, 32)
     }
 
     private fun jal(next: ULong, rd: UInt, imm: UInt): ULong {
@@ -1783,7 +1796,7 @@ class HartImpl : Hart {
     }
 
     private fun srli(rd: UInt, rs1: UInt, shamt: UInt) {
-        gprFile[rd] = gprFile.getdu(rs1) shr shamt.toInt()
+        gprFile[rd] = gprFile.getd(rs1) ushr shamt.toInt()
     }
 
     private fun srai(rd: UInt, rs1: UInt, shamt: UInt) {
@@ -1822,7 +1835,7 @@ class HartImpl : Hart {
 
     private fun srl(rd: UInt, rs1: UInt, rs2: UInt) {
         val shamt = gprFile.getd(rs2) and 63
-        gprFile[rd] = gprFile.getdu(rs1) shr shamt.toInt()
+        gprFile[rd] = gprFile.getd(rs1) ushr shamt.toInt()
     }
 
     private fun sra(rd: UInt, rs1: UInt, rs2: UInt) {
@@ -2288,12 +2301,11 @@ class HartImpl : Hart {
     }
 
     private fun c_addiw(rd: UInt, rs1: UInt, imm: UInt) {
-        val value = gprFile.getw(rs1) + signExtend(imm, 6)
-        gprFile[rd] = value
+        gprFile[rd] = gprFile.getw(rs1) + signExtend(imm, 6)
     }
 
     private fun c_li(rd: UInt, imm: UInt) {
-        gprFile[rd] = signExtend(imm, 6)
+        gprFile[rd] = signExtendLong(imm, 6)
     }
 
     private fun c_addi16sp(imm: UInt) {
@@ -2301,7 +2313,7 @@ class HartImpl : Hart {
     }
 
     private fun c_lui(rd: UInt, imm: UInt) {
-        gprFile[rd] = signExtend(imm, 18)
+        gprFile[rd] = signExtendLong(imm, 18)
     }
 
     private fun c_srli(rd: UInt, rs1: UInt, shamt: UInt) {
@@ -2426,13 +2438,13 @@ class HartImpl : Hart {
             return
         }
 
-        val value = csrFile.getdu(csr, priv)
+        val value = csrFile[csr, priv]
         csrFile[csr, priv] = gprFile.getdu(rs1)
         gprFile[rd] = value
     }
 
     private fun csrrs(rd: UInt, rs1: UInt, csr: UInt) {
-        val value = csrFile.getdu(csr, priv)
+        val value = csrFile[csr, priv]
         if (rs1 != 0U) {
             val mask = gprFile.getdu(rs1)
             csrFile[csr, priv] = value or mask
@@ -2441,7 +2453,7 @@ class HartImpl : Hart {
     }
 
     private fun csrrc(rd: UInt, rs1: UInt, csr: UInt) {
-        val value = csrFile.getdu(csr, priv)
+        val value = csrFile[csr, priv]
         if (rs1 != 0U) {
             val mask = gprFile.getdu(rs1)
             csrFile[csr, priv] = value and mask.inv()
@@ -2455,13 +2467,13 @@ class HartImpl : Hart {
             return
         }
 
-        val value = csrFile.getdu(csr, priv)
+        val value = csrFile[csr, priv]
         csrFile[csr, priv] = uimm.toULong()
         gprFile[rd] = value
     }
 
     private fun csrrsi(rd: UInt, uimm: UInt, csr: UInt) {
-        val value = csrFile.getdu(csr, priv)
+        val value = csrFile[csr, priv]
         if (uimm != 0U) {
             csrFile[csr, priv] = value or uimm.toULong()
         }
@@ -2469,7 +2481,7 @@ class HartImpl : Hart {
     }
 
     private fun csrrci(rd: UInt, uimm: UInt, csr: UInt) {
-        val value = csrFile.getdu(csr, priv)
+        val value = csrFile[csr, priv]
         if (uimm != 0U) {
             csrFile[csr, priv] = value and uimm.inv().toULong()
         }

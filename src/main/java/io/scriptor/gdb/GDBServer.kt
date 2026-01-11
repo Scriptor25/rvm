@@ -2,6 +2,8 @@ package io.scriptor.gdb
 
 import io.scriptor.isa.CSR
 import io.scriptor.machine.Machine
+import io.scriptor.util.ByteUtil.parseLongLE
+import io.scriptor.util.ByteUtil.toHexStringLE
 import io.scriptor.util.Log
 import io.scriptor.util.Log.format
 import java.io.Closeable
@@ -15,20 +17,23 @@ import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
 import java.util.function.Consumer
 
-class GDBServer(private val machine: Machine, port: UInt) : Closeable {
+class GDBServer : Closeable {
+
+    private val machine: Machine
 
     private val channel: ServerSocketChannel
     private val selector: Selector
 
     private var client: SocketChannel? = null
-
     private var gId = 0
 
     private val breakpoints: MutableMap<ULong, UInt> = HashMap()
 
-    init {
-        machine.setBreakpointHandler { id ->
-            machine.pause()
+    constructor(machine: Machine, port: UInt) {
+        this.machine = machine
+
+        this.machine.setBreakpointHandler { id ->
+            this.machine.pause()
             stop(client!!, id, 0x05u)
         }
 
@@ -208,75 +213,93 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
 
     private fun handle(payload: String, state: ClientState): String {
         when (payload[0]) {
+            /**
+             * read last stop code
+             */
             '?' -> return if (state.stopId < 0)
                 format("S%02x", state.stopCode)
             else
                 format("T%02xcore:%x;", state.stopCode, state.stopId)
 
+            /**
+             * continue
+             */
             'c' -> {
                 machine.spin()
                 return "OK"
             }
 
+            /**
+             * single step
+             */
             's' -> {
                 machine.spinOnce()
                 return "OK"
             }
 
+            /**
+             * reset machine state
+             */
             'r', 'R' -> {
                 machine.reset()
                 return "OK"
             }
 
             'D' -> return "OK"
+
+            /**
+             * read register state
+             */
             'g' -> {
                 val hart = machine.harts[gId]
                 val gprFile = hart.gprFile
                 val fprFile = hart.fprFile
                 val csrFile = hart.csrFile
-                val pc = hart.pc
 
                 val response = StringBuilder()
 
                 // GPR
                 for (i in 0U..31U) {
-                    response.append(toHexString(gprFile.getdu(i), 8U))
+                    response.append(toHexStringLE(gprFile.getdu(i)))
                 }
 
-                response.append(toHexString(pc, 8U))
+                response.append(toHexStringLE(hart.pc))
 
                 // FPR
                 for (i in 0U..31U) {
-                    response.append(toHexString(fprFile.getdr(i), 8U))
+                    response.append(toHexStringLE(fprFile.getdr(i)))
                 }
 
-                response.append(toHexString(csrFile.getdu(CSR.fcsr, CSR.CSR_M), 4U))
+                response.append(toHexStringLE(csrFile[CSR.fcsr, CSR.CSR_M]))
 
                 // CSR
-                response.append(toHexString(csrFile.getdu(CSR.mstatus, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.misa, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.mie, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.mtvec, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.mscratch, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.mepc, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.mcause, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.mtval, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.mip, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.cycle, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.time, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.instret, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.sstatus, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.sie, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.stvec, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.sscratch, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.sepc, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.scause, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.stval, CSR.CSR_M), 8U))
-                response.append(toHexString(csrFile.getdu(CSR.sip, CSR.CSR_M), 8U))
+                response.append(toHexStringLE(csrFile[CSR.mstatus, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.misa, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.mie, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.mtvec, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.mscratch, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.mepc, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.mcause, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.mtval, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.mip, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.cycle, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.time, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.instret, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.sstatus, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.sie, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.stvec, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.sscratch, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.sepc, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.scause, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.stval, CSR.CSR_M]))
+                response.append(toHexStringLE(csrFile[CSR.sip, CSR.CSR_M]))
 
                 return response.toString()
             }
 
+            /**
+             * write register state
+             */
             'G' -> {
                 val hart = machine.harts[gId]
                 val gprFile = hart.gprFile
@@ -287,95 +310,100 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
 
                 // GPR
                 for (i in 0U..31U) {
-                    p = extractd(payload, p) { gprFile[i] = it }
+                    p = extract(payload, p) { gprFile[i] = it }
                 }
 
-                p = extractd(payload, p) { hart.pc = it }
+                p = extract(payload, p) { hart.pc = it }
 
                 // FPR
                 for (i in 0U..31U) {
-                    p = extractd(payload, p) { fprFile[i] = it }
+                    p = extract(payload, p) { fprFile[i] = it }
                 }
 
-                p = extractw(payload, p) { csrFile[CSR.fcsr, CSR.CSR_M] = it.toULong() }
+                p = extract(payload, p) { csrFile[CSR.fcsr, CSR.CSR_M] = it }
 
                 // CSR
-                p = extractd(payload, p) { csrFile[CSR.mstatus, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.misa, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.mie, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.mtvec, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.mscratch, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.mepc, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.mcause, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.mtval, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.mip, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.cycle, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.time, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.instret, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.sstatus, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.sie, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.stvec, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.sscratch, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.sepc, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.scause, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.stval, CSR.CSR_M] = it }
-                p = extractd(payload, p) { csrFile[CSR.sip, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mstatus, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.misa, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mie, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mtvec, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mscratch, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mepc, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mcause, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mtval, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.mip, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.cycle, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.time, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.instret, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.sstatus, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.sie, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.stvec, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.sscratch, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.sepc, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.scause, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.stval, CSR.CSR_M] = it }
+                p = extract(payload, p) { csrFile[CSR.sip, CSR.CSR_M] = it }
 
                 return "OK"
             }
 
+            /**
+             * read single register state
+             */
             'p' -> {
                 val hart = machine.harts[gId]
                 val gprFile = hart.gprFile
                 val fprFile = hart.fprFile
                 val csrFile = hart.csrFile
-                val pc = hart.pc
 
                 val n = payload.substring(1).toUInt(0x10)
 
                 // GPR
                 if (n in 0U..31U) {
-                    toHexString(gprFile.getdu(n), 8U)
+                    toHexStringLE(gprFile.getdu(n))
                 }
 
                 if (n == 32U) {
-                    toHexString(pc, 8U)
+                    toHexStringLE(hart.pc)
                 }
 
                 // FPR
                 if (n in 33U..64U) {
-                    toHexString(fprFile.getdr(n - 33U), 8U)
+                    toHexStringLE(fprFile.getdr(n - 33U))
                 }
 
                 if (n == 65u) {
-                    toHexString(csrFile.getdu(CSR.fcsr, CSR.CSR_M), 4U)
+                    toHexStringLE(csrFile[CSR.fcsr, CSR.CSR_M])
                 }
 
                 return when (n) {
-                    66u -> toHexString(csrFile.getdu(CSR.mstatus, CSR.CSR_M), 8U)
-                    67u -> toHexString(csrFile.getdu(CSR.misa, CSR.CSR_M), 8U)
-                    68u -> toHexString(csrFile.getdu(CSR.mie, CSR.CSR_M), 8U)
-                    69u -> toHexString(csrFile.getdu(CSR.mtvec, CSR.CSR_M), 8U)
-                    70U -> toHexString(csrFile.getdu(CSR.mscratch, CSR.CSR_M), 8U)
-                    71U -> toHexString(csrFile.getdu(CSR.mepc, CSR.CSR_M), 8U)
-                    72U -> toHexString(csrFile.getdu(CSR.mcause, CSR.CSR_M), 8U)
-                    73U -> toHexString(csrFile.getdu(CSR.mtval, CSR.CSR_M), 8U)
-                    74U -> toHexString(csrFile.getdu(CSR.mip, CSR.CSR_M), 8U)
-                    75u -> toHexString(csrFile.getdu(CSR.cycle, CSR.CSR_M), 8U)
-                    76u -> toHexString(csrFile.getdu(CSR.time, CSR.CSR_M), 8U)
-                    77u -> toHexString(csrFile.getdu(CSR.instret, CSR.CSR_M), 8U)
-                    78u -> toHexString(csrFile.getdu(CSR.sstatus, CSR.CSR_M), 8U)
-                    79u -> toHexString(csrFile.getdu(CSR.sie, CSR.CSR_M), 8U)
-                    80U -> toHexString(csrFile.getdu(CSR.stvec, CSR.CSR_M), 8U)
-                    81U -> toHexString(csrFile.getdu(CSR.sscratch, CSR.CSR_M), 8U)
-                    82U -> toHexString(csrFile.getdu(CSR.sepc, CSR.CSR_M), 8U)
-                    83U -> toHexString(csrFile.getdu(CSR.scause, CSR.CSR_M), 8U)
-                    84U -> toHexString(csrFile.getdu(CSR.stval, CSR.CSR_M), 8U)
-                    85u -> toHexString(csrFile.getdu(CSR.sip, CSR.CSR_M), 8U)
+                    66u -> toHexStringLE(csrFile[CSR.mstatus, CSR.CSR_M])
+                    67u -> toHexStringLE(csrFile[CSR.misa, CSR.CSR_M])
+                    68u -> toHexStringLE(csrFile[CSR.mie, CSR.CSR_M])
+                    69u -> toHexStringLE(csrFile[CSR.mtvec, CSR.CSR_M])
+                    70U -> toHexStringLE(csrFile[CSR.mscratch, CSR.CSR_M])
+                    71U -> toHexStringLE(csrFile[CSR.mepc, CSR.CSR_M])
+                    72U -> toHexStringLE(csrFile[CSR.mcause, CSR.CSR_M])
+                    73U -> toHexStringLE(csrFile[CSR.mtval, CSR.CSR_M])
+                    74U -> toHexStringLE(csrFile[CSR.mip, CSR.CSR_M])
+                    75u -> toHexStringLE(csrFile[CSR.cycle, CSR.CSR_M])
+                    76u -> toHexStringLE(csrFile[CSR.time, CSR.CSR_M])
+                    77u -> toHexStringLE(csrFile[CSR.instret, CSR.CSR_M])
+                    78u -> toHexStringLE(csrFile[CSR.sstatus, CSR.CSR_M])
+                    79u -> toHexStringLE(csrFile[CSR.sie, CSR.CSR_M])
+                    80U -> toHexStringLE(csrFile[CSR.stvec, CSR.CSR_M])
+                    81U -> toHexStringLE(csrFile[CSR.sscratch, CSR.CSR_M])
+                    82U -> toHexStringLE(csrFile[CSR.sepc, CSR.CSR_M])
+                    83U -> toHexStringLE(csrFile[CSR.scause, CSR.CSR_M])
+                    84U -> toHexStringLE(csrFile[CSR.stval, CSR.CSR_M])
+                    85u -> toHexStringLE(csrFile[CSR.sip, CSR.CSR_M])
                     else -> ""
                 }
             }
 
+            /**
+             * write single register state
+             */
             'P' -> {
                 val hart = machine.harts[gId]
                 val gprFile = hart.gprFile
@@ -393,124 +421,124 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
 
                 // GPR
                 if (n in 0U..31U) {
-                    gprFile[n] = toLong(value)
+                    gprFile[n] = parseLongLE(value)
                     return "OK"
                 }
 
                 if (n == 32U) {
-                    hart.pc = toLong(value)
+                    hart.pc = parseLongLE(value)
                     return "OK"
                 }
 
                 // FPR
                 if (n in 33U..64U) {
-                    fprFile[n - 33U] = toLong(value)
+                    fprFile[n - 33U] = parseLongLE(value)
                     return "OK"
                 }
 
                 if (n == 65u) {
-                    csrFile[CSR.fcsr, CSR.CSR_M] = toInteger(value).toULong()
+                    csrFile[CSR.fcsr, CSR.CSR_M] = parseLongLE(value)
                     return "OK"
                 }
 
                 return when (n) {
                     66u -> {
-                        csrFile[CSR.mstatus, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mstatus, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     67u -> {
-                        csrFile[CSR.misa, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.misa, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     68u -> {
-                        csrFile[CSR.mie, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mie, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     69u -> {
-                        csrFile[CSR.mtvec, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mtvec, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     70U -> {
-                        csrFile[CSR.mscratch, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mscratch, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     71U -> {
-                        csrFile[CSR.mepc, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mepc, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     72U -> {
-                        csrFile[CSR.mcause, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mcause, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     73U -> {
-                        csrFile[CSR.mtval, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mtval, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     74U -> {
-                        csrFile[CSR.mip, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.mip, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     75u -> {
-                        csrFile[CSR.cycle, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.cycle, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     76u -> {
-                        csrFile[CSR.time, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.time, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     77u -> {
-                        csrFile[CSR.instret, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.instret, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     78u -> {
-                        csrFile[CSR.sstatus, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.sstatus, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     79u -> {
-                        csrFile[CSR.sie, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.sie, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     80U -> {
-                        csrFile[CSR.stvec, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.stvec, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     81U -> {
-                        csrFile[CSR.sscratch, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.sscratch, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     82U -> {
-                        csrFile[CSR.sepc, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.sepc, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     83U -> {
-                        csrFile[CSR.scause, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.scause, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     84U -> {
-                        csrFile[CSR.stval, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.stval, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
                     85u -> {
-                        csrFile[CSR.sip, CSR.CSR_M] = toLong(value)
+                        csrFile[CSR.sip, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
@@ -518,18 +546,24 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
                 }
             }
 
+            /**
+             * select hart
+             */
             'H' -> {
                 val op = payload[1]
-                val id = payload.substring(2).toInt(0x10)
+                val id = payload
+                    .substring(2)
+                    .toInt(0x10)
 
-                if (op == 'g') {
+                return if (op == 'g') {
                     gId = id
-                    return "OK"
-                }
-
-                return ""
+                    "OK"
+                } else ""
             }
 
+            /**
+             * memory read
+             */
             'm' -> {
                 val parts = payload
                     .substring(1)
@@ -541,9 +575,12 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
 
                 val data = ByteArray(length.toInt())
                 machine.harts[gId].direct(data, address, false)
-                return toHexString(data)
+                return data.toHexString()
             }
 
+            /**
+             * memory write
+             */
             'M' -> {
                 val parts = payload
                     .substring(1)
@@ -552,13 +589,25 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
                     .toTypedArray()
                 val address = parts[0].toULong(0x10)
                 val length = parts[1].toUInt(0x10)
+                val data = parts[2].hexToByteArray()
 
-                val data: ByteArray = toBytes(ByteArray(length.toInt()), parts[2])
-                machine.harts[gId].direct(data, address, true)
-                return "OK"
+                return if (data.size.toUInt() != length) {
+                    Log.warn(
+                        "memory write data length mismatch, data length %d != promised length %d",
+                        data.size,
+                        length,
+                    )
+                    ""
+                } else {
+                    machine.harts[gId].direct(data, address, true)
+                    "OK"
+                }
             }
 
-            'z' -> { // remove breakpoint
+            /**
+             * remove breakpoint
+             */
+            'z' -> {
                 val parts = payload
                     .substring(1)
                     .split(",".toRegex())
@@ -568,26 +617,32 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
                 val address = parts[1].toULong(0x10)
                 val length = parts[2].toUInt(10)
 
-                when (type) {
+                return if (address !in breakpoints) {
+                    Log.warn("no active breakpoint at address %016x", address)
+                    ""
+                } else when (type) {
                     0U -> {
-                        if (!breakpoints.containsKey(address)) {
-                            return ""
-                        }
-
                         val data = breakpoints[address]!!
                         machine.harts[gId].write(address, length, data.toULong(), true)
                         breakpoints.remove(address)
-                        return "OK"
+                        "OK"
                     }
 
                     else -> {
-                        Log.warn("unsupported break- or watchpoint type: '%d'", type)
-                        return ""
+                        Log.warn(
+                            "cannot remove unsupported break- or watchpoint type '%d' at address %016x",
+                            type,
+                            address,
+                        )
+                        ""
                     }
                 }
             }
 
-            'Z' -> { // insert breakpoint
+            /**
+             * insert breakpoint
+             */
+            'Z' -> {
                 val parts = payload
                     .substring(1)
                     .split(",".toRegex())
@@ -599,10 +654,19 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
 
                 return when (type) {
                     0U -> {
-                        val data = machine.harts[gId].read(address, length, true)
-                        machine.harts[gId].write(address, length, (if (length == 4U) 0x100073UL else 0x9002UL), true)
-                        breakpoints[address] = data.toUInt()
-                        "OK"
+                        if (address in breakpoints) {
+                            ""
+                        } else {
+                            val data = machine.harts[gId].read(address, length, true)
+                            machine.harts[gId].write(
+                                address,
+                                length,
+                                (if (length == 4U) 0x100073UL else 0x9002UL),
+                                true,
+                            )
+                            breakpoints[address] = data.toUInt()
+                            "OK"
+                        }
                     }
 
                     else -> {
@@ -612,6 +676,9 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
                 }
             }
 
+            /**
+             * query machine property
+             */
             'q' -> when (payload) {
                 "qC" -> return "QC-1"
                 "qfThreadInfo", "qsThreadInfo" -> return "l"
@@ -664,6 +731,9 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
                 }
             }
 
+            /**
+             * set machine property
+             */
             'Q' -> return when (payload) {
                 "QStartNoAckMode" -> {
                     state.noack = true
@@ -673,70 +743,20 @@ class GDBServer(private val machine: Machine, port: UInt) : Closeable {
                 else -> ""
             }
 
+            /**
+             * kill request
+             */
             'k' -> throw InterruptedException("GDB client requested to kill the process")
+
             else -> return ""
         }
     }
 
     companion object {
-        private fun toHexString(value: ULong, n: UInt): String {
-            val builder = StringBuilder()
-            for (i in 0U..<n) {
-                val b = (value shr (i shl 3).toInt()) and 0xFFUL
-                builder.append(format("%02x", b))
-            }
-            return builder.toString()
-        }
-
-        private fun toInteger(string: String): UInt {
-            var value = 0U
-            for (i in 0..3) {
-                val b = string.substring(i shl 1, (i + 1) shl 1).toUInt(0x10)
-                value = value or (b shl (i shl 3))
-            }
-            return value
-        }
-
-        private fun toLong(string: String): ULong {
-            var value = 0UL
-            for (i in 0..7) {
-                val b = string.substring(i shl 1, (i + 1) shl 1).toULong(0x10)
-                value = value or (b shl (i shl 3))
-            }
-            return value
-        }
-
-        private fun toHexString(data: ByteArray): String {
-            val builder = StringBuilder()
-            for (b in data) {
-                builder.append(format("%02x", b.toInt() and 0xFF))
-            }
-            return builder.toString()
-        }
-
-        private fun toBytes(buffer: ByteArray, string: String): ByteArray {
-            var i = 0
-            var j = 0
-            while (i < buffer.size) {
-                buffer[i] = string.substring(j, j + 2).toByte(0x10)
-                ++i
-                j += 2
-            }
-            return buffer
-        }
-
-        private fun extractw(payload: String, p: Int, consumer: Consumer<UInt>): Int {
-            val string = payload.substring(p, p + 0x08)
-            if (string != "xxxxxxxx") {
-                consumer.accept(toInteger(string))
-            }
-            return p + 0x08
-        }
-
-        private fun extractd(payload: String, p: Int, consumer: Consumer<ULong>): Int {
+        private fun extract(payload: String, p: Int, consumer: Consumer<ULong>): Int {
             val string = payload.substring(p, p + 0x10)
             if (string != "xxxxxxxxxxxxxxxx") {
-                consumer.accept(toLong(string))
+                consumer.accept(parseLongLE(string))
             }
             return p + 0x10
         }

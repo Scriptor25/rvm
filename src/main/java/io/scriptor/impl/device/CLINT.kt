@@ -9,7 +9,6 @@ import io.scriptor.util.Log.error
 import io.scriptor.util.Log.format
 import java.io.PrintStream
 
-@OptIn(ExperimentalUnsignedTypes::class)
 class CLINT : IODevice {
 
     override val machine: Machine
@@ -19,6 +18,7 @@ class CLINT : IODevice {
 
     private var mtime: ULong = 0UL
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private val mtimecmp: ULongArray
 
     /**
@@ -31,6 +31,7 @@ class CLINT : IODevice {
      */
     private val msip: BooleanArray
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     constructor(machine: Machine, begin: ULong) {
         this.machine = machine
         this.begin = begin
@@ -41,17 +42,23 @@ class CLINT : IODevice {
         this.msip = BooleanArray(machine.harts.size)
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun dump(out: PrintStream) {
-        out.printf("clint: mtime=%x%n", mtime)
-        for (id in 0..<machine.harts.size) out.printf(
-            "#%-2d | mtimecmp=%x meip=%b msip=%b%n",
-            id,
-            mtimecmp[id],
-            meip[id],
-            msip[id],
-        )
+        out.println(format("clint: mtime=%x", mtime))
+        for (id in 0 until machine.harts.size) {
+            out.println(
+                format(
+                    "#%-2d | mtimecmp=%x meip=%b msip=%b",
+                    id,
+                    mtimecmp[id],
+                    meip[id],
+                    msip[id],
+                ),
+            )
+        }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun reset() {
         mtime = 0UL
         mtimecmp.fill(0UL.inv())
@@ -63,11 +70,12 @@ class CLINT : IODevice {
         ++mtime
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
         val ie = UIntArray(4 * machine.harts.size)
-        for (id in 0..<machine.harts.size) {
+        for (id in 0 until machine.harts.size) {
             val cpu = context.get(machine.harts[id])
             ie[id * 4] = cpu
             ie[id * 4 + 1] = 0x03U
@@ -83,20 +91,21 @@ class CLINT : IODevice {
             .prop { it.name("interrupts-extended").data(*ie) }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun read(offset: UInt, size: UInt): ULong {
-        if (offset in MSIP_BASE..<MTIMECMP_BASE && size == 4u) {
+        if (offset in MSIP_BASE until MTIMECMP_BASE && size == 4U) {
             val hart = ((offset - MSIP_BASE) / MSIP_STRIDE).toInt()
             if (hart >= machine.harts.size) return 0U
             return if (msip[hart]) 1U else 0U
         }
 
-        if (offset in MTIMECMP_BASE..<CONTEXT_BASE && size == 8u) {
+        if (offset in MTIMECMP_BASE until CONTEXT_BASE && size == 8U) {
             val hart = ((offset - MTIMECMP_BASE) / MTIMECMP_STRIDE).toInt()
             if (hart >= machine.harts.size) return 0U
             return mtimecmp[hart]
         }
 
-        if (offset == MTIME_OFFSET && size == 8u) {
+        if (offset == MTIME_OFFSET && size == 8U) {
             return mtime
         }
 
@@ -104,15 +113,16 @@ class CLINT : IODevice {
         return 0U
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun write(offset: UInt, size: UInt, value: ULong) {
-        if (offset in MSIP_BASE..<MTIMECMP_BASE && size == 4u) {
+        if (offset in MSIP_BASE until MTIMECMP_BASE && size == 4U) {
             val hart = ((offset - MSIP_BASE) / MSIP_STRIDE).toInt()
             if (hart >= machine.harts.size) return
             msip[hart] = (value != 0UL)
             return
         }
 
-        if (offset in MTIMECMP_BASE..<CONTEXT_BASE && size == 8u) {
+        if (offset in MTIMECMP_BASE until CONTEXT_BASE && size == 8U) {
             val hart = ((offset - MTIMECMP_BASE) / MTIMECMP_STRIDE).toInt()
             if (hart >= machine.harts.size) return
             mtimecmp[hart] = value
@@ -130,10 +140,12 @@ class CLINT : IODevice {
         return mtime
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     fun mtimecmp(id: Int): ULong {
         return mtimecmp[id]
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     fun mtimecmp(id: Int, value: ULong) {
         mtimecmp[id] = value
     }
@@ -142,6 +154,7 @@ class CLINT : IODevice {
         return meip[id]
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     fun mtip(id: Int): Boolean {
         return mtime >= mtimecmp[id]
     }
@@ -156,10 +169,10 @@ class CLINT : IODevice {
 
     companion object {
         private const val MSIP_BASE = 0x0000U
-        private const val MSIP_STRIDE = 4u
+        private const val MSIP_STRIDE = 4U
         private const val MTIMECMP_BASE = 0x4000U
-        private const val MTIMECMP_STRIDE = 8u
+        private const val MTIMECMP_STRIDE = 8U
         private const val CONTEXT_BASE = 0xB000U
-        private const val MTIME_OFFSET = 0xBFF8u
+        private const val MTIME_OFFSET = 0xBFF8U
     }
 }

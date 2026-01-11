@@ -2,7 +2,8 @@ package io.scriptor.fdt
 
 import java.util.function.Consumer
 
-class TreeBuilder private constructor() : Buildable<Tree> {
+class TreeBuilder : Buildable<Tree> {
+
     private var root: Node? = null
 
     fun root(root: Node): TreeBuilder {
@@ -11,7 +12,7 @@ class TreeBuilder private constructor() : Buildable<Tree> {
     }
 
     fun root(consumer: Consumer<NodeBuilder>): TreeBuilder {
-        val builder: NodeBuilder = NodeBuilder.create()
+        val builder = NodeBuilder()
         consumer.accept(builder)
         this.root = builder.build()
         return this
@@ -21,11 +22,5 @@ class TreeBuilder private constructor() : Buildable<Tree> {
         checkNotNull(root) { "missing tree root" }
 
         return Tree(root!!)
-    }
-
-    companion object {
-        fun create(): TreeBuilder {
-            return TreeBuilder()
-        }
     }
 }

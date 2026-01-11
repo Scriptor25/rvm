@@ -3,26 +3,27 @@ package io.scriptor.conf
 import io.scriptor.util.Log.format
 import java.io.InputStream
 
-class Parser(private val stream: InputStream) {
+class Parser {
+
+    private val stream: InputStream
+
     private var buffer: Int
     private var token: Token
 
-    init {
+    constructor(stream: InputStream) {
+        this.stream = stream
         this.buffer = stream.read()
         this.token = next()
     }
 
-    fun parse(): Node<*> {
-        if (at(TokenType.OTHER, "{")) return parseObject()
-        if (at(TokenType.OTHER, "[")) return parseArray()
-
-        if (at(TokenType.STRING, TokenType.SYMBOL)) return StringNode(skip().string)
-        if (at(TokenType.INTEGER)) return IntegerNode(skip().integer)
-        if (at(TokenType.FLOATING)) return FloatingNode(skip().floating)
-
-        if (at("true", "false")) return BooleanNode(skip().string.toBoolean())
-
-        throw NoSuchElementException()
+    fun parse(): Node<*> = when {
+        at(TokenType.OTHER, "{") -> parseObject()
+        at(TokenType.OTHER, "[") -> parseArray()
+        at(TokenType.STRING, TokenType.SYMBOL) -> StringNode(skip().string)
+        at(TokenType.INTEGER) -> IntegerNode(skip().integer)
+        at(TokenType.FLOATING) -> FloatingNode(skip().floating)
+        at("true", "false") -> BooleanNode(skip().string.toBoolean())
+        else -> throw NoSuchElementException()
     }
 
     fun parseObject(): ObjectNode {
@@ -32,11 +33,11 @@ class Parser(private val stream: InputStream) {
         while (!at(TokenType.OTHER, "}")) {
             val key = expect(TokenType.SYMBOL, TokenType.STRING).string
             expect(TokenType.OTHER, ":")
-            val value = parse()
+            node[key] = parse()
 
-            node[key] = value
-
-            if (!at(TokenType.OTHER, "}")) expect(TokenType.OTHER, ",")
+            if (!at(TokenType.OTHER, "}")) {
+                expect(TokenType.OTHER, ",")
+            }
         }
         expect(TokenType.OTHER, "}")
 
@@ -48,11 +49,11 @@ class Parser(private val stream: InputStream) {
 
         expect(TokenType.OTHER, "[")
         while (!at(TokenType.OTHER, "]")) {
-            val value = parse()
+            node.add(parse())
 
-            node.add(value)
-
-            if (!at(TokenType.OTHER, "]")) expect(TokenType.OTHER, ",")
+            if (!at(TokenType.OTHER, "]")) {
+                expect(TokenType.OTHER, ",")
+            }
         }
         expect(TokenType.OTHER, "]")
 
@@ -64,12 +65,20 @@ class Parser(private val stream: InputStream) {
     }
 
     private fun at(vararg types: TokenType): Boolean {
-        for (type in types) if (token.type == type) return true
+        for (type in types) {
+            if (token.type == type) {
+                return true
+            }
+        }
         return false
     }
 
     private fun at(vararg values: String): Boolean {
-        for (value in values) if (token.string == value) return true
+        for (value in values) {
+            if (token.string == value) {
+                return true
+            }
+        }
         return false
     }
 
@@ -82,12 +91,20 @@ class Parser(private val stream: InputStream) {
     }
 
     private fun expect(vararg types: TokenType): Token {
-        for (type in types) if (token.type == type) return skip()
+        for (type in types) {
+            if (token.type == type) {
+                return skip()
+            }
+        }
         throw NoSuchElementException(format("types=%s", types.contentToString()))
     }
 
     private fun expect(vararg values: String): Token {
-        for (value in values) if (token.string == value) return skip()
+        for (value in values) {
+            if (token.string == value) {
+                return skip()
+            }
+        }
         throw NoSuchElementException(format("values=%s", values.contentToString()))
     }
 
@@ -109,117 +126,121 @@ class Parser(private val stream: InputStream) {
         var radix = 10
         var floating = false
 
-        while (buffer >= 0) {
-            when (state) {
-                State.NONE -> {
+        while (buffer >= 0) when (state) {
+            State.NONE -> when (buffer) {
+                '#'.code -> {
+                    state = State.COMMENT
+                    read()
+                }
+
+                '0'.code -> {
+                    state = State.NUMBER
+                    read()
+
                     when (buffer) {
-                        '#'.code -> {
-                            state = State.COMMENT
+                        'b'.code -> {
+                            radix = 2
                             read()
                         }
 
-                        '0'.code -> {
-                            read()
-                            when (buffer) {
-                                'b'.code -> {
-                                    state = State.NUMBER
-                                    radix = 2
-                                    read()
-                                }
-
-                                'x'.code -> {
-                                    state = State.NUMBER
-                                    radix = 16
-                                    read()
-                                }
-
-                                else -> {
-                                    state = State.NUMBER
-                                    radix = 8
-                                    value.appendCodePoint('0'.code)
-                                }
-                            }
-                        }
-
-                        '"'.code -> {
-                            state = State.STRING
+                        'x'.code -> {
+                            radix = 16
                             read()
                         }
 
                         else -> {
-                            if (Character.isWhitespace(buffer)) {
-                                read()
-                                continue
-                            }
-                            if (Character.isDigit(buffer)) {
-                                state = State.NUMBER
-                                continue
-                            }
-                            if (Character.isLetter(buffer)) {
-                                state = State.SYMBOL
-                                continue
-                            }
-                            value.appendCodePoint(buffer)
-                            read()
-                            return Token(TokenType.OTHER, value.toString(), 0u, 0.0)
+                            radix = 8
+                            value.appendCodePoint('0'.code)
                         }
                     }
                 }
 
-                State.COMMENT -> {
-                    if (buffer == '\n'.code) state = State.NONE
+                '"'.code -> {
+                    state = State.STRING
                     read()
                 }
 
-                State.SYMBOL -> {
-                    if (Character.isLetterOrDigit(buffer)) {
+                else -> when {
+                    buffer.toChar().isWhitespace() -> {
+                        read()
+                    }
+
+                    buffer.toChar().isDigit() -> {
+                        state = State.NUMBER
+                    }
+
+                    buffer.toChar().isLetter() -> {
+                        state = State.SYMBOL
+                    }
+
+                    else -> {
                         value.appendCodePoint(buffer)
                         read()
-                        continue
+                        return Token(TokenType.OTHER, value.toString(), 0U, 0.0)
                     }
-                    return Token(TokenType.SYMBOL, value.toString(), 0u, 0.0)
+                }
+            }
+
+            State.COMMENT -> {
+                if (buffer == '\n'.code) {
+                    state = State.NONE
+                }
+                read()
+            }
+
+            State.SYMBOL -> when {
+                buffer.toChar().isLetterOrDigit() -> {
+                    value.appendCodePoint(buffer)
+                    read()
                 }
 
-                State.NUMBER -> {
-                    if (radix == 10 && !floating && buffer == '.'.code) {
-                        floating = true
-                        value.appendCodePoint(buffer)
-                        read()
-                        continue
-                    }
+                else -> return Token(TokenType.SYMBOL, value.toString(), 0U, 0.0)
+            }
 
-                    if (!floating && buffer == 'u'.code) {
-                        read()
-                        val string = value.toString()
-                        return Token(TokenType.INTEGER, string, string.toULong(radix), 0.0)
-                    }
+            State.NUMBER -> when {
+                radix == 10 && !floating && buffer == '.'.code -> {
+                    value.appendCodePoint(buffer)
+                    read()
 
-                    if (Character.isLetterOrDigit(buffer)) {
-                        value.appendCodePoint(buffer)
-                        read()
-                        continue
-                    }
+                    floating = true
+                }
+
+                !floating && buffer == 'u'.code -> {
+                    read()
 
                     val string = value.toString()
-
-                    if (floating)
-                        return Token(TokenType.FLOATING, string, 0u, string.toDouble())
-
-                    return Token(TokenType.INTEGER, string, string.toLong(radix).toULong(), 0.0)
+                    return Token(TokenType.INTEGER, string, string.toULong(radix), 0.0)
                 }
 
-                State.STRING -> {
-                    if (buffer == '"'.code) {
-                        read()
-                        return Token(TokenType.STRING, value.toString(), 0u, 0.0)
-                    }
+                buffer.toChar().isLetterOrDigit() -> {
+                    value.appendCodePoint(buffer)
+                    read()
+                }
 
+                else -> {
+                    val string = value.toString()
+
+                    return if (floating) {
+                        Token(TokenType.FLOATING, string, 0U, string.toDouble())
+                    } else {
+                        Token(TokenType.INTEGER, string, string.toLong(radix).toULong(), 0.0)
+                    }
+                }
+            }
+
+            State.STRING -> when (buffer) {
+                '"'.code -> {
+                    read()
+                    return Token(TokenType.STRING, value.toString(), 0U, 0.0)
+                }
+
+                else -> {
                     value.appendCodePoint(buffer)
                     read()
                 }
             }
         }
 
-        return Token(TokenType.EOF, "", 0u, 0.0)
+        return Token(TokenType.EOF, "", 0U, 0.0)
     }
 }

@@ -30,8 +30,7 @@ interface CSRFile : Device {
      * @param addr source register
      * @param priv privilege level
      */
-    fun getdu(addr: UInt, priv: UInt): ULong
-    fun getd(addr: UInt, priv: UInt): Long = getdu(addr, priv).toLong()
+    operator fun get(addr: UInt, priv: UInt): ULong
 
     /**
      * write an 8-byte value to a control/status register.

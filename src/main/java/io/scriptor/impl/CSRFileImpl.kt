@@ -4,11 +4,11 @@ import io.scriptor.isa.CSR
 import io.scriptor.machine.CSRFile
 import io.scriptor.machine.Hart
 import io.scriptor.machine.Machine
+import io.scriptor.util.Log.format
 import java.io.PrintStream
 import java.util.function.Consumer
 import java.util.function.Supplier
 
-@OptIn(ExperimentalUnsignedTypes::class)
 class CSRFileImpl : CSRFile {
 
     override val machine: Machine
@@ -17,6 +17,7 @@ class CSRFileImpl : CSRFile {
     private val hart: Hart
     private val metadata: MutableMap<UInt, CSRMeta> = HashMap()
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private val values = ULongArray(0x1000)
     private val present = BooleanArray(0x1000)
 
@@ -24,12 +25,13 @@ class CSRFileImpl : CSRFile {
         this.hart = hart
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun dump(out: PrintStream) {
         var j = 0
         for (i in values.indices) {
             if (!present[i]) continue
 
-            out.printf("%03x: %016x  ", i, values[i])
+            out.print(format("%03x: %016x  ", i, values[i]))
 
             if (++j % 4 == 0) out.println()
         }
@@ -37,6 +39,7 @@ class CSRFileImpl : CSRFile {
         if (j % 4 != 0) out.println()
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun reset() {
         values.fill(0UL)
         present.fill(false)
@@ -54,6 +57,7 @@ class CSRFileImpl : CSRFile {
         define(addr, mask, base, 0UL)
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun define(addr: UInt, mask: ULong, base: Int, value: ULong) {
         metadata[addr] = CSRMeta(mask, base, null, null, ArrayList(), ArrayList())
         present[addr.toInt()] = true
@@ -64,12 +68,14 @@ class CSRFileImpl : CSRFile {
         define(addr, 0UL.inv(), -1, value)
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun define(addr: UInt, mask: ULong, get: Supplier<ULong>) {
         metadata[addr] = CSRMeta(mask, -1, get, null, ArrayList(), ArrayList())
         present[addr.toInt()] = true
         values[addr.toInt()] = 0UL
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun define(addr: UInt, mask: ULong, get: Supplier<ULong>, set: Consumer<ULong>) {
         metadata[addr] = CSRMeta(mask, -1, get, set, ArrayList(), ArrayList())
         present[addr.toInt()] = true
@@ -84,7 +90,8 @@ class CSRFileImpl : CSRFile {
         metadata[addr]!!.putHooks.add(hook)
     }
 
-    override fun getdu(addr: UInt, priv: UInt): ULong {
+    @OptIn(ExperimentalUnsignedTypes::class)
+    override fun get(addr: UInt, priv: UInt): ULong {
         var addr = addr
         if (!present[addr.toInt()]) {
             error(addr.toULong(), "read csr addr=%03x, priv=%x: not present", addr, priv)
@@ -115,6 +122,7 @@ class CSRFileImpl : CSRFile {
         return value
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun put(addr: UInt, priv: UInt, value: ULong) {
         var addr = addr
         if (!present[addr.toInt()]) {
@@ -194,7 +202,7 @@ class CSRFileImpl : CSRFile {
         values[addr.toInt()] = value
     }
 
-    private fun error(addr: ULong, format: String, vararg args: Any) {
-        throw TrapException(hart.id, 0x02UL, addr, format, args)
+    private fun error(addr: ULong, format: String, vararg args: Any?) {
+        throw TrapException(hart.id, 0x02UL, addr, format, *args)
     }
 }

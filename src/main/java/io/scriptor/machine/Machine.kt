@@ -17,11 +17,14 @@ interface Machine : Device {
     fun <T : Device> device(type: Class<T>, index: Int): T
     fun <T : Device> device(type: Class<T>, predicate: Predicate<T>)
     fun <T : IODevice> device(type: Class<T>, address: ULong): T?
+    fun <T : IODevice> device(type: Class<T>, address: ULong, capacity: UInt): T?
 
     operator fun <T : Device> get(type: Class<T>): T = device(type)
     operator fun <T : Device> get(type: Class<T>, index: Int): T = device(type, index)
     operator fun <T : Device> get(type: Class<T>, predicate: Predicate<T>) = device(type, predicate)
     operator fun <T : IODevice> get(type: Class<T>, address: ULong): T? = device(type, address)
+    operator fun <T : IODevice> get(type: Class<T>, address: ULong, capacity: UInt): T? =
+        device(type, address, capacity)
 
     fun dump(out: PrintStream, paddr: ULong, length: ULong)
 

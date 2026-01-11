@@ -20,6 +20,7 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.*
+import java.util.function.Consumer
 import java.util.function.Function
 
 // https://riscv.github.io/riscv-isa-manual/snapshot/privileged/
@@ -29,14 +30,33 @@ import java.util.function.Function
 
 fun main(args: Array<String>) {
 
-    val logThread = Thread({ Log.handle() }, "rvm-log")
+    val logThread = Thread(Log::handle, "rvm-log")
     logThread.start()
 
     try {
         val context = ArgContext()
         context.parse(args)
 
+        if ("--level" in context) {
+            context["--level", { Log.level = it.toUInt() }]
+        }
+
         val machine = init(context)
+
+        context[
+            "--load",
+            Consumer { entry ->
+                val parts = entry
+                    .split("=".toRegex())
+                    .dropLastWhile { it.isEmpty() }
+                    .toTypedArray()
+                val filename = parts[0]
+                val offset = if (parts.size == 2) parts[1].toULong(0x10) else 0UL
+
+                load(machine, filename, offset)
+            },
+        ]
+
         run(context, machine)
     } catch (e: Exception) {
         Log.error("%s", e)
@@ -55,13 +75,13 @@ fun init(args: ArgContext): Machine {
             .map { line -> line.trim { it <= ' ' } }
             .filter { line -> !line.isEmpty() }
             .filter { line -> line.endsWith(".isa") }
-            .forEach { name -> Resource.read(true, name) { registry.parse(it) } }
+            .forEach { line -> Resource.read(true, line, registry::parse) }
     }
 
     val isResource = "--config" !in args
-    val resourceName = if (isResource) "config/default.conf" else args["--config"]
+    val filename = if (isResource) "config/default.conf" else args["--config"]
 
-    return Resource.read<Machine>(isResource, resourceName) { stream ->
+    return Resource.read<Machine>(isResource, filename) { stream ->
         val machineConfig = MachineConfig()
         val parser = Parser(stream)
         val root = parser.parse()
@@ -86,19 +106,6 @@ fun init(args: ArgContext): Machine {
                 },
             )
         }
-
-        args[
-            "--load",
-            { entry ->
-                val parts = entry
-                    .split("=".toRegex())
-                    .dropLastWhile { it.isEmpty() }
-                    .toTypedArray()
-                val filename: String = parts[0]
-                val offset = if (parts.size == 2) parts[1].toULong(0x10) else 0UL
-                machineConfig.device { load(it, filename, offset) }
-            },
-        ]
 
         if ("devices" in root) {
             val devices = root[ArrayNode::class.java, "devices"]
@@ -233,90 +240,110 @@ fun load(
     machine: Machine,
     filename: String,
     offset: ULong,
-): Device {
-    try {
-        ChannelInputStream(filename).use { stream ->
-            val buffer = ByteBuffer.allocateDirect(0x10)
-            stream.read(buffer)
-            val identity = Identity.read(buffer.flip())
+) {
+    val stream = ChannelInputStream(filename);
 
-            val elf = Arrays.compare(identity.magic, byteArrayOf(0x7F, 0x45, 0x4C, 0x46)) == 0
-            if (elf) {
-                val header = Header.read(identity, stream)
+    val buffer = ByteBuffer.allocateDirect(0x10)
+    stream.read(buffer)
+    val identity = Identity.read(buffer.flip())
 
-                val phtab = Array(header.phnum.toInt()) {
-                    stream.seek((header.phoff + it.toUInt() * header.phentsize).toLong())
-                    ProgramHeader.read(identity, stream)
-                }
-                val shtab = Array(header.shnum.toInt()) {
-                    stream.seek((header.shoff + it.toUInt() * header.shentsize).toLong())
-                    SectionHeader.read(identity, stream)
-                }
+    val elf = Arrays.compare(identity.magic, byteArrayOf(0x7F, 0x45, 0x4C, 0x46)) == 0
+    if (elf) {
+        val header = Header.read(identity, stream)
 
-                val shstrtab: SectionHeader = shtab[header.shstrndx.toInt()]
+        val phtab = Array(header.phnum.toInt()) {
+            stream.seek((header.phoff + it.toUInt() * header.phentsize).toLong())
+            ProgramHeader.read(identity, stream)
+        }
+        val shtab = Array(header.shnum.toInt()) {
+            stream.seek((header.shoff + it.toUInt() * header.shentsize).toLong())
+            SectionHeader.read(identity, stream)
+        }
 
-                var symtab: SectionHeader? = null
-                var dynsym: SectionHeader? = null
-                var strtab: SectionHeader? = null
-                var dynstr: SectionHeader? = null
-                for (sh in shtab) {
-                    stream.seek((shstrtab.offset + sh.name).toLong())
-                    val name = ByteUtil.readString(stream)
-                    when (name) {
-                        ".symtab" -> symtab = sh
-                        ".dynsym" -> dynsym = sh
-                        ".strtab" -> strtab = sh
-                        ".dynstr" -> dynstr = sh
-                    }
-                }
+        val shstrtab: SectionHeader = shtab[header.shstrndx.toInt()]
 
-                if (symtab != null && strtab != null) {
-                    ELF.readSymbols(identity, stream, symtab, strtab, machine.symbols, offset)
-                }
-                if (dynsym != null && dynstr != null) {
-                    ELF.readSymbols(identity, stream, dynsym, dynstr, machine.symbols, offset)
-                }
-
-                var begin = 0UL.inv()
-                var end = 0UL
-
-                for (ph in phtab) {
-                    if (ph.type != 0x01U) continue
-
-                    if (begin > ph.paddr) begin = ph.paddr
-                    if (end < ph.paddr + ph.memsz) end = ph.paddr + ph.memsz
-                }
-
-                val rom = Memory(machine, begin + offset, (end - begin).toUInt(), false)
-
-                for (ph in phtab) {
-                    if (ph.type != 0x01U) continue
-
-                    stream.seek(ph.offset.toLong())
-
-                    val data = ByteArray(ph.filesz.toInt())
-                    val read: Int = stream.read(data)
-                    if (read != data.size) Log.warn("stream read %d, requested %d", read, data.size)
-
-                    rom.direct(data, (ph.paddr - begin).toUInt(), true)
-                }
-
-                return rom
-            } else {
-                stream.seek(0L)
-
-                val rom = Memory(machine, offset, stream.size().toUInt(), false)
-
-                val data = ByteArray(stream.size().toInt())
-                val read: Int = stream.read(data)
-                if (read != data.size) Log.warn("stream read %d, requested %d", read, data.size)
-
-                rom.direct(data, 0U, true)
-                return rom
+        var symtab: SectionHeader? = null
+        var dynsym: SectionHeader? = null
+        var strtab: SectionHeader? = null
+        var dynstr: SectionHeader? = null
+        for (sh in shtab) {
+            stream.seek((shstrtab.offset + sh.name).toLong())
+            val name = ByteUtil.readString(stream)
+            when (name) {
+                ".symtab" -> symtab = sh
+                ".dynsym" -> dynsym = sh
+                ".strtab" -> strtab = sh
+                ".dynstr" -> dynstr = sh
             }
         }
-    } catch (e: IOException) {
-        Log.error("failed to load file '%s' (offset %x): %s", filename, offset, e)
-        throw RuntimeException(e)
+
+        if (symtab != null && strtab != null) {
+            ELF.readSymbols(identity, stream, symtab, strtab, machine.symbols, offset)
+        }
+        if (dynsym != null && dynstr != null) {
+            ELF.readSymbols(identity, stream, dynsym, dynstr, machine.symbols, offset)
+        }
+
+        var begin = 0UL.inv()
+        var end = 0UL
+
+        for (ph in phtab) {
+            if (ph.type != 0x01U) continue
+
+            if (begin > ph.paddr) begin = ph.paddr
+            if (end < ph.paddr + ph.memsz) end = ph.paddr + ph.memsz
+        }
+
+        val capacity = (end - begin).toUInt()
+        val memory = machine[Memory::class.java, begin + offset, capacity]
+        if (memory == null) {
+            throw NoSuchElementException(
+                format(
+                    "no memory at address %016x with minimum capacity %d",
+                    begin + offset,
+                    capacity,
+                ),
+            )
+        }
+
+        for (ph in phtab) {
+            if (ph.type != 0x01U) continue
+
+            stream.seek(ph.offset.toLong())
+
+            val data = ByteArray(ph.filesz.toInt())
+            val read = stream.read(data)
+            if (read != data.size) {
+                Log.warn("stream read %d, requested %d", read, data.size)
+            }
+
+            memory.direct(data, ((ph.paddr + offset) - memory.begin).toUInt(), true)
+        }
+
+        return
     }
+
+    stream.seek(0L)
+
+    val capacity = stream.size().toUInt()
+    val memory = machine[Memory::class.java, offset, capacity]
+    if (memory == null) {
+        throw NoSuchElementException(
+            format(
+                "no memory at address %016x with minimum capacity %d",
+                offset,
+                capacity,
+            ),
+        )
+    }
+
+    val data = ByteArray(stream.size().toInt())
+    val read: Int = stream.read(data)
+    if (read != data.size) {
+        Log.warn("stream read %d, requested %d", read, data.size)
+    }
+
+    memory.direct(data, (offset - memory.begin).toUInt(), true)
+
+    return
 }

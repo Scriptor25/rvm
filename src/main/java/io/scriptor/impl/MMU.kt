@@ -5,7 +5,7 @@ import io.scriptor.machine.Hart
 import io.scriptor.util.Log
 import io.scriptor.util.Log.format
 
-class MMU(private val hart: Hart) {
+class MMU {
 
     private data class Key(val vpn: ULong, val asid: ULong)
 
@@ -26,7 +26,12 @@ class MMU(private val hart: Hart) {
         WRITE,
     }
 
+    private val hart: Hart
     private val tlb: MutableMap<Key, Entry> = HashMap()
+
+    constructor(hart: Hart) {
+        this.hart = hart
+    }
 
     fun flush(vaddr: ULong, asid: ULong) {
         if (vaddr == 0UL && asid == 0UL) {
@@ -59,7 +64,7 @@ class MMU(private val hart: Hart) {
             return vaddr
         }
 
-        val reg = hart.csrFile.getdu(CSR.satp, priv)
+        val reg = hart.csrFile[CSR.satp, priv]
         val mode = getMode(reg)
         val asid = getASID(reg)
         val ppn = getPPN(reg)
@@ -265,7 +270,7 @@ class MMU(private val hart: Hart) {
     }
 
     private fun unprivileged(priv: UInt, pte: ULong): Boolean {
-        val status = hart.csrFile.getdu(CSR.sstatus, priv)
+        val status = hart.csrFile[CSR.sstatus, priv]
         val sum = (status and CSR.STATUS_SUM) != 0UL
         val u: Boolean = pteU(pte)
 

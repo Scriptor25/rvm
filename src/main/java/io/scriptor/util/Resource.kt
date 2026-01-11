@@ -3,50 +3,44 @@ package io.scriptor.util
 import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.function.Consumer
+import java.util.function.Function
 
 object Resource {
 
-    /**
-     * read a system resource as stream.
-     * 
-     * @param name     resource name
-     * @param consumer stream consumer
-     */
     fun read(
-        resource: Boolean,
-        name: String,
-        consumer: IOConsumer<InputStream>,
+        isResource: Boolean,
+        filename: String,
+        consumer: Consumer<InputStream>,
     ) {
         try {
-            (if (resource) ClassLoader.getSystemResourceAsStream(name) else FileInputStream(name)).use { stream ->
-                consumer.accept(stream)
+            val stream = if (isResource) {
+                ClassLoader.getSystemResourceAsStream(filename)
+            } else {
+                FileInputStream(filename)
             }
+            consumer.accept(stream)
         } catch (e: IOException) {
-            Log.error("failed to read resource name '%s': %s", name, e)
+            Log.error("failed to read resource name '%s': %s", filename, e)
             throw RuntimeException(e)
         }
     }
 
     fun <R> read(
-        resource: Boolean,
-        name: String,
-        function: IOFunction<InputStream, R>,
+        isResource: Boolean,
+        filename: String,
+        function: Function<InputStream, R>,
     ): R {
         try {
-            return (if (resource) ClassLoader.getSystemResourceAsStream(name) else FileInputStream(name)).use { stream ->
-                function.accept(stream)
+            val stream = if (isResource) {
+                ClassLoader.getSystemResourceAsStream(filename)
+            } else {
+                FileInputStream(filename)
             }
+            return function.apply(stream)
         } catch (e: IOException) {
-            Log.error("failed to read resource name '%s': %s", name, e)
+            Log.error("failed to read resource name '%s': %s", filename, e)
             throw RuntimeException(e)
         }
-    }
-
-    fun interface IOConsumer<T> {
-        fun accept(arg: T)
-    }
-
-    fun interface IOFunction<T, R> {
-        fun accept(arg: T): R
     }
 }

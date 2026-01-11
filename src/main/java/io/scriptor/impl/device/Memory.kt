@@ -11,7 +11,6 @@ import java.io.FileOutputStream
 import java.io.PrintStream
 import java.nio.ByteBuffer
 
-@OptIn(ExperimentalUnsignedTypes::class)
 class Memory : IODevice {
 
     override val machine: Machine
@@ -41,6 +40,7 @@ class Memory : IODevice {
     override fun reset() {
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
@@ -80,7 +80,7 @@ class Memory : IODevice {
 
     override fun write(offset: UInt, size: UInt, value: ULong) {
         if (readonly) {
-            Log.error("invalid read-only memory write offset=%x, size=%d, value=%x", offset, size, value)
+            Log.error("invalid memory write offset=%x, size=%d, value=%x, marked as read-only", offset, size, value)
             return
         }
 
@@ -99,7 +99,7 @@ class Memory : IODevice {
     }
 
     override fun toString(): String {
-        return format("memory@%x", begin)
+        return if (readonly) format("rom@%x", begin) else format("memory@%x", begin)
     }
 
     fun direct(data: ByteArray, offset: UInt, write: Boolean) {
