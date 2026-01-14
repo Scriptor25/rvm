@@ -65,9 +65,6 @@ class MachineImpl : Machine {
 
         this.dt = Memory(this, 0x100000000UL, 0x2000U, true)
         generateDeviceTree(this.dt.buffer())
-
-        // TODO: remove
-        this.dt.export("out.dtb")
     }
 
     override fun <T : Device> device(type: Class<T>): T {
