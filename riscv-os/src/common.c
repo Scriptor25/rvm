@@ -28,9 +28,9 @@ void kputs(const char* str)
 
 void knputs(const char* str, int len)
 {
-    for (; len > 0; --len)
+    for (; len > 0 && *str; --len, ++str)
     {
-        kputc(*str++);
+        kputc(*str);
     }
 }
 

@@ -133,8 +133,6 @@ class PropBuilder : Buildable<Prop> {
     }
 
     override fun build(): Prop {
-        checkNotNull(name) { "missing prop name" }
-        checkNotNull(data) { "missing prop data" }
-        return Prop(name!!, data!!)
+        return Prop(checkNotNull(name) { "missing prop name" }, checkNotNull(data) { "missing prop data" })
     }
 }

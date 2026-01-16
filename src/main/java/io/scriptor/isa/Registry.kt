@@ -11,30 +11,30 @@ import java.util.regex.Pattern
 class Registry private constructor() {
 
     private val types: MutableMap<String, Type> = HashMap()
-    private val instructions: MutableList<Instruction> = ArrayList()
+    private val instructions: MutableMap<String, Instruction> = HashMap()
 
     fun parse(stream: InputStream) {
         val reader = BufferedReader(InputStreamReader(stream))
         reader
             .lines()
-            .map<String> { it.trim { it <= ' ' } }
+            .map { it.trim { it <= ' ' } }
             .filter { !it.isEmpty() }
             .filter { !it.startsWith("#") }
-            .forEach { parse(it) }
+            .forEach(::parse)
     }
 
     private fun parse(line: String) {
-        val mType: Matcher = TYPE_PATTERN.matcher(line)
-        if (mType.matches()) {
-            val type: Type = parseType(mType)
+        val typeMatcher: Matcher = TYPE_PATTERN.matcher(line)
+        if (typeMatcher.matches()) {
+            val type: Type = parseType(typeMatcher)
             types[type.label] = type
             return
         }
 
-        val mInstruction: Matcher = INSTRUCTION_PATTERN.matcher(line)
-        if (mInstruction.matches()) {
-            val instruction: Instruction = parseInstruction(types, mInstruction)
-            instructions.add(instruction)
+        val instructionMatcher: Matcher = INSTRUCTION_PATTERN.matcher(line)
+        if (instructionMatcher.matches()) {
+            val instruction: Instruction = parseInstruction(types, instructionMatcher)
+            instructions[instruction.mnemonic] = instruction
             return
         }
 
@@ -47,8 +47,8 @@ class Registry private constructor() {
         fun contains(mode: UInt, value: UInt): Boolean = contains(mode, value.toInt())
 
         fun contains(mode: UInt, value: Int): Boolean {
-            for (instruction in instance.instructions) {
-                if ((instruction.restriction == 0U || instruction.restriction == mode) && instruction.test(value)) {
+            for (instruction in instance.instructions.values) {
+                if (instruction.test(mode, value)) {
                     return true
                 }
             }
@@ -60,8 +60,8 @@ class Registry private constructor() {
         operator fun get(mode: UInt, value: Int): Instruction {
             var candidate: Instruction? = null
 
-            for (instruction in instance.instructions) {
-                if ((instruction.restriction == 0U || instruction.restriction == mode) && instruction.test(value)) {
+            for (instruction in instance.instructions.values) {
+                if (instruction.test(mode, value)) {
                     check(candidate == null) {
                         format("ambiguous candidates for instruction %08x: %s and %s", value, candidate, instruction)
                     }
@@ -69,9 +69,10 @@ class Registry private constructor() {
                 }
             }
 
-            checkNotNull(candidate) { format("no candidate for instruction %08x", value) }
-            return candidate
+            return checkNotNull(candidate) { format("no candidate for instruction %08x", value) }
         }
+
+        operator fun get(mnemonic: String): Instruction? = instance.instructions[mnemonic]
 
         private val OPERAND_PATTERN = Pattern.compile("^(\\w+)\\s*\\[(.+)](?:!(.+))?$")
         private val SEGMENT_PATTERN = Pattern.compile("^\\s*(\\d+)(?::(\\d+))?(?:<<(\\d+))?\\s*$")
@@ -80,33 +81,33 @@ class Registry private constructor() {
             Pattern.compile("^(\\w+(?:\\.\\w+)*)\\s*\\[([^]]+)](?:\\?(\\d+))?\\s*(?:\\((\\w+)\\))?(.*)$")
 
         private fun parseOperand(token: String): Operand {
-            val mOperand: Matcher = OPERAND_PATTERN.matcher(token)
-            require(mOperand.matches()) { format("invalid operand token '%s'", token) }
+            val operandMatcher = OPERAND_PATTERN.matcher(token)
+            require(operandMatcher.matches()) { format("invalid operand token '%s'", token) }
 
-            val strings = mOperand.group(2)
+            val strings = operandMatcher.group(2)
                 .split("\\|".toRegex())
                 .dropLastWhile { it.isEmpty() }
                 .toTypedArray()
             val segments: MutableList<Segment> = ArrayList()
             for (segment in strings) {
-                val mSegment: Matcher = SEGMENT_PATTERN.matcher(segment)
-                require(mSegment.matches())
+                val segmentMatcher = SEGMENT_PATTERN.matcher(segment)
+                require(segmentMatcher.matches())
 
-                val hi = mSegment.group(1).toInt()
-                val lo = if (mSegment.group(2) != null) mSegment.group(2).toInt() else hi
-                val shift = if (mSegment.group(3) != null) mSegment.group(3).toInt() else 0
+                val hi = segmentMatcher.group(1).toInt()
+                val lo = if (segmentMatcher.group(2) != null) segmentMatcher.group(2).toInt() else hi
+                val shift = if (segmentMatcher.group(3) != null) segmentMatcher.group(3).toInt() else 0
 
                 segments.add(Segment(hi, lo, shift))
             }
 
             val operand = Operand(
-                mOperand.group(1),
-                segments.toTypedArray(),
+                operandMatcher.group(1),
+                segments,
                 HashSet(),
             )
 
-            if (mOperand.group(3) != null) {
-                val values = mOperand.group(3)
+            if (operandMatcher.group(3) != null) {
+                val values = operandMatcher.group(3)
                     .trim { it <= ' ' }
                     .split(",".toRegex())
                     .dropLastWhile { it.isEmpty() }
@@ -122,10 +123,10 @@ class Registry private constructor() {
             return operand
         }
 
-        private fun parseType(mType: Matcher): Type {
-            val operands: MutableList<Operand> = ArrayList()
+        private fun parseType(matcher: Matcher): Type {
+            val operands: MutableMap<String, Operand> = HashMap()
 
-            val segments = mType.group(2)
+            val segments = matcher.group(2)
                 .trim { it <= ' ' }
                 .split("\\s+".toRegex())
                 .dropLastWhile { it.isEmpty() }
@@ -135,17 +136,18 @@ class Registry private constructor() {
                 if (token.isBlank()) {
                     continue
                 }
-                operands.add(parseOperand(token))
+                val operand = parseOperand(token)
+                operands[operand.label] = operand
             }
 
-            return Type(mType.group(1), operands.toTypedArray())
+            return Type(matcher.group(1), operands)
         }
 
         private fun parseInstruction(
             types: MutableMap<String, Type>,
-            mInstruction: Matcher,
+            matcher: Matcher,
         ): Instruction {
-            val value = mInstruction.group(2)
+            val value = matcher.group(2)
                 .trim { it <= ' ' }
                 .replace("\\s+".toRegex(), "")
 
@@ -163,19 +165,19 @@ class Registry private constructor() {
                 }
             }
 
-            val restriction = if (mInstruction.group(3) != null) mInstruction.group(3).toUInt() else 0U
-            val operands: MutableList<Operand> = ArrayList()
+            val restriction = if (matcher.group(3) != null) matcher.group(3).toUInt() else 0U
+            val operands: MutableMap<String, Operand> = HashMap()
 
-            if (mInstruction.group(4) != null) {
-                val typename = mInstruction.group(4).trim { it <= ' ' }
-                require(types.containsKey(typename)) { format("invalid typename '%s'", typename) }
+            if (matcher.group(4) != null) {
+                val typename = matcher.group(4).trim { it <= ' ' }
+                require(typename in types) { format("invalid typename '%s'", typename) }
 
                 val type = types[typename]!!
-                operands.addAll(type.operands)
+                operands.putAll(type.operands)
             }
 
-            if (mInstruction.group(5) != null) {
-                val segments = mInstruction.group(5)
+            if (matcher.group(5) != null) {
+                val segments = matcher.group(5)
                     .trim { it <= ' ' }
                     .split("\\s+".toRegex())
                     .dropLastWhile { it.isEmpty() }
@@ -184,11 +186,12 @@ class Registry private constructor() {
                     if (token.isBlank()) {
                         continue
                     }
-                    operands.add(parseOperand(token))
+                    val operand = parseOperand(token)
+                    operands[operand.label] = operand
                 }
             }
 
-            return Instruction(mInstruction.group(1), ilen, mask, bits, restriction, operands.toTypedArray())
+            return Instruction(matcher.group(1), ilen, mask, bits, restriction, operands)
         }
     }
 }

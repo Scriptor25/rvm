@@ -49,8 +49,8 @@ or   [0000000 ..... ..... 110 ..... 0110011] (R)
 and  [0000000 ..... ..... 111 ..... 0110011] (R)
 
 fence     [....... ..... ..... 000 ..... 0001111] fm[31:28] pred[27:24] succ[23:20] rs1[19:15] rd[11:7]
-fence.tso [1000001 10011 00000 000 00000 0001111]
-# TODO: figure out a way to distinguish fence from pause
+# TODO: figure out a way to distinguish fence from fence.tso and pause
+# fence.tso [1000001 10011 00000 000 00000 0001111]
 # pause     [0000000 10000 00000 000 00000 0001111]
 ecall     [0000000 00000 00000 000 00000 1110011]
 ebreak    [0000000 00001 00000 000 00000 1110011]

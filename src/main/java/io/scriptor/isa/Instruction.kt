@@ -8,28 +8,38 @@ data class Instruction(
     val mask: Int,
     val bits: Int,
     val restriction: UInt,
-    val operands: Array<Operand>,
+    val operands: Map<String, Operand>,
 ) {
 
-    fun test(value: Int): Boolean {
-        if (bits != (value and mask)) {
-            return false
-        }
-        for (operand in operands) {
-            if (operand.excludes(value)) {
+    fun test(mode: UInt, value: Int): Boolean {
+        when {
+            restriction != 0U && restriction != mode -> {
                 return false
             }
-        }
-        return true
-    }
 
-    fun decode(instruction: Int, label: String): Int {
-        for (operand in operands) {
-            if (operand.label == label) {
-                return operand.extract(instruction)
+            bits != (value and mask) -> {
+                return false
+            }
+
+            else -> {
+                for (operand in operands.values) {
+                    if (operand.excludes(value)) {
+                        return false
+                    }
+                }
+                return true
             }
         }
-        throw NoSuchElementException(label)
+    }
+
+    fun decode(instruction: Int, label: String): Int = when (label) {
+        in operands -> operands[label]!!.decode(instruction)
+        else -> throw NoSuchElementException(label)
+    }
+
+    fun encode(instruction: Int, label: String, value: Int): Int = when (label) {
+        in operands -> operands[label]!!.encode(instruction, value)
+        else -> throw NoSuchElementException(label)
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -92,7 +102,7 @@ data class Instruction(
             ilen,
             bits,
             mask,
-            operands.contentToString(),
+            operands,
         )
     }
 }

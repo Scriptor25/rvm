@@ -251,7 +251,7 @@ class MachineImpl : Machine {
     }
 
     override fun acquireLock(address: ULong): Any {
-        if (locks.containsKey(address))
+        if (address in locks)
             return locks[address]!!
 
         val lock = Any()

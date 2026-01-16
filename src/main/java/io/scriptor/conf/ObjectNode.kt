@@ -11,12 +11,10 @@ class ObjectNode : Node<Any>, Iterable<Map.Entry<String, Node<*>>> {
         map.remove(key)
     }
 
-    override operator fun contains(key: String): Boolean {
-        return map.containsKey(key)
-    }
+    override operator fun contains(key: String): Boolean = key in map
 
     override operator fun <N : Node<*>> get(type: Class<N>, key: String): N {
-        if (map.containsKey(key)) {
+        if (key in map) {
             return type.cast(map[key])
         }
         throw NoSuchElementException(key)

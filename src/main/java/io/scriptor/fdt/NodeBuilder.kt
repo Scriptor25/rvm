@@ -38,8 +38,6 @@ class NodeBuilder : Buildable<Node> {
     }
 
     override fun build(): Node {
-        checkNotNull(name) { "missing node name" }
-
-        return Node(name!!, props.toTypedArray(), nodes.toTypedArray())
+        return Node(checkNotNull(name) { "missing node name" }, props.toTypedArray(), nodes.toTypedArray())
     }
 }

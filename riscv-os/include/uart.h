@@ -1,15 +1,16 @@
 #pragma once
 
-#define UART_RBR ((volatile unsigned char*) 0x10000000) // receiver buffer register [ro]
-#define UART_THR ((volatile unsigned char*) 0x10000000) // transmitter holding register [wo]
-#define UART_IER ((volatile unsigned char*) 0x10000001) // interrupt enable register
-#define UART_IIR ((volatile unsigned char*) 0x10000002) // interrupt identification register [ro]
-#define UART_FCR ((volatile unsigned char*) 0x10000002) // fifo control register [wo]
-#define UART_LCR ((volatile unsigned char*) 0x10000003) // line control register
-#define UART_MCR ((volatile unsigned char*) 0x10000004) // modem control register
-#define UART_LSR ((volatile unsigned char*) 0x10000005) // line status register
-#define UART_MSR ((volatile unsigned char*) 0x10000006) // modem status register
-#define UART_SCR ((volatile unsigned char*) 0x10000007) // scratch register
+#define UART_BASE ((volatile unsigned char*) 0x20000000)
+#define UART_RBR (UART_BASE + 0x0) // receiver buffer register [ro]
+#define UART_THR (UART_BASE + 0x0) // transmitter holding register [wo]
+#define UART_IER (UART_BASE + 0x1) // interrupt enable register
+#define UART_IIR (UART_BASE + 0x2) // interrupt identification register [ro]
+#define UART_FCR (UART_BASE + 0x2) // fifo control register [wo]
+#define UART_LCR (UART_BASE + 0x3) // line control register
+#define UART_MCR (UART_BASE + 0x4) // modem control register
+#define UART_LSR (UART_BASE + 0x5) // line status register
+#define UART_MSR (UART_BASE + 0x6) // modem status register
+#define UART_SCR (UART_BASE + 0x7) // scratch register
 
 #define UART_IER_ERBFI 0b00000001                       // enable received data avaible interrupt
 #define UART_IER_ETBEI 0b00000010                       // enable transmitter holding register empty interrupt

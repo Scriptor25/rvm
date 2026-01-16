@@ -74,11 +74,11 @@ class HartImpl : Hart {
 
             val display = StringBuilder()
             display.append(definition.mnemonic)
-            for (operand in definition.operands) {
+            for (operand in definition.operands.values) {
                 display.append(", ")
                     .append(operand.label)
                     .append('=')
-                    .append(operand.extract(instruction.toInt()).toHexString())
+                    .append(operand.decode(instruction.toInt()).toHexString())
             }
 
             out.println(format("  %s", display))

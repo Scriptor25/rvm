@@ -13,6 +13,8 @@ repositories {
 
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
+
+    testImplementation(kotlin("test"))
 }
 
 kotlin {
@@ -20,7 +22,7 @@ kotlin {
 }
 
 application {
-    mainClass = "io.scriptor.Main"
+    mainClass = "io.scriptor.MainKt"
     applicationName = "rvm"
 }
 

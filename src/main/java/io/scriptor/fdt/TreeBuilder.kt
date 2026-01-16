@@ -19,8 +19,6 @@ class TreeBuilder : Buildable<Tree> {
     }
 
     override fun build(): Tree {
-        checkNotNull(root) { "missing tree root" }
-
-        return Tree(root!!)
+        return Tree(checkNotNull(root) { "missing tree root" })
     }
 }
