@@ -8,7 +8,7 @@ import java.io.InputStreamReader
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
-class Registry private constructor() {
+class Registry {
 
     private val types: MutableMap<String, Type> = HashMap()
     private val instructions: MutableMap<String, Instruction> = HashMap()
@@ -41,39 +41,37 @@ class Registry private constructor() {
         Log.warn("unhandled line pattern '%s'", line)
     }
 
+    fun contains(mode: UInt, value: UInt): Boolean = contains(mode, value.toInt())
+
+    fun contains(mode: UInt, value: Int): Boolean {
+        for (instruction in instructions.values) {
+            if (instruction.test(mode, value)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    operator fun get(mode: UInt, value: UInt): Instruction = get(mode, value.toInt())
+
+    operator fun get(mode: UInt, value: Int): Instruction {
+        var candidate: Instruction? = null
+
+        for (instruction in instructions.values) {
+            if (instruction.test(mode, value)) {
+                check(candidate == null) {
+                    format("ambiguous candidates for instruction %08x: %s and %s", value, candidate, instruction)
+                }
+                candidate = instruction
+            }
+        }
+
+        return checkNotNull(candidate) { format("no candidate for instruction %08x", value) }
+    }
+
+    operator fun get(mnemonic: String): Instruction? = instructions[mnemonic]
+
     companion object {
-        val instance: Registry = Registry()
-
-        fun contains(mode: UInt, value: UInt): Boolean = contains(mode, value.toInt())
-
-        fun contains(mode: UInt, value: Int): Boolean {
-            for (instruction in instance.instructions.values) {
-                if (instruction.test(mode, value)) {
-                    return true
-                }
-            }
-            return false
-        }
-
-        operator fun get(mode: UInt, value: UInt): Instruction = get(mode, value.toInt())
-
-        operator fun get(mode: UInt, value: Int): Instruction {
-            var candidate: Instruction? = null
-
-            for (instruction in instance.instructions.values) {
-                if (instruction.test(mode, value)) {
-                    check(candidate == null) {
-                        format("ambiguous candidates for instruction %08x: %s and %s", value, candidate, instruction)
-                    }
-                    candidate = instruction
-                }
-            }
-
-            return checkNotNull(candidate) { format("no candidate for instruction %08x", value) }
-        }
-
-        operator fun get(mnemonic: String): Instruction? = instance.instructions[mnemonic]
-
         private val OPERAND_PATTERN = Pattern.compile("^(\\w+)\\s*\\[(.+)](?:!(.+))?$")
         private val SEGMENT_PATTERN = Pattern.compile("^\\s*(\\d+)(?::(\\d+))?(?:<<(\\d+))?\\s*$")
         private val TYPE_PATTERN = Pattern.compile("^type\\s+(\\w+)\\s+(.+)$")

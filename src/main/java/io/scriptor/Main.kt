@@ -67,7 +67,7 @@ fun main(args: Array<String>) {
 }
 
 fun init(args: ArgContext): Machine {
-    val registry = Registry.instance
+    val registry = Registry()
     Resource.read(true, "index.list") { stream ->
         stream
             .bufferedReader()
@@ -87,17 +87,17 @@ fun init(args: ArgContext): Machine {
         val root = parser.parse()
 
         if ("mode" in root) {
-            val mode = root[IntegerNode::class.java, "mode"].value
+            val mode = root[IntegerNode::class, "mode"].value
             machineConfig.mode(mode.toUInt())
         }
 
         if ("harts" in root) {
-            val harts = root[IntegerNode::class.java, "harts"].value
+            val harts = root[IntegerNode::class, "harts"].value
             machineConfig.harts(harts.toUInt())
         }
 
         if ("order" in root) {
-            val order = root[StringNode::class.java, "order"].value
+            val order = root[StringNode::class, "order"].value
             machineConfig.order(
                 when (order) {
                     "le" -> ByteOrder.LITTLE_ENDIAN
@@ -108,27 +108,27 @@ fun init(args: ArgContext): Machine {
         }
 
         if ("devices" in root) {
-            val devices = root[ArrayNode::class.java, "devices"]
+            val devices = root[ArrayNode::class, "devices"]
             for (node in devices) {
-                val type = node[StringNode::class.java, "type"].value
+                val type = node[StringNode::class, "type"].value
 
                 val generator: Function<Machine, Device> = when (type) {
                     "clint" -> {
-                        val begin = node[IntegerNode::class.java, "begin"].value
+                        val begin = node[IntegerNode::class, "begin"].value
                         Function { CLINT(it, begin) }
                     }
 
                     "plic" -> {
-                        val begin = node[IntegerNode::class.java, "begin"].value
-                        val ndev = node[IntegerNode::class.java, "ndev"].value
+                        val begin = node[IntegerNode::class, "begin"].value
+                        val ndev = node[IntegerNode::class, "ndev"].value
                         Function { PLIC(it, begin, ndev.toUInt()) }
                     }
 
                     "uart" -> {
-                        val begin = node[IntegerNode::class.java, "begin"].value
+                        val begin = node[IntegerNode::class, "begin"].value
 
-                        val inputNode = node[ObjectNode::class.java, "in"]
-                        val inputType = inputNode[StringNode::class.java, "type"].value
+                        val inputNode = node[ObjectNode::class, "in"]
+                        val inputType = inputNode[StringNode::class, "type"].value
 
                         val closeInput: Boolean
                         val inputStream = when (inputType) {
@@ -141,15 +141,15 @@ fun init(args: ArgContext): Machine {
                             "file" -> {
                                 closeInput = true
 
-                                val name = inputNode[StringNode::class.java, "name"].value
+                                val name = inputNode[StringNode::class, "name"].value
                                 FileInputStream(name)
                             }
 
                             else -> throw NoSuchElementException(format("type=%s", inputType))
                         }
 
-                        val outputNode = node[ObjectNode::class.java, "out"]
-                        val outputType = outputNode[StringNode::class.java, "type"].value
+                        val outputNode = node[ObjectNode::class, "out"]
+                        val outputType = outputNode[StringNode::class, "type"].value
 
                         val closeOutput: Boolean
                         val outputStream = when (outputType) {
@@ -162,9 +162,9 @@ fun init(args: ArgContext): Machine {
                             "file" -> {
                                 closeOutput = true
 
-                                val name = outputNode[StringNode::class.java, "name"].value
+                                val name = outputNode[StringNode::class, "name"].value
                                 val append =
-                                    ("append" in outputNode) && outputNode[BooleanNode::class.java, "append"].value
+                                    ("append" in outputNode) && outputNode[BooleanNode::class, "append"].value
 
                                 FileOutputStream(name, append)
                             }
@@ -176,9 +176,9 @@ fun init(args: ArgContext): Machine {
                     }
 
                     "memory" -> {
-                        val begin = node[IntegerNode::class.java, "begin"].value
-                        val capacity = node[IntegerNode::class.java, "capacity"].value
-                        val readonly = ("readonly" in node) && node[BooleanNode::class.java, "readonly"].value
+                        val begin = node[IntegerNode::class, "begin"].value
+                        val capacity = node[IntegerNode::class, "capacity"].value
+                        val readonly = ("readonly" in node) && node[BooleanNode::class, "readonly"].value
 
                         Function { Memory(it, begin, capacity.toUInt(), readonly) }
                     }
@@ -189,7 +189,7 @@ fun init(args: ArgContext): Machine {
                 machineConfig.device(generator)
             }
         }
-        machineConfig.configure()
+        machineConfig.configure(registry)
     }
 }
 
@@ -295,7 +295,7 @@ fun load(
         }
 
         val capacity = (end - begin).toUInt()
-        val memory = machine[Memory::class.java, begin + offset, capacity]
+        val memory = machine[Memory::class, begin + offset, capacity]
         if (memory == null) {
             throw NoSuchElementException(
                 format(
@@ -326,7 +326,7 @@ fun load(
     stream.seek(0L)
 
     val capacity = stream.size().toUInt()
-    val memory = machine[Memory::class.java, offset, capacity]
+    val memory = machine[Memory::class, offset, capacity]
     if (memory == null) {
         throw NoSuchElementException(
             format(

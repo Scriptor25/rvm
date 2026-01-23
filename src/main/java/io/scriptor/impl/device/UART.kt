@@ -58,7 +58,7 @@ class UART : IODevice {
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
-        val plic0 = context.get(machine[PLIC::class.java])
+        val plic0 = context.get(machine[PLIC::class])
 
         builder
             .name(format("serial@%x", begin))

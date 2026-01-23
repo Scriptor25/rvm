@@ -1,6 +1,7 @@
 package io.scriptor.machine
 
 import io.scriptor.impl.MachineImpl
+import io.scriptor.isa.Registry
 import io.scriptor.util.Log.format
 import java.nio.ByteOrder
 import java.util.function.Function
@@ -8,7 +9,7 @@ import java.util.function.Function
 class MachineConfig {
 
     private var mode = 64U
-    private var hartCount = 1U
+    private var harts = 1U
     private var order: ByteOrder = ByteOrder.nativeOrder()
     private val devices: MutableList<Function<Machine, Device>> = ArrayList()
 
@@ -17,8 +18,8 @@ class MachineConfig {
         return this
     }
 
-    fun harts(hartCount: UInt): MachineConfig {
-        this.hartCount = hartCount
+    fun harts(harts: UInt): MachineConfig {
+        this.harts = harts
         return this
     }
 
@@ -32,9 +33,9 @@ class MachineConfig {
         return this
     }
 
-    fun configure(): Machine {
+    fun configure(registry: Registry): Machine {
         return when (mode) {
-            64U -> MachineImpl(hartCount, order, devices.toTypedArray())
+            64U -> MachineImpl(registry, order, harts.toInt(), devices.toTypedArray())
             else -> throw NoSuchElementException(format("mode=%d", mode))
         }
     }

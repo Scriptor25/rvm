@@ -106,7 +106,7 @@ interface Hart : Device {
             Log.info("virtual address %016x -> physical address %016x", vaddr, paddr)
         }
 
-        val device = machine[IODevice::class.java, paddr]
+        val device = machine[IODevice::class, paddr]
 
         if (device != null && device.begin <= paddr && paddr + 4U <= device.end) {
             return device.read((paddr - device.begin).toUInt(), 4U).toUInt()

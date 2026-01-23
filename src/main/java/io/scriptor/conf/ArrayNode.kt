@@ -1,5 +1,8 @@
 package io.scriptor.conf
 
+import kotlin.reflect.KClass
+import kotlin.reflect.cast
+
 class ArrayNode : Node<Any>, Iterable<Node<*>> {
 
     private val list: MutableList<Node<*>> = ArrayList()
@@ -12,7 +15,7 @@ class ArrayNode : Node<Any>, Iterable<Node<*>> {
         list.removeAt(index)
     }
 
-    override operator fun <N : Node<*>> get(type: Class<N>, index: Int): N {
+    override operator fun <N : Node<*>> get(type: KClass<N>, index: Int): N {
         return type.cast(list[index])
     }
 

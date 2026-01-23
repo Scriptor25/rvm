@@ -6,6 +6,7 @@ import io.scriptor.fdt.FDT
 import io.scriptor.fdt.TreeBuilder
 import io.scriptor.impl.device.Memory
 import io.scriptor.impl.device.UART
+import io.scriptor.isa.Registry
 import io.scriptor.machine.Device
 import io.scriptor.machine.Hart
 import io.scriptor.machine.IODevice
@@ -19,12 +20,15 @@ import java.util.function.Function
 import java.util.function.IntConsumer
 import java.util.function.Predicate
 import kotlin.math.min
+import kotlin.reflect.KClass
+import kotlin.reflect.cast
 
 class MachineImpl : Machine {
 
     override val machine: Machine
         get() = this
 
+    override val registry: Registry
     override val order: ByteOrder
     override val symbols = SymbolTable()
     override val harts: Array<Hart>
@@ -38,9 +42,10 @@ class MachineImpl : Machine {
     private var breakpointHandler: IntConsumer? = null
     private val locks: MutableMap<ULong, Any> = HashMap()
 
-    constructor(hartCount: UInt, order: ByteOrder, devices: Array<Function<Machine, Device>>) {
+    constructor(registry: Registry, order: ByteOrder, harts: Int, devices: Array<Function<Machine, Device>>) {
+        this.registry = registry
         this.order = order
-        this.harts = Array(hartCount.toInt()) { HartImpl(this, it) }
+        this.harts = Array(harts) { HartImpl(this, it) }
         this.devices = devices.map { it.apply(this) }.toTypedArray()
 
         for (j in this.devices.indices) {
@@ -67,7 +72,7 @@ class MachineImpl : Machine {
         generateDeviceTree(this.dt.buffer())
     }
 
-    override fun <T : Device> device(type: Class<T>): T {
+    override fun <T : Device> device(type: KClass<T>): T {
         for (device in devices) {
             if (type.isInstance(device)) {
                 return type.cast(device)
@@ -76,7 +81,7 @@ class MachineImpl : Machine {
         throw NoSuchElementException()
     }
 
-    override fun <T : Device> device(type: Class<T>, index: Int): T {
+    override fun <T : Device> device(type: KClass<T>, index: Int): T {
         var index = index
         for (device in devices) {
             if (type.isInstance(device)
@@ -88,7 +93,7 @@ class MachineImpl : Machine {
         throw NoSuchElementException()
     }
 
-    override fun <T : Device> device(type: Class<T>, predicate: Predicate<T>) {
+    override fun <T : Device> device(type: KClass<T>, predicate: Predicate<T>) {
         for (device in devices) {
             if (type.isInstance(device)
                 && predicate.test(type.cast(device))
@@ -98,7 +103,7 @@ class MachineImpl : Machine {
         }
     }
 
-    override fun <T : IODevice> device(type: Class<T>, address: ULong): T? {
+    override fun <T : IODevice> device(type: KClass<T>, address: ULong): T? {
         for (device in devices) {
             if (device is IODevice
                 && address in device.begin..<device.end
@@ -111,7 +116,7 @@ class MachineImpl : Machine {
     }
 
     override fun <T : IODevice> device(
-        type: Class<T>,
+        type: KClass<T>,
         address: ULong,
         capacity: UInt,
     ): T? {
@@ -125,6 +130,15 @@ class MachineImpl : Machine {
             }
         }
         return null
+    }
+
+    override fun <T : IODevice> has(type: KClass<T>): Boolean {
+        for (device in devices) {
+            if (type.isInstance(device)) {
+                return true
+            }
+        }
+        return false
     }
 
     override fun dump(out: PrintStream) {
@@ -336,7 +350,9 @@ class MachineImpl : Machine {
                     .node {
                         it
                             .name("chosen")
-                            .prop { it.name("stdout-path").data("/soc/${this[UART::class.java]}") }
+                            .prop(UART::class in this) {
+                                it.name("stdout-path").data("/soc/${this[UART::class]}")
+                            }
                             .node {
                                 it
                                     .name("opensbi-domains")
@@ -365,7 +381,9 @@ class MachineImpl : Machine {
                                             .prop { it.name("base").data(0x20000000L) }
                                             .prop { it.name("order").data(12) }
                                             .prop { it.name("mmio").data() }
-                                            .prop { it.name("devices").data(context.get(this[UART::class.java])) }
+                                            .prop(UART::class in this) {
+                                                it.name("devices").data(context.get(this[UART::class]))
+                                            }
                                     }
                                     .node {
                                         it

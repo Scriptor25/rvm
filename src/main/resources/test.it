@@ -1,2 +1,0 @@
-lui   :             rd = t0, imm = 0xDEADB000 : t0 = 0xDEADB000
-auipc : pc = 0xEEF, rd = t0, imm = 0xDEADB000 : t0 = 0xDEADBEEF

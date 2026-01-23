@@ -1,5 +1,8 @@
 package io.scriptor.conf
 
+import kotlin.reflect.KClass
+import kotlin.reflect.cast
+
 class ObjectNode : Node<Any>, Iterable<Map.Entry<String, Node<*>>> {
     private val map: MutableMap<String, Node<*>> = HashMap()
 
@@ -13,7 +16,7 @@ class ObjectNode : Node<Any>, Iterable<Map.Entry<String, Node<*>>> {
 
     override operator fun contains(key: String): Boolean = key in map
 
-    override operator fun <N : Node<*>> get(type: Class<N>, key: String): N {
+    override operator fun <N : Node<*>> get(type: KClass<N>, key: String): N {
         if (key in map) {
             return type.cast(map[key])
         }

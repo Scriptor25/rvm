@@ -5,7 +5,6 @@ import io.scriptor.fdt.NodeBuilder
 import io.scriptor.impl.device.CLINT
 import io.scriptor.isa.CSR
 import io.scriptor.isa.Instruction
-import io.scriptor.isa.Registry
 import io.scriptor.machine.*
 import io.scriptor.util.ByteUtil.signExtend
 import io.scriptor.util.ByteUtil.signExtendLong
@@ -69,8 +68,8 @@ class HartImpl : Hart {
         val instruction = fetch(pc, true)
         out.println(format("pc=%016x, instruction=%08x", pc, instruction))
 
-        if (Registry.contains(64U, instruction)) {
-            val definition = Registry[64U, instruction]
+        if (machine.registry.contains(64U, instruction)) {
+            val definition = machine.registry[64U, instruction]
 
             val display = StringBuilder()
             display.append(definition.mnemonic)
@@ -119,8 +118,6 @@ class HartImpl : Hart {
     }
 
     override fun reset() {
-        val clint = machine[CLINT::class.java]
-
         gprFile.reset()
         fprFile.reset()
         csrFile.reset()
@@ -166,10 +163,15 @@ class HartImpl : Hart {
         csrFile.define(
             CSR.mip, 0x2AAAUL,
             {
-                ((if (clint.meip(id)) 1UL else 0UL) shl 11 or ((if (clint.mtip(id)) 1UL else 0UL) shl 7)
+                val clint = machine[CLINT::class]
+                ((if (clint.meip(id)) 1UL else 0UL) shl 11
+                        or ((if (clint.mtip(id)) 1UL else 0UL) shl 7)
                         or ((if (clint.msip(id)) 1UL else 0UL) shl 3))
             },
-            { value -> clint.msip(id, ((value shr 3) and 1UL) != 0UL) },
+            { value ->
+                val clint = machine[CLINT::class]
+                clint.msip(id, ((value shr 3) and 1UL) != 0UL)
+            },
         )
         csrFile.define(CSR.sie, 0x2222UL, CSR.mie)
         csrFile.define(CSR.sip, 0x2222UL, CSR.mip)
@@ -228,8 +230,21 @@ class HartImpl : Hart {
         }
 
         // clint control/status
-        csrFile.define(CSR.time, 0UL.inv()) { clint.mtime() }
-        csrFile.define(CSR.stimecmp, 0UL.inv(), { clint.mtimecmp(id) }, { clint.mtimecmp(id, it) })
+        csrFile.define(CSR.time, 0UL.inv()) {
+            val clint = machine[CLINT::class]
+            clint.mtime()
+        }
+        csrFile.define(
+            CSR.stimecmp, 0UL.inv(),
+            {
+                val clint = machine[CLINT::class]
+                clint.mtimecmp(id)
+            },
+            {
+                val clint = machine[CLINT::class]
+                clint.mtimecmp(id, it)
+            },
+        )
 
         csrFile.define(CSR.mcounteren, 0xFFFFFFFFUL, -1, 0xFFFFFFFFUL)
         csrFile.define(CSR.mcountinhibit, 0xFFFFFFFFUL, -1, 0UL)
@@ -260,10 +275,10 @@ class HartImpl : Hart {
             interrupt()
 
             val instruction = fetch(pc, false)
-            if (!Registry.contains(64U, instruction))
+            if (!machine.registry.contains(64U, instruction))
                 unsupported(instruction.toHexString())
 
-            val definition = Registry[64U, instruction]
+            val definition = machine.registry[64U, instruction]
 
             ppc = pc
             pc = execute(instruction, definition)
@@ -1331,7 +1346,7 @@ class HartImpl : Hart {
 
     //region PRIVILEGED
 
-    private fun sret(): ULong {
+    fun sret(): ULong {
         var status = csrFile[CSR.sstatus, priv]
 
         val spp = ((status shr 8) and 1UL).toUInt()
@@ -1349,7 +1364,7 @@ class HartImpl : Hart {
         return csrFile[CSR.sepc, CSR.CSR_M]
     }
 
-    private fun mret(): ULong {
+    fun mret(): ULong {
         var status = csrFile[CSR.mstatus, priv]
 
         val mpp = ((status shr 11) and 3UL).toUInt()
@@ -1367,102 +1382,102 @@ class HartImpl : Hart {
         return csrFile[CSR.mepc, CSR.CSR_M]
     }
 
-    private fun mnret() {
+    fun mnret() {
         unsupported("mnret")
     }
 
-    private fun wfi() {
+    fun wfi() {
         wfi = true
     }
 
-    private fun sctrclr() {
+    fun sctrclr() {
         unsupported("sctrclr")
     }
 
-    private fun sfence_vma(rs1: UInt, rs2: UInt) {
+    fun sfence_vma(rs1: UInt, rs2: UInt) {
         val vaddr = gprFile.getdu(rs1)
         val asid = gprFile.getdu(rs2)
 
         mmu.flush(vaddr, asid)
     }
 
-    private fun hfence_vvma(rs1: UInt, rs2: UInt) {
+    fun hfence_vvma(rs1: UInt, rs2: UInt) {
         unsupported("hfence.vvma")
     }
 
-    private fun hfence_gvma(rs1: UInt, rs2: UInt) {
+    fun hfence_gvma(rs1: UInt, rs2: UInt) {
         unsupported("hfence.gvma")
     }
 
-    private fun hlv_b(rd: UInt, rs1: UInt) {
+    fun hlv_b(rd: UInt, rs1: UInt) {
         unsupported("hlv.b")
     }
 
-    private fun hlv_bu(rd: UInt, rs1: UInt) {
+    fun hlv_bu(rd: UInt, rs1: UInt) {
         unsupported("hlv.bu")
     }
 
-    private fun hlv_h(rd: UInt, rs1: UInt) {
+    fun hlv_h(rd: UInt, rs1: UInt) {
         unsupported("hlv.h")
     }
 
-    private fun hlv_hu(rd: UInt, rs1: UInt) {
+    fun hlv_hu(rd: UInt, rs1: UInt) {
         unsupported("hlv.hu")
     }
 
-    private fun hlv_w(rd: UInt, rs1: UInt) {
+    fun hlv_w(rd: UInt, rs1: UInt) {
         unsupported("hlv.w")
     }
 
-    private fun hlvx_hu(rd: UInt, rs1: UInt) {
+    fun hlvx_hu(rd: UInt, rs1: UInt) {
         unsupported("hlvx.hu")
     }
 
-    private fun hlvx_wu(rd: UInt, rs1: UInt) {
+    fun hlvx_wu(rd: UInt, rs1: UInt) {
         unsupported("hlvx.wu")
     }
 
-    private fun hsv_b(rs1: UInt, rs2: UInt) {
+    fun hsv_b(rs1: UInt, rs2: UInt) {
         unsupported("hsv.b")
     }
 
-    private fun hsv_h(rs1: UInt, rs2: UInt) {
+    fun hsv_h(rs1: UInt, rs2: UInt) {
         unsupported("hsv.h")
     }
 
-    private fun hsv_w(rs1: UInt, rs2: UInt) {
+    fun hsv_w(rs1: UInt, rs2: UInt) {
         unsupported("hsv.w")
     }
 
-    private fun hlv_wu(rd: UInt, rs1: UInt) {
+    fun hlv_wu(rd: UInt, rs1: UInt) {
         unsupported("hlv.wu")
     }
 
-    private fun hlv_d(rd: UInt, rs1: UInt) {
+    fun hlv_d(rd: UInt, rs1: UInt) {
         unsupported("hlv.d")
     }
 
-    private fun hsv_d(rs1: UInt, rs2: UInt) {
+    fun hsv_d(rs1: UInt, rs2: UInt) {
         unsupported("hsv.d")
     }
 
-    private fun sinval_vma(rs1: UInt, rs2: UInt) {
+    fun sinval_vma(rs1: UInt, rs2: UInt) {
         unsupported("sinval.vma")
     }
 
-    private fun sfence_w_inval() {
+    fun sfence_w_inval() {
         unsupported("sfence.w.inval")
     }
 
-    private fun sfence_inval_ir() {
+    fun sfence_inval_ir() {
         unsupported("sfence.inval.ir")
     }
 
-    private fun hinval_vvma(rs1: UInt, rs2: UInt) {
+    fun hinval_vvma(rs1: UInt, rs2: UInt) {
         unsupported("hinval.vvma")
     }
 
-    private fun hinval_gvma(rs1: UInt, rs2: UInt) {
+    fun hinval_gvma(rs1: UInt, rs2: UInt) {
         unsupported("hinval.gvma")
     }
 
@@ -1470,21 +1485,21 @@ class HartImpl : Hart {
 
     //region RV32 ATOMIC
 
-    private fun lr_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun lr_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         val value = lw(gprFile.getdu(rs1))
         gprFile[rd] = value
 
         // TODO: reservation
     }
 
-    private fun sc_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun sc_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         sw(gprFile.getdu(rs1), gprFile.getw(rs2))
         gprFile[rd] = 0L
 
         // TODO: reservation
     }
 
-    private fun amoswap_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoswap_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         val vaddr = gprFile.getdu(rs1)
         if ((vaddr and 0x3UL) != 0UL) {
             throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
@@ -1500,7 +1515,7 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun amoadd_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoadd_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         val vaddr = gprFile.getdu(rs1)
         if ((vaddr and 0x3UL) != 0UL) {
             throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
@@ -1516,31 +1531,31 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun amoxor_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoxor_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amoxor.w")
     }
 
-    private fun amoand_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoand_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amoand.w")
     }
 
-    private fun amoor_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoor_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amoor.w")
     }
 
-    private fun amomin_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amomin_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amomin.w")
     }
 
-    private fun amomax_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amomax_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amomax.w")
     }
 
-    private fun amominu_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amominu_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amominu.w")
     }
 
-    private fun amomaxu_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amomaxu_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amomaxu.w")
     }
 
@@ -1548,109 +1563,109 @@ class HartImpl : Hart {
 
     //region RV32 SINGLE-PRECISION FLOATING-POINT
 
-    private fun flw(rd: UInt, rs1: UInt, imm: UInt) {
+    fun flw(rd: UInt, rs1: UInt, imm: UInt) {
         unsupported("flw")
     }
 
-    private fun fsw(rs1: UInt, rs2: UInt, imm: UInt) {
+    fun fsw(rs1: UInt, rs2: UInt, imm: UInt) {
         unsupported("fsw")
     }
 
-    private fun fmadd_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
+    fun fmadd_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
         unsupported("fmadd.s")
     }
 
-    private fun fmsub_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
+    fun fmsub_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
         unsupported("fmsub.s")
     }
 
-    private fun fnmsub_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
+    fun fnmsub_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
         unsupported("fnmsub.s")
     }
 
-    private fun fnmadd_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
+    fun fnmadd_s(rd: UInt, rs1: UInt, rs2: UInt, rs3: UInt, rm: UInt) {
         unsupported("fnmadd.s")
     }
 
-    private fun fadd_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fadd_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fadd.s")
     }
 
-    private fun fsub_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fsub_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fsub.s")
     }
 
-    private fun fmul_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fmul_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fmul.s")
     }
 
-    private fun fdiv_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fdiv_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fdiv.s")
     }
 
-    private fun fsqrt_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fsqrt_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fsqrt.s")
     }
 
-    private fun fsgnj_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fsgnj_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("fsgnj.s")
     }
 
-    private fun fsgnjn_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fsgnjn_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("fsgnjn.s")
     }
 
-    private fun fsgnjx_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fsgnjx_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("fsgnjx.s")
     }
 
-    private fun fmin_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fmin_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("fmin.s")
     }
 
-    private fun fmax_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fmax_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("fmax.s")
     }
 
-    private fun fcvt_w_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_w_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.w.s")
     }
 
-    private fun fcvt_wu_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_wu_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.wu.s")
     }
 
-    private fun fmv_x_w(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fmv_x_w(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = fprFile.getfr(rs1)
 
         // TODO: what about rs2?
     }
 
-    private fun feq_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun feq_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("feq.s")
     }
 
-    private fun flt_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun flt_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("flt.s")
     }
 
-    private fun fge_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fge_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("fge.s")
     }
 
-    private fun fclass_s(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fclass_s(rd: UInt, rs1: UInt, rs2: UInt) {
         unsupported("fclass.s")
     }
 
-    private fun fcvt_s_w(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_s_w(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.s.w")
     }
 
-    private fun fcvt_s_wu(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_s_wu(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.s.wu")
     }
 
-    private fun fmv_w_x(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun fmv_w_x(rd: UInt, rs1: UInt, rs2: UInt) {
         fprFile[rd] = gprFile.getwu(rs1)
 
         // TODO: what about rs2?
@@ -1660,133 +1675,133 @@ class HartImpl : Hart {
 
     //region RV32 INTEGER
 
-    private fun lui(rd: UInt, uimm: UInt) {
+    fun lui(rd: UInt, uimm: UInt) {
         gprFile[rd] = signExtendLong(uimm, 32)
     }
 
-    private fun auipc(rd: UInt, uimm: UInt) {
+    fun auipc(rd: UInt, uimm: UInt) {
         gprFile[rd] = pc.toLong() + signExtendLong(uimm, 32)
     }
 
-    private fun jal(next: ULong, rd: UInt, imm: UInt): ULong {
+    fun jal(next: ULong, rd: UInt, imm: UInt): ULong {
         val pnext = (pc.toLong() + signExtendLong(imm, 21)).toULong()
         gprFile[rd] = next
         return pnext
     }
 
-    private fun jalr(next: ULong, rd: UInt, rs1: UInt, imm: UInt): ULong {
+    fun jalr(next: ULong, rd: UInt, rs1: UInt, imm: UInt): ULong {
         val pnext = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong() and 1UL.inv()
         gprFile[rd] = next
         return pnext
     }
 
-    private fun beq(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
+    fun beq(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
         if (gprFile.getdu(rs1) == gprFile.getdu(rs2)) {
             return (pc.toLong() + signExtendLong(imm, 13)).toULong()
         }
         return next
     }
 
-    private fun bne(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
+    fun bne(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
         if (gprFile.getdu(rs1) != gprFile.getdu(rs2)) {
             return (pc.toLong() + signExtendLong(imm, 13)).toULong()
         }
         return next
     }
 
-    private fun blt(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
+    fun blt(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
         if (gprFile.getd(rs1) < gprFile.getd(rs2)) {
             return (pc.toLong() + signExtendLong(imm, 13)).toULong()
         }
         return next
     }
 
-    private fun bge(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
+    fun bge(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
         if (gprFile.getd(rs1) >= gprFile.getd(rs2)) {
             return (pc.toLong() + signExtendLong(imm, 13)).toULong()
         }
         return next
     }
 
-    private fun bltu(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
+    fun bltu(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
         if (gprFile.getdu(rs1) < gprFile.getdu(rs2)) {
             return (pc.toLong() + signExtendLong(imm, 13)).toULong()
         }
         return next
     }
 
-    private fun bgeu(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
+    fun bgeu(next: ULong, rs1: UInt, rs2: UInt, imm: UInt): ULong {
         if (gprFile.getdu(rs1) >= gprFile.getdu(rs2)) {
             return (pc.toLong() + signExtendLong(imm, 13)).toULong()
         }
         return next
     }
 
-    private fun lb(rd: UInt, rs1: UInt, imm: UInt) {
+    fun lb(rd: UInt, rs1: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         gprFile[rd] = lb(vaddr)
     }
 
-    private fun lh(rd: UInt, rs1: UInt, imm: UInt) {
+    fun lh(rd: UInt, rs1: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         gprFile[rd] = lh(vaddr)
     }
 
-    private fun lw(rd: UInt, rs1: UInt, imm: UInt) {
+    fun lw(rd: UInt, rs1: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         gprFile[rd] = lw(vaddr)
     }
 
-    private fun lbu(rd: UInt, rs1: UInt, imm: UInt) {
+    fun lbu(rd: UInt, rs1: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         gprFile[rd] = lbu(vaddr)
     }
 
-    private fun lhu(rd: UInt, rs1: UInt, imm: UInt) {
+    fun lhu(rd: UInt, rs1: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         gprFile[rd] = lhu(vaddr)
     }
 
-    private fun sb(rs1: UInt, rs2: UInt, imm: UInt) {
+    fun sb(rs1: UInt, rs2: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         sb(vaddr, gprFile.getb(rs2))
     }
 
-    private fun sh(rs1: UInt, rs2: UInt, imm: UInt) {
+    fun sh(rs1: UInt, rs2: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         sh(vaddr, gprFile.geth(rs2))
     }
 
-    private fun sw(rs1: UInt, rs2: UInt, imm: UInt) {
+    fun sw(rs1: UInt, rs2: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         sw(vaddr, gprFile.getw(rs2))
     }
 
-    private fun addi(rd: UInt, rs1: UInt, imm: UInt) {
+    fun addi(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = gprFile.getd(rs1) + signExtendLong(imm, 12)
     }
 
-    private fun slti(rd: UInt, rs1: UInt, imm: UInt) {
+    fun slti(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = if (gprFile.getd(rs1) < signExtendLong(imm, 12)) 1UL else 0UL
     }
 
-    private fun sltiu(rd: UInt, rs1: UInt, imm: UInt) {
+    fun sltiu(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = if (gprFile.getdu(rs1) < signExtendLong(imm, 12).toULong()) 1UL else 0UL
     }
 
-    private fun xori(rd: UInt, rs1: UInt, imm: UInt) {
+    fun xori(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = gprFile.getdu(rs1) xor signExtendLong(imm, 12).toULong()
     }
 
-    private fun ori(rd: UInt, rs1: UInt, imm: UInt) {
+    fun ori(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = gprFile.getdu(rs1) or signExtendLong(imm, 12).toULong()
     }
 
-    private fun andi(rd: UInt, rs1: UInt, imm: UInt) {
+    fun andi(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = gprFile.getdu(rs1) and signExtendLong(imm, 12).toULong()
     }
 
-    private fun slli(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun slli(rd: UInt, rs1: UInt, shamt: UInt) {
         if (rd == 0U && rs1 == 0U && shamt == 0x1FU) {
             semihosting = true
             return
@@ -1795,11 +1810,11 @@ class HartImpl : Hart {
         gprFile[rd] = gprFile.getdu(rs1) shl shamt.toInt()
     }
 
-    private fun srli(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun srli(rd: UInt, rs1: UInt, shamt: UInt) {
         gprFile[rd] = gprFile.getd(rs1) ushr shamt.toInt()
     }
 
-    private fun srai(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun srai(rd: UInt, rs1: UInt, shamt: UInt) {
         if (rd == 0U && rs1 == 0U && shamt == 0x07U) {
             semihosting = false
             return
@@ -1808,62 +1823,62 @@ class HartImpl : Hart {
         gprFile[rd] = gprFile.getd(rs1) shr shamt.toInt()
     }
 
-    private fun add(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun add(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) + gprFile.getd(rs2)
     }
 
-    private fun sub(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun sub(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) - gprFile.getd(rs2)
     }
 
-    private fun sll(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun sll(rd: UInt, rs1: UInt, rs2: UInt) {
         val shamt = gprFile.getd(rs2) and 63
         gprFile[rd] = gprFile.getdu(rs1) shl shamt.toInt()
     }
 
-    private fun slt(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun slt(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = if (gprFile.getd(rs1) < gprFile.getd(rs2)) 1UL else 0UL
     }
 
-    private fun sltu(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun sltu(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = if (gprFile.getdu(rs1) < gprFile.getdu(rs2)) 1UL else 0UL
     }
 
-    private fun xor(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun xor(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getdu(rs1) xor gprFile.getdu(rs2)
     }
 
-    private fun srl(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun srl(rd: UInt, rs1: UInt, rs2: UInt) {
         val shamt = gprFile.getd(rs2) and 63
         gprFile[rd] = gprFile.getd(rs1) ushr shamt.toInt()
     }
 
-    private fun sra(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun sra(rd: UInt, rs1: UInt, rs2: UInt) {
         val shamt = gprFile.getd(rs2) and 63
         gprFile[rd] = gprFile.getd(rs1) shr shamt.toInt()
     }
 
-    private fun or(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun or(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getdu(rs1) or gprFile.getdu(rs2)
     }
 
-    private fun and(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun and(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getdu(rs1) and gprFile.getdu(rs2)
     }
 
-    private fun fence(rd: UInt, rs1: UInt, fm: UInt, pred: UInt, succ: UInt) {
+    fun fence(rd: UInt, rs1: UInt, fm: UInt, pred: UInt, succ: UInt) {
         // TODO: instruction and io cache
     }
 
-    private fun fence_tso() {
+    fun fence_tso() {
         // TODO: instruction and io cache
     }
 
-    private fun pause() {
+    fun pause() {
         // TODO: pause execution for a few steps
     }
 
-    private fun ecall() {
+    fun ecall() {
         when (priv) {
             CSR.CSR_M -> throw TrapException(id, 0x0BUL, 0UL, "environment call from machine mode")
             CSR.CSR_S -> throw TrapException(id, 0x09UL, 0UL, "environment call from supervisor mode")
@@ -1872,7 +1887,7 @@ class HartImpl : Hart {
         }
     }
 
-    private fun ebreak(next: ULong): ULong {
+    fun ebreak(next: ULong): ULong {
         if (semihosting) {
             val sysnum = gprFile.getdu(0x0AU)
             val params = gprFile.getdu(0x0BU)
@@ -1947,23 +1962,23 @@ class HartImpl : Hart {
 
     //region RV32 MULTIPLY
 
-    private fun mul(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun mul(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) * gprFile.getd(rs2)
     }
 
-    private fun mulh(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun mulh(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = mulh64(gprFile.getd(rs1), gprFile.getd(rs2))
     }
 
-    private fun mulhsu(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun mulhsu(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = mulhsu64(gprFile.getd(rs1), gprFile.getd(rs2))
     }
 
-    private fun mulhu(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun mulhu(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = mulhu64(gprFile.getd(rs1), gprFile.getd(rs2))
     }
 
-    private fun div(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun div(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getd(rs1)
         val rhs = gprFile.getd(rs2)
 
@@ -1980,7 +1995,7 @@ class HartImpl : Hart {
         gprFile[rd] = lhs / rhs
     }
 
-    private fun divu(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun divu(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getdu(rs1)
         val rhs = gprFile.getdu(rs2)
 
@@ -1992,7 +2007,7 @@ class HartImpl : Hart {
         gprFile[rd] = lhs / rhs
     }
 
-    private fun rem(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun rem(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getd(rs1)
         val rhs = gprFile.getd(rs2)
 
@@ -2009,7 +2024,7 @@ class HartImpl : Hart {
         gprFile[rd] = lhs % rhs
     }
 
-    private fun remu(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun remu(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getdu(rs1)
         val rhs = gprFile.getdu(rs2)
 
@@ -2025,21 +2040,21 @@ class HartImpl : Hart {
 
     //region RV64 ATOMIC
 
-    private fun lr_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun lr_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         val value = ldu(gprFile.getdu(rs1))
         gprFile[rd] = value
 
         // TODO: reservation
     }
 
-    private fun sc_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun sc_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         sd(gprFile.getdu(rs1), gprFile.getdu(rs2))
         gprFile[rd] = 0UL
 
         // TODO: reservation
     }
 
-    private fun amoswap_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoswap_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         val vaddr = gprFile.getdu(rs1)
         if ((vaddr and 0x7UL) != 0UL) {
             throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
@@ -2055,7 +2070,7 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun amoadd_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoadd_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         val vaddr = gprFile.getdu(rs1)
         if ((vaddr and 0x7UL) != 0UL) {
             throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
@@ -2071,15 +2086,15 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun amoxor_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoxor_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amoxor.d")
     }
 
-    private fun amoand_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoand_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amoand.d")
     }
 
-    private fun amoor_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amoor_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         val vaddr = gprFile.getdu(rs1)
         if ((vaddr and 0x7UL) != 0UL) {
             throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
@@ -2095,19 +2110,19 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun amomin_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amomin_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amomin.d")
     }
 
-    private fun amomax_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amomax_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amomax.d")
     }
 
-    private fun amominu_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amominu_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amominu.d")
     }
 
-    private fun amomaxu_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
+    fun amomaxu_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
         unsupported("amomaxu.d")
     }
 
@@ -2115,19 +2130,19 @@ class HartImpl : Hart {
 
     //region RV64 SINGLE-PRECISION FLOATING-POINT
 
-    private fun fcvt_l_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_l_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.l.s")
     }
 
-    private fun fcvt_lu_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_lu_s(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.lu.s")
     }
 
-    private fun fcvt_s_l(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_s_l(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.s.l")
     }
 
-    private fun fcvt_s_lu(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
+    fun fcvt_s_lu(rd: UInt, rs1: UInt, rs2: UInt, rm: UInt) {
         unsupported("fcvt.s.lu")
     }
 
@@ -2135,56 +2150,56 @@ class HartImpl : Hart {
 
     //region RV64 INTEGER
 
-    private fun lwu(rd: UInt, rs1: UInt, imm: UInt) {
+    fun lwu(rd: UInt, rs1: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         gprFile[rd] = lwu(vaddr)
     }
 
-    private fun ld(rd: UInt, rs1: UInt, imm: UInt) {
+    fun ld(rd: UInt, rs1: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         gprFile[rd] = ldu(vaddr)
     }
 
-    private fun sd(rs1: UInt, rs2: UInt, imm: UInt) {
+    fun sd(rs1: UInt, rs2: UInt, imm: UInt) {
         val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
         sd(vaddr, gprFile.getdu(rs2))
     }
 
-    private fun addiw(rd: UInt, rs1: UInt, imm: UInt) {
+    fun addiw(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = gprFile.getw(rs1) + signExtend(imm, 12)
     }
 
-    private fun slliw(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun slliw(rd: UInt, rs1: UInt, shamt: UInt) {
         gprFile[rd] = gprFile.getw(rs1) shl shamt.toInt()
     }
 
-    private fun srliw(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun srliw(rd: UInt, rs1: UInt, shamt: UInt) {
         gprFile[rd] = gprFile.getw(rs1) ushr shamt.toInt()
     }
 
-    private fun sraiw(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun sraiw(rd: UInt, rs1: UInt, shamt: UInt) {
         gprFile[rd] = gprFile.getw(rs1) shr shamt.toInt()
     }
 
-    private fun addw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun addw(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getw(rs1) + gprFile.getw(rs2)
     }
 
-    private fun subw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun subw(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getw(rs1) - gprFile.getw(rs2)
     }
 
-    private fun sllw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun sllw(rd: UInt, rs1: UInt, rs2: UInt) {
         val shamt = gprFile.getw(rs2) and 31
         gprFile[rd] = gprFile.getw(rs1) shl shamt
     }
 
-    private fun srlw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun srlw(rd: UInt, rs1: UInt, rs2: UInt) {
         val shamt = gprFile.getw(rs2) and 31
         gprFile[rd] = gprFile.getw(rs1) ushr shamt
     }
 
-    private fun sraw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun sraw(rd: UInt, rs1: UInt, rs2: UInt) {
         val shamt = gprFile.getw(rs2) and 31
         gprFile[rd] = gprFile.getw(rs1) shr shamt
     }
@@ -2193,11 +2208,11 @@ class HartImpl : Hart {
 
     //region RV64 MULTIPLY
 
-    private fun mulw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun mulw(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getw(rs1) * gprFile.getw(rs2)
     }
 
-    private fun divw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun divw(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getw(rs1)
         val rhs = gprFile.getw(rs2)
 
@@ -2214,7 +2229,7 @@ class HartImpl : Hart {
         gprFile[rd] = lhs / rhs
     }
 
-    private fun divuw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun divuw(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getwu(rs1)
         val rhs = gprFile.getwu(rs2)
 
@@ -2226,7 +2241,7 @@ class HartImpl : Hart {
         gprFile[rd] = lhs / rhs
     }
 
-    private fun remw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun remw(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getw(rs1)
         val rhs = gprFile.getw(rs2)
 
@@ -2243,7 +2258,7 @@ class HartImpl : Hart {
         gprFile[rd] = lhs % rhs
     }
 
-    private fun remuw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun remuw(rd: UInt, rs1: UInt, rs2: UInt) {
         val lhs = gprFile.getwu(rs1)
         val rhs = gprFile.getwu(rs2)
 
@@ -2259,145 +2274,145 @@ class HartImpl : Hart {
 
     //region COMPRESSED
 
-    private fun c_addi4spn(rd: UInt, uimm: UInt) {
+    fun c_addi4spn(rd: UInt, uimm: UInt) {
         gprFile[rd] = gprFile.getdu(0x2U) + uimm
     }
 
-    private fun c_fld(rd: UInt, rs1: UInt, uimm: UInt) {
+    fun c_fld(rd: UInt, rs1: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(rs1) + uimm
         fprFile[rd] = ldu(vaddr)
     }
 
-    private fun c_lw(rd: UInt, rs1: UInt, uimm: UInt) {
+    fun c_lw(rd: UInt, rs1: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(rs1) + uimm
         gprFile[rd] = lw(vaddr).toLong()
     }
 
-    private fun c_ld(rd: UInt, rs1: UInt, uimm: UInt) {
+    fun c_ld(rd: UInt, rs1: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(rs1) + uimm
         gprFile[rd] = ld(vaddr)
     }
 
-    private fun c_fsd(rs1: UInt, rs2: UInt, uimm: UInt) {
+    fun c_fsd(rs1: UInt, rs2: UInt, uimm: UInt) {
         unsupported("c.fsd")
     }
 
-    private fun c_sw(rs1: UInt, rs2: UInt, uimm: UInt) {
+    fun c_sw(rs1: UInt, rs2: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(rs1) + uimm
         sw(vaddr, gprFile.getwu(rs2))
     }
 
-    private fun c_sd(rs1: UInt, rs2: UInt, uimm: UInt) {
+    fun c_sd(rs1: UInt, rs2: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(rs1) + uimm
         sd(vaddr, gprFile.getdu(rs2))
     }
 
-    private fun c_nop() {
+    fun c_nop() {
         // noop
     }
 
-    private fun c_addi(rd: UInt, rs1: UInt, imm: UInt) {
+    fun c_addi(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = gprFile.getd(rs1) + signExtendLong(imm, 6)
     }
 
-    private fun c_addiw(rd: UInt, rs1: UInt, imm: UInt) {
+    fun c_addiw(rd: UInt, rs1: UInt, imm: UInt) {
         gprFile[rd] = gprFile.getw(rs1) + signExtend(imm, 6)
     }
 
-    private fun c_li(rd: UInt, imm: UInt) {
+    fun c_li(rd: UInt, imm: UInt) {
         gprFile[rd] = signExtendLong(imm, 6)
     }
 
-    private fun c_addi16sp(imm: UInt) {
+    fun c_addi16sp(imm: UInt) {
         gprFile[0x2U] = gprFile.getd(0x2U) + signExtendLong(imm, 10)
     }
 
-    private fun c_lui(rd: UInt, imm: UInt) {
+    fun c_lui(rd: UInt, imm: UInt) {
         gprFile[rd] = signExtendLong(imm, 18)
     }
 
-    private fun c_srli(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun c_srli(rd: UInt, rs1: UInt, shamt: UInt) {
         gprFile[rd] = gprFile.getd(rs1) ushr shamt.toInt()
     }
 
-    private fun c_srai(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun c_srai(rd: UInt, rs1: UInt, shamt: UInt) {
         gprFile[rd] = gprFile.getd(rs1) shr shamt.toInt()
     }
 
-    private fun c_andi(rd: UInt, rs1: UInt, uimm: UInt) {
+    fun c_andi(rd: UInt, rs1: UInt, uimm: UInt) {
         gprFile[rd] = gprFile.getd(rs1) and signExtendLong(uimm, 6)
     }
 
-    private fun c_sub(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun c_sub(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) - gprFile.getd(rs2)
     }
 
-    private fun c_xor(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun c_xor(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) xor gprFile.getd(rs2)
     }
 
-    private fun c_or(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun c_or(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) or gprFile.getd(rs2)
     }
 
-    private fun c_and(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun c_and(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) and gprFile.getd(rs2)
     }
 
-    private fun c_subw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun c_subw(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getw(rs1) - gprFile.getw(rs2)
     }
 
-    private fun c_addw(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun c_addw(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getw(rs1) + gprFile.getw(rs2)
     }
 
-    private fun c_j(imm: UInt): ULong {
+    fun c_j(imm: UInt): ULong {
         return (pc.toLong() + signExtendLong(imm, 12)).toULong()
     }
 
-    private fun c_beqz(next: ULong, rs1: UInt, imm: UInt): ULong {
+    fun c_beqz(next: ULong, rs1: UInt, imm: UInt): ULong {
         if (gprFile.getdu(rs1) == 0UL) {
             return (pc.toLong() + signExtendLong(imm, 9)).toULong()
         }
         return next
     }
 
-    private fun c_bnez(next: ULong, rs1: UInt, imm: UInt): ULong {
+    fun c_bnez(next: ULong, rs1: UInt, imm: UInt): ULong {
         if (gprFile.getdu(rs1) != 0UL) {
             return (pc.toLong() + signExtendLong(imm, 9)).toULong()
         }
         return next
     }
 
-    private fun c_slli(rd: UInt, rs1: UInt, shamt: UInt) {
+    fun c_slli(rd: UInt, rs1: UInt, shamt: UInt) {
         gprFile[rd] = gprFile.getd(rs1) shl shamt.toInt()
     }
 
-    private fun c_fldsp(rd: UInt, uimm: UInt) {
+    fun c_fldsp(rd: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(0x2U) + uimm
         fprFile[rd] = ldu(vaddr)
     }
 
-    private fun c_lwsp(rd: UInt, uimm: UInt) {
+    fun c_lwsp(rd: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(0x2U) + uimm
         gprFile[rd] = lw(vaddr).toLong()
     }
 
-    private fun c_ldsp(rd: UInt, uimm: UInt) {
+    fun c_ldsp(rd: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(0x2U) + uimm
         gprFile[rd] = ld(vaddr)
     }
 
-    private fun c_jr(rs1: UInt): ULong {
+    fun c_jr(rs1: UInt): ULong {
         return gprFile.getdu(rs1) and 1UL.inv()
     }
 
-    private fun c_mv(rd: UInt, rs2: UInt) {
+    fun c_mv(rd: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getdu(rs2)
     }
 
-    private fun c_ebreak(): ULong {
+    fun c_ebreak(): ULong {
         if (machine.handleBreakpoint(id)) {
             return pc
         }
@@ -2405,25 +2420,25 @@ class HartImpl : Hart {
         throw TrapException(id, 0x03UL, pc, "breakpoint instruction")
     }
 
-    private fun c_jalr(next: ULong, rs1: UInt): ULong {
+    fun c_jalr(next: ULong, rs1: UInt): ULong {
         val pnext = gprFile.getdu(rs1) and 1UL.inv()
         gprFile[0x1U] = next
         return pnext
     }
 
-    private fun c_add(rd: UInt, rs1: UInt, rs2: UInt) {
+    fun c_add(rd: UInt, rs1: UInt, rs2: UInt) {
         gprFile[rd] = gprFile.getd(rs1) + gprFile.getd(rs2)
     }
 
-    private fun c_fsdsp(rs2: UInt, uimm: UInt) {
+    fun c_fsdsp(rs2: UInt, uimm: UInt) {
         unsupported("c.fsdsp")
     }
 
-    private fun c_swsp(rs2: UInt, uimm: UInt) {
+    fun c_swsp(rs2: UInt, uimm: UInt) {
         unsupported("c.swsp")
     }
 
-    private fun c_sdsp(rs2: UInt, uimm: UInt) {
+    fun c_sdsp(rs2: UInt, uimm: UInt) {
         val vaddr = gprFile.getdu(0x2U) + uimm
         sd(vaddr, gprFile.getdu(rs2))
     }
@@ -2432,7 +2447,7 @@ class HartImpl : Hart {
 
     //region EXTENSION - CSR
 
-    private fun csrrw(rd: UInt, rs1: UInt, csr: UInt) {
+    fun csrrw(rd: UInt, rs1: UInt, csr: UInt) {
         if (rd == 0U) {
             csrFile[csr, priv] = gprFile.getdu(rs1)
             return
@@ -2443,7 +2458,7 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun csrrs(rd: UInt, rs1: UInt, csr: UInt) {
+    fun csrrs(rd: UInt, rs1: UInt, csr: UInt) {
         val value = csrFile[csr, priv]
         if (rs1 != 0U) {
             val mask = gprFile.getdu(rs1)
@@ -2452,7 +2467,7 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun csrrc(rd: UInt, rs1: UInt, csr: UInt) {
+    fun csrrc(rd: UInt, rs1: UInt, csr: UInt) {
         val value = csrFile[csr, priv]
         if (rs1 != 0U) {
             val mask = gprFile.getdu(rs1)
@@ -2461,7 +2476,7 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun csrrwi(rd: UInt, uimm: UInt, csr: UInt) {
+    fun csrrwi(rd: UInt, uimm: UInt, csr: UInt) {
         if (rd == 0U) {
             csrFile[csr, priv] = uimm.toULong()
             return
@@ -2472,7 +2487,7 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun csrrsi(rd: UInt, uimm: UInt, csr: UInt) {
+    fun csrrsi(rd: UInt, uimm: UInt, csr: UInt) {
         val value = csrFile[csr, priv]
         if (uimm != 0U) {
             csrFile[csr, priv] = value or uimm.toULong()
@@ -2480,7 +2495,7 @@ class HartImpl : Hart {
         gprFile[rd] = value
     }
 
-    private fun csrrci(rd: UInt, uimm: UInt, csr: UInt) {
+    fun csrrci(rd: UInt, uimm: UInt, csr: UInt) {
         val value = csrFile[csr, priv]
         if (uimm != 0U) {
             csrFile[csr, priv] = value and uimm.inv().toULong()
@@ -2492,7 +2507,7 @@ class HartImpl : Hart {
 
     //region EXTENSION - FENCE.I
 
-    private fun fence_i(rd: UInt, rs1: UInt, imm: UInt) {
+    fun fence_i(rd: UInt, rs1: UInt, imm: UInt) {
         // TODO: instruction and io cache
     }
 

@@ -25,6 +25,16 @@ class NodeBuilder : Buildable<Node> {
         return this
     }
 
+    fun prop(condition: Boolean, consumer: Consumer<PropBuilder>): NodeBuilder {
+        if (!condition)
+            return this
+
+        val builder = PropBuilder()
+        consumer.accept(builder)
+        this.props.add(builder.build())
+        return this
+    }
+
     fun node(node: Node): NodeBuilder {
         this.nodes.add(node)
         return this
