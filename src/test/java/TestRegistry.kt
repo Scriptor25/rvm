@@ -73,37 +73,154 @@ internal class TestRegistry {
 
     @Test
     fun test_jalr() {
-        hart.jalr(4U, 5U, 6U, 0U)
+        hart.gprFile.put(6U, 0x10000000UL)
+        val next = hart.jalr(0x10000004UL, 5U, 6U, 0xAAU)
+        requireEqual(next, 0x100000AAUL)
+        requireEqual(hart.gprFile.getdu(5U), 0x10000004UL)
     }
 
     @Test
     fun test_beq() {
-        hart.beq(4U, 5U, 6U, 0U)
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.beq(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_beq_fail() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x4321UL)
+        val next = hart.beq(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
     }
 
     @Test
     fun test_bne() {
-        hart.bne(4U, 5U, 6U, 0U)
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x4321UL)
+        val next = hart.bne(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_bne_fail() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.bne(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
     }
 
     @Test
     fun test_blt() {
-        hart.blt(4U, 5U, 6U, 0U)
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x4321UL)
+        val next = hart.blt(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_blt_fail() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.blt(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
+    }
+
+    @Test
+    fun test_blt_fail2() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x4321UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.blt(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
     }
 
     @Test
     fun test_bge() {
-        hart.bge(4U, 5U, 6U, 0U)
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x4321UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.bge(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_bge2() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.bge(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_bge_fail() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x4321UL)
+        val next = hart.bge(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
     }
 
     @Test
     fun test_bltu() {
-        hart.bltu(4U, 5U, 6U, 0U)
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x4321UL)
+        val next = hart.bltu(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_bltu_fail() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x4321UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.bltu(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
+    }
+
+    @Test
+    fun test_bltu_fail2() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.bltu(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
     }
 
     @Test
     fun test_bgeu() {
-        hart.bgeu(4U, 5U, 6U, 0U)
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x4321UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.bgeu(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_bgeu2() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x1234UL)
+        val next = hart.bgeu(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000008UL)
+    }
+
+    @Test
+    fun test_bgeu_fail() {
+        hart.pc = 0x10000000UL
+        hart.gprFile.put(5U, 0x1234UL)
+        hart.gprFile.put(6U, 0x4321UL)
+        val next = hart.bgeu(0x10000004UL, 5U, 6U, 0x8U)
+        requireEqual(next, 0x10000004UL)
     }
 
     @Test
