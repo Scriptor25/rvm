@@ -51,7 +51,7 @@ void kmain(long boot_hart_id, void* fdt)
 
         if (kstrcmpn("panic", 5, token, token_length) == 0)
         {
-            *(volatile char*) ~0 = 0;
+            asm volatile("ebreak");
             continue;
         }
 

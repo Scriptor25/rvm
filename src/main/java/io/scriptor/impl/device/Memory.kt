@@ -61,7 +61,7 @@ class Memory : IODevice {
     }
 
     override fun read(offset: UInt, size: UInt): ULong {
-        if (0U > offset || offset + size > capacity) {
+        if (offset + size > capacity) {
             Log.error("invalid memory read offset=%x, size=%d", offset, size)
             return 0UL
         }
@@ -84,7 +84,7 @@ class Memory : IODevice {
             return
         }
 
-        if (0U > offset || offset + size > capacity) {
+        if (offset + size > capacity) {
             Log.error("invalid memory write offset=%x, size=%d, value=%x", offset, size, value)
             return
         }
