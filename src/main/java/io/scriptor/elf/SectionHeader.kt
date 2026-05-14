@@ -14,8 +14,8 @@ import java.io.InputStream
  * This field is used for several purposes, depending on the type of section.
  * @param info      Contains extra information about the section.
  * This field is used for several purposes, depending on the type of section.
- * @param addralign Contains the required alignment of the section. This field must be a power of two.
- * @param entsize   Contains the size, in bytes, of each entry, for sections that contain fixed-size entries.
+ * @param addrAlign Contains the required alignment of the section. This field must be a power of two.
+ * @param entSize   Contains the size, in bytes, of each entry, for sections that contain fixed-size entries.
  * Otherwise, this field contains zero.
  */
 data class SectionHeader(
@@ -27,8 +27,8 @@ data class SectionHeader(
     val size: ULong,
     val link: UInt,
     val info: UInt,
-    val addralign: ULong,
-    val entsize: ULong,
+    val addrAlign: ULong,
+    val entSize: ULong,
 ) {
     override fun toString(): String {
         return format(
@@ -41,8 +41,8 @@ data class SectionHeader(
             size,
             link,
             info,
-            addralign,
-            entsize,
+            addrAlign,
+            entSize,
         )
     }
 
@@ -56,9 +56,9 @@ data class SectionHeader(
             val size = identity.readOffset(stream)
             val link = identity.readInt(stream)
             val info = identity.readInt(stream)
-            val addralign = identity.readOffset(stream)
-            val entsize = identity.readOffset(stream)
-            return SectionHeader(name, type, flags, addr, offset, size, link, info, addralign, entsize)
+            val addrAlign = identity.readOffset(stream)
+            val entSize = identity.readOffset(stream)
+            return SectionHeader(name, type, flags, addr, offset, size, link, info, addrAlign, entSize)
         }
     }
 }

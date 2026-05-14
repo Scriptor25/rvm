@@ -45,7 +45,7 @@ class CLINT : IODevice {
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun dump(out: PrintStream) {
         out.println(format("clint: mtime=%x", mtime))
-        for (id in 0 until machine.harts.size) {
+        for (id in machine.harts.indices) {
             out.println(
                 format(
                     "#%-2d | mtimecmp=%x meip=%b msip=%b",
@@ -75,7 +75,7 @@ class CLINT : IODevice {
         val phandle = context.get(this)
 
         val ie = UIntArray(4 * machine.harts.size)
-        for (id in 0 until machine.harts.size) {
+        for (id in machine.harts.indices) {
             val cpu = context.get(machine.harts[id])
             ie[id * 4] = cpu
             ie[id * 4 + 1] = 0x03U
@@ -92,16 +92,22 @@ class CLINT : IODevice {
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
-    override fun read(offset: UInt, size: UInt): ULong {
+    override fun read(offset: UInt, size: UInt): ULong? {
         if (offset in MSIP_BASE until MTIMECMP_BASE && size == 4U) {
             val hart = ((offset - MSIP_BASE) / MSIP_STRIDE).toInt()
-            if (hart >= machine.harts.size) return 0U
+            if (hart >= machine.harts.size) {
+                return null
+            }
+
             return if (msip[hart]) 1U else 0U
         }
 
         if (offset in MTIMECMP_BASE until CONTEXT_BASE && size == 8U) {
             val hart = ((offset - MTIMECMP_BASE) / MTIMECMP_STRIDE).toInt()
-            if (hart >= machine.harts.size) return 0U
+            if (hart >= machine.harts.size) {
+                return null
+            }
+
             return mtimecmp[hart]
         }
 
@@ -110,26 +116,33 @@ class CLINT : IODevice {
         }
 
         error("invalid clint read offset=%x, size=%d", offset, size)
-        return 0U
+        return null
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
-    override fun write(offset: UInt, size: UInt, value: ULong) {
+    override fun write(offset: UInt, size: UInt, value: ULong): Boolean {
         if (offset in MSIP_BASE until MTIMECMP_BASE && size == 4U) {
             val hart = ((offset - MSIP_BASE) / MSIP_STRIDE).toInt()
-            if (hart >= machine.harts.size) return
+            if (hart >= machine.harts.size) {
+                return false
+            }
+
             msip[hart] = (value != 0UL)
-            return
+            return true
         }
 
         if (offset in MTIMECMP_BASE until CONTEXT_BASE && size == 8U) {
             val hart = ((offset - MTIMECMP_BASE) / MTIMECMP_STRIDE).toInt()
-            if (hart >= machine.harts.size) return
+            if (hart >= machine.harts.size) {
+                return false
+            }
+
             mtimecmp[hart] = value
-            return
+            return true
         }
 
         error("invalid clint write offset=%x, size=%d, value=%x", offset, size, value)
+        return false
     }
 
     override fun toString(): String {

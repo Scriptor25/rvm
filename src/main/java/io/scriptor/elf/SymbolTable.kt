@@ -11,10 +11,7 @@ class SymbolTable : Iterable<Symbol> {
             return NULL
         }
 
-        val entry = map.floorEntry(addr)
-        if (entry == null) {
-            return NULL
-        }
+        val entry = map.floorEntry(addr) ?: return NULL
 
         if (entry.key == addr) {
             return entry.value

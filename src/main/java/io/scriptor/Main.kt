@@ -4,10 +4,7 @@ import io.scriptor.conf.*
 import io.scriptor.elf.*
 import io.scriptor.gdb.GDBServer
 import io.scriptor.impl.TrapException
-import io.scriptor.impl.device.CLINT
-import io.scriptor.impl.device.Memory
-import io.scriptor.impl.device.PLIC
-import io.scriptor.impl.device.UART
+import io.scriptor.impl.device.*
 import io.scriptor.isa.Registry
 import io.scriptor.machine.Device
 import io.scriptor.machine.Machine
@@ -78,8 +75,8 @@ fun init(args: ArgContext): Machine {
             .forEach { line -> Resource.read(true, line, registry::parse) }
     }
 
-    val isResource = "--config" !in args
-    val filename = if (isResource) "config/default.conf" else args["--config"]
+    val isResource = "--config" !in args || "--config-file" !in args
+    val filename = if ("--config" in args) args["--config"] else "config/default.conf"
 
     return Resource.read<Machine>(isResource, filename) { stream ->
         val machineConfig = MachineConfig()
@@ -183,6 +180,54 @@ fun init(args: ArgContext): Machine {
                         Function { Memory(it, begin, capacity.toUInt(), readonly) }
                     }
 
+                    "tree" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { DeviceTree(it, begin) }
+                    }
+
+                    "gpio" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { GPIO(it, begin) }
+                    }
+
+                    "efuse" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { EFuse(it, begin) }
+                    }
+
+                    "rng" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { RNG(it, begin) }
+                    }
+
+                    "systimer" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { SysTimer(it, begin) }
+                    }
+
+                    "intc" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { IntC(it, begin) }
+                    }
+
+                    "watchdog" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { WatchDog(it, begin) }
+                    }
+
+                    "clkctrl" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { ClkCtrl(it, begin) }
+                    }
+
                     else -> throw NoSuchElementException(format("type=%s", type))
                 }
 
@@ -284,40 +329,29 @@ fun load(
             ELF.readSymbols(identity, stream, dynsym, dynstr, machine.symbols, offset)
         }
 
-        var begin = 0UL.inv()
-        var end = 0UL
-
-        for (ph in phtab) {
-            if (ph.type != 0x01U) continue
-
-            if (begin > ph.paddr) begin = ph.paddr
-            if (end < ph.paddr + ph.memsz) end = ph.paddr + ph.memsz
-        }
-
-        val capacity = (end - begin).toUInt()
-        val memory = machine[Memory::class, begin + offset, capacity]
-        if (memory == null) {
-            throw NoSuchElementException(
-                format(
-                    "no memory at address %016x with minimum capacity %d",
-                    begin + offset,
-                    capacity,
-                ),
-            )
-        }
-
         for (ph in phtab) {
             if (ph.type != 0x01U) continue
 
             stream.seek(ph.offset.toLong())
 
-            val data = ByteArray(ph.filesz.toInt())
+            val data = ByteArray(ph.fileSize.toInt())
             val read = stream.read(data)
             if (read != data.size) {
                 Log.warn("stream read %d, requested %d", read, data.size)
             }
 
-            memory.direct(data, ((ph.paddr + offset) - memory.begin).toUInt(), true)
+            val address = ph.pAddress + offset
+            val capacity = ph.memSize.toUInt()
+
+            val memory = machine[Memory::class, address, capacity] ?: throw NoSuchElementException(
+                format(
+                    "no memory at address %016x with minimum capacity %d",
+                    address,
+                    capacity,
+                ),
+            )
+
+            memory.direct(data, (address - memory.begin).toUInt(), true)
         }
 
         return

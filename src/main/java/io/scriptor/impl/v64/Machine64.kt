@@ -1,9 +1,10 @@
-package io.scriptor.impl
+package io.scriptor.impl.v64
 
 import io.scriptor.elf.SymbolTable
 import io.scriptor.fdt.BuilderContext
 import io.scriptor.fdt.FDT
 import io.scriptor.fdt.TreeBuilder
+import io.scriptor.impl.TrapException
 import io.scriptor.impl.device.Memory
 import io.scriptor.impl.device.UART
 import io.scriptor.isa.Registry
@@ -23,29 +24,26 @@ import kotlin.math.min
 import kotlin.reflect.KClass
 import kotlin.reflect.cast
 
-class MachineImpl : Machine {
-
-    override val machine: Machine
-        get() = this
+class Machine64 : Machine {
 
     override val registry: Registry
     override val order: ByteOrder
+
     override val symbols = SymbolTable()
     override val harts: Array<Hart>
 
-    private val devices: Array<Device>
-    private val dt: Memory
+    override val devices: Array<Device>
 
-    private var once = false
-    private var active = false
+    override var once = false
+    override var active = false
 
-    private var breakpointHandler: IntConsumer? = null
-    private val locks: MutableMap<ULong, Any> = HashMap()
+    override var breakpointHandler: IntConsumer? = null
+    override val locks: MutableMap<ULong, Any> = HashMap()
 
     constructor(registry: Registry, order: ByteOrder, harts: Int, devices: Array<Function<Machine, Device>>) {
         this.registry = registry
         this.order = order
-        this.harts = Array(harts) { HartImpl(this, it) }
+        this.harts = Array(harts) { Hart64(this, it) }
         this.devices = devices.map { it.apply(this) }.toTypedArray()
 
         for (j in this.devices.indices) {
@@ -67,272 +65,6 @@ class MachineImpl : Machine {
                 }
             }
         }
-
-        this.dt = Memory(this, 0x100000000UL, 0x2000U, true)
-        generateDeviceTree(this.dt.buffer())
-    }
-
-    override fun <T : Device> device(type: KClass<T>): T {
-        for (device in devices) {
-            if (type.isInstance(device)) {
-                return type.cast(device)
-            }
-        }
-        throw NoSuchElementException()
-    }
-
-    override fun <T : Device> device(type: KClass<T>, index: Int): T {
-        var index = index
-        for (device in devices) {
-            if (type.isInstance(device)
-                && index-- <= 0
-            ) {
-                return type.cast(device)
-            }
-        }
-        throw NoSuchElementException()
-    }
-
-    override fun <T : Device> device(type: KClass<T>, predicate: Predicate<T>) {
-        for (device in devices) {
-            if (type.isInstance(device)
-                && predicate.test(type.cast(device))
-            ) {
-                return
-            }
-        }
-    }
-
-    override fun <T : IODevice> device(type: KClass<T>, address: ULong): T? {
-        for (device in devices) {
-            if (device is IODevice
-                && address in device.begin..<device.end
-                && type.isInstance(device)
-            ) {
-                return type.cast(device)
-            }
-        }
-        return null
-    }
-
-    override fun <T : IODevice> device(
-        type: KClass<T>,
-        address: ULong,
-        capacity: UInt,
-    ): T? {
-        for (device in devices) {
-            if (device is IODevice
-                && address in device.begin..<device.end
-                && capacity <= (device.end - device.begin).toUInt()
-                && type.isInstance(device)
-            ) {
-                return type.cast(device)
-            }
-        }
-        return null
-    }
-
-    override fun <T : IODevice> has(type: KClass<T>): Boolean {
-        for (device in devices) {
-            if (type.isInstance(device)) {
-                return true
-            }
-        }
-        return false
-    }
-
-    override fun dump(out: PrintStream) {
-        for (device in devices)
-            device.dump(out)
-
-        for (hart in harts)
-            hart.dump(out)
-
-        dump(out, 0x80007000UL, 0x1000UL)
-    }
-
-    override fun dump(out: PrintStream, paddr: ULong, length: ULong) {
-        if (length == 0UL) {
-            out.println("<empty>")
-            return
-        }
-
-        val CHUNK = 0x20
-
-        var allZero = false
-        var allZeroBegin = 0UL
-
-        var i = 0UL
-        while (i < length) {
-            val chunk = min(length - i, CHUNK.toULong()).toInt()
-            if (chunk <= 0) break
-
-            val buffer = ByteArray(chunk)
-            pDirect(buffer, paddr + i, false)
-
-            var allZeroP = true
-            for (j in 0..<chunk)
-                if (buffer[j].toInt() != 0) {
-                    allZeroP = false
-                    break
-                }
-
-            if (allZero && !allZeroP) {
-                allZero = false
-                out.println(format("%016x - %016x", allZeroBegin, i - 1U))
-            } else if (!allZero && allZeroP) {
-                allZero = true
-                allZeroBegin = i
-                i += CHUNK.toULong()
-                continue
-            } else if (allZero) {
-                i += CHUNK.toULong()
-                continue
-            }
-
-            out.print(format("%016x |", paddr + i))
-
-            for (j in 0..<chunk) out.print(format(" %02x", buffer[j]))
-            for (j in chunk..<CHUNK) out.print(" 00")
-
-            out.print(" | ")
-
-            for (j in 0..<chunk) out.print(if (buffer[j] >= 0x20) Char(buffer[j].toUShort()) else '.')
-            for (j in chunk..<CHUNK) out.print('.')
-
-            out.println()
-            i += CHUNK.toULong()
-        }
-        out.println("(END)")
-    }
-
-    override fun reset() {
-        once = false
-        active = false
-
-        for (device in devices) {
-            device.reset()
-        }
-
-        for (hart in harts) {
-            hart.reset()
-            hart.gprFile[0x0AU] = hart.id.toUInt() // boot hart id
-            hart.gprFile[0x0BU] = dt.begin       // device tree address
-        }
-    }
-
-    override fun step() {
-        if (!active)
-            return
-
-        for (device in devices)
-            device.step()
-
-        for (hart in harts)
-            hart.step()
-
-        if (once) {
-            active = false
-            handleBreakpoint(-1)
-        }
-    }
-
-    override fun spinOnce() {
-        once = true
-        active = true
-    }
-
-    override fun spin() {
-        once = false
-        active = true
-    }
-
-    override fun pause() {
-        once = false
-        active = false
-    }
-
-    override fun setBreakpointHandler(handler: IntConsumer) {
-        breakpointHandler = handler
-    }
-
-    override fun handleBreakpoint(id: Int): Boolean {
-        if (breakpointHandler != null) {
-            breakpointHandler!!.accept(id)
-            return true
-        }
-        return false
-    }
-
-    override fun acquireLock(address: ULong): Any {
-        if (address in locks)
-            return locks[address]!!
-
-        val lock = Any()
-        locks[address] = lock
-        return lock
-    }
-
-    override fun pRead(paddr: ULong, size: UInt, unsafe: Boolean): ULong {
-        if (dt.begin <= paddr && paddr + size <= dt.end)
-            return dt.read((paddr - dt.begin).toUInt(), size)
-
-        for (device in devices)
-            if (device is IODevice)
-                if (device.begin <= paddr && paddr + size <= device.end)
-                    return device.read((paddr - device.begin).toUInt(), size)
-
-        if (unsafe) {
-            Log.warn("read invalid address: address=%x, size=%d", paddr, size)
-            return 0UL
-        }
-
-        throw TrapException(-1, 0x05UL, paddr, "read invalid address: address=%x, size=%d", paddr, size)
-    }
-
-    override fun pWrite(paddr: ULong, size: UInt, value: ULong, unsafe: Boolean) {
-        if (dt.begin <= paddr && paddr + size <= dt.end) {
-            dt.write((paddr - dt.begin).toUInt(), size, value)
-            return
-        }
-
-        for (device in devices)
-            if (device is IODevice)
-                if (device.begin <= paddr && paddr + size <= device.end) {
-                    device.write((paddr - device.begin).toUInt(), size, value)
-                    return
-                }
-
-        if (unsafe) {
-            Log.warn("write invalid address: address=%x, size=%d, value=%x", paddr, size, value)
-            return
-        }
-
-        throw TrapException(
-            -1,
-            0x07UL,
-            paddr,
-            "write invalid address: address=%x, size=%d, value=%x",
-            paddr,
-            size,
-            value,
-        )
-    }
-
-    override fun pDirect(data: ByteArray, paddr: ULong, write: Boolean) {
-        if (dt.begin <= paddr && paddr + data.size.toUInt() <= dt.end) {
-            dt.direct(data, (paddr - dt.begin).toUInt(), write)
-            return
-        }
-
-        for (device in devices)
-            if (device is Memory)
-                if (device.begin <= paddr && paddr + data.size.toUInt() <= device.end) {
-                    device.direct(data, (paddr - device.begin).toUInt(), write)
-                    return
-                }
-
-        Log.warn("direct read/write invalid address: address=%x, length=%d", paddr, data.size)
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -440,10 +172,5 @@ class MachineImpl : Machine {
                     }
             }
             .build { tree -> FDT.write(tree, buffer) }
-    }
-
-    override fun close() {
-        for (hart in harts) hart.close()
-        for (device in devices) device.close()
     }
 }

@@ -1,7 +1,9 @@
-package io.scriptor.impl
+package io.scriptor.impl.v64
 
 import io.scriptor.fdt.BuilderContext
 import io.scriptor.fdt.NodeBuilder
+import io.scriptor.impl.MMU
+import io.scriptor.impl.TrapException
 import io.scriptor.impl.device.CLINT
 import io.scriptor.isa.CSR
 import io.scriptor.isa.Instruction
@@ -15,18 +17,24 @@ import io.scriptor.util.Log.info
 import java.io.IOException
 import java.io.PrintStream
 
-class HartImpl : Hart {
+class Hart64 : Hart {
 
-    override val machine: Machine
+    override val machine: Machine64
 
     override val id: Int
     override var pc = 0UL
 
-    override val gprFile: GPRFile = GPRFileImpl(this)
-    override val fprFile: FPRFile = FPRFileImpl(this)
-    override val csrFile: CSRFile = CSRFileImpl(this)
+    override val gprFile = GPRFile64(this)
+    override val fprFile = FPRFile64(this)
+    override val csrFile = CSRFile64(this)
 
-    private val mmu: MMU = MMU(this)
+    override val mmu = MMU(this)
+
+    override val privilege
+        get() = priv
+
+    override val sleeping
+        get() = wfi
 
     private var ppc = 0UL
     private var priv = CSR.CSR_M
@@ -36,7 +44,7 @@ class HartImpl : Hart {
     @OptIn(ExperimentalUnsignedTypes::class)
     private val values = UIntArray(5)
 
-    constructor(machine: Machine, id: Int) {
+    constructor(machine: Machine64, id: Int) {
         this.machine = machine
         this.id = id
     }
@@ -107,10 +115,10 @@ class HartImpl : Hart {
 
         var offset = -0x10L
         while (offset <= 0x10L) {
-            val vaddr = (sp.toLong() + offset).toULong()
-            val value = read(vaddr, 8U, true)
+            val vAddress = (sp.toLong() + offset).toULong()
+            val value = read(vAddress, 8U, true)
 
-            out.println(format("%016x : %016x", vaddr, value))
+            out.println(format("%016x : %016x", vAddress, value))
             offset += 0x8
         }
 
@@ -1318,20 +1326,8 @@ class HartImpl : Hart {
         return next
     }
 
-    override fun sleeping(): Boolean {
-        return wfi
-    }
-
     override fun wake() {
         wfi = false
-    }
-
-    override fun privilege(): UInt {
-        return priv
-    }
-
-    override fun translate(vaddr: ULong, access: MMU.Access, unsafe: Boolean): ULong {
-        return mmu.translate(priv, vaddr, access, unsafe)
     }
 
     override fun close() {
@@ -1395,10 +1391,10 @@ class HartImpl : Hart {
     }
 
     fun sfence_vma(rs1: UInt, rs2: UInt) {
-        val vaddr = gprFile.getdu(rs1)
+        val vAddress = gprFile.getdu(rs1)
         val asid = gprFile.getdu(rs2)
 
-        mmu.flush(vaddr, asid)
+        mmu.flush(vAddress, asid)
     }
 
     fun hfence_vvma(rs1: UInt, rs2: UInt) {
@@ -1500,32 +1496,32 @@ class HartImpl : Hart {
     }
 
     fun amoswap_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
-        val vaddr = gprFile.getdu(rs1)
-        if ((vaddr and 0x3UL) != 0UL) {
-            throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
+        val vAddress = gprFile.getdu(rs1)
+        if ((vAddress and 0x3UL) != 0UL) {
+            throw TrapException(id, 0x06UL, vAddress, "misaligned atomic address %x", vAddress)
         }
 
         val value: Int
-        synchronized(machine.acquireLock(vaddr)) {
+        synchronized(machine.acquireLock(vAddress)) {
             val source = gprFile.getw(rs2)
-            value = lw(vaddr)
-            sw(vaddr, source)
+            value = lw(vAddress)
+            sw(vAddress, source)
         }
 
         gprFile[rd] = value
     }
 
     fun amoadd_w(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
-        val vaddr = gprFile.getdu(rs1)
-        if ((vaddr and 0x3UL) != 0UL) {
-            throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
+        val vAddress = gprFile.getdu(rs1)
+        if ((vAddress and 0x3UL) != 0UL) {
+            throw TrapException(id, 0x06UL, vAddress, "misaligned atomic address %x", vAddress)
         }
 
         val value: Int
-        synchronized(machine.acquireLock(vaddr)) {
+        synchronized(machine.acquireLock(vAddress)) {
             val source = gprFile.getw(rs2)
-            value = lw(vaddr)
-            sw(vaddr, value + source)
+            value = lw(vAddress)
+            sw(vAddress, value + source)
         }
 
         gprFile[rd] = value
@@ -1738,43 +1734,43 @@ class HartImpl : Hart {
     }
 
     fun lb(rd: UInt, rs1: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        gprFile[rd] = lb(vaddr)
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        gprFile[rd] = lb(vAddress)
     }
 
     fun lh(rd: UInt, rs1: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        gprFile[rd] = lh(vaddr)
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        gprFile[rd] = lh(vAddress)
     }
 
     fun lw(rd: UInt, rs1: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        gprFile[rd] = lw(vaddr)
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        gprFile[rd] = lw(vAddress)
     }
 
     fun lbu(rd: UInt, rs1: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        gprFile[rd] = lbu(vaddr)
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        gprFile[rd] = lbu(vAddress)
     }
 
     fun lhu(rd: UInt, rs1: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        gprFile[rd] = lhu(vaddr)
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        gprFile[rd] = lhu(vAddress)
     }
 
     fun sb(rs1: UInt, rs2: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        sb(vaddr, gprFile.getb(rs2))
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        sb(vAddress, gprFile.getb(rs2))
     }
 
     fun sh(rs1: UInt, rs2: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        sh(vaddr, gprFile.geth(rs2))
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        sh(vAddress, gprFile.geth(rs2))
     }
 
     fun sw(rs1: UInt, rs2: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        sw(vaddr, gprFile.getw(rs2))
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        sw(vAddress, gprFile.getw(rs2))
     }
 
     fun addi(rd: UInt, rs1: UInt, imm: UInt) {
@@ -2055,32 +2051,32 @@ class HartImpl : Hart {
     }
 
     fun amoswap_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
-        val vaddr = gprFile.getdu(rs1)
-        if ((vaddr and 0x7UL) != 0UL) {
-            throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
+        val vAddress = gprFile.getdu(rs1)
+        if ((vAddress and 0x7UL) != 0UL) {
+            throw TrapException(id, 0x06UL, vAddress, "misaligned atomic address %x", vAddress)
         }
 
         val value: ULong
-        synchronized(machine.acquireLock(vaddr)) {
+        synchronized(machine.acquireLock(vAddress)) {
             val source = gprFile.getdu(rs2)
-            value = ldu(vaddr)
-            sd(vaddr, source)
+            value = ldu(vAddress)
+            sd(vAddress, source)
         }
 
         gprFile[rd] = value
     }
 
     fun amoadd_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
-        val vaddr = gprFile.getdu(rs1)
-        if ((vaddr and 0x7UL) != 0UL) {
-            throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
+        val vAddress = gprFile.getdu(rs1)
+        if ((vAddress and 0x7UL) != 0UL) {
+            throw TrapException(id, 0x06UL, vAddress, "misaligned atomic address %x", vAddress)
         }
 
         val value: Long
-        synchronized(machine.acquireLock(vaddr)) {
+        synchronized(machine.acquireLock(vAddress)) {
             val source = gprFile.getd(rs2)
-            value = ld(vaddr)
-            sd(vaddr, value + source)
+            value = ld(vAddress)
+            sd(vAddress, value + source)
         }
 
         gprFile[rd] = value
@@ -2095,16 +2091,16 @@ class HartImpl : Hart {
     }
 
     fun amoor_d(rd: UInt, rs1: UInt, rs2: UInt, aq: UInt, rl: UInt) {
-        val vaddr = gprFile.getdu(rs1)
-        if ((vaddr and 0x7UL) != 0UL) {
-            throw TrapException(id, 0x06UL, vaddr, "misaligned atomic address %x", vaddr)
+        val vAddress = gprFile.getdu(rs1)
+        if ((vAddress and 0x7UL) != 0UL) {
+            throw TrapException(id, 0x06UL, vAddress, "misaligned atomic address %x", vAddress)
         }
 
         val value: ULong
-        synchronized(machine.acquireLock(vaddr)) {
+        synchronized(machine.acquireLock(vAddress)) {
             val source = gprFile.getdu(rs2)
-            value = ldu(vaddr)
-            sd(vaddr, value or source)
+            value = ldu(vAddress)
+            sd(vAddress, value or source)
         }
 
         gprFile[rd] = value
@@ -2151,18 +2147,18 @@ class HartImpl : Hart {
     //region RV64 INTEGER
 
     fun lwu(rd: UInt, rs1: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        gprFile[rd] = lwu(vaddr)
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        gprFile[rd] = lwu(vAddress)
     }
 
     fun ld(rd: UInt, rs1: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        gprFile[rd] = ldu(vaddr)
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        gprFile[rd] = ldu(vAddress)
     }
 
     fun sd(rs1: UInt, rs2: UInt, imm: UInt) {
-        val vaddr = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
-        sd(vaddr, gprFile.getdu(rs2))
+        val vAddress = (gprFile.getd(rs1) + signExtendLong(imm, 12)).toULong()
+        sd(vAddress, gprFile.getdu(rs2))
     }
 
     fun addiw(rd: UInt, rs1: UInt, imm: UInt) {
@@ -2279,18 +2275,18 @@ class HartImpl : Hart {
     }
 
     fun c_fld(rd: UInt, rs1: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(rs1) + uimm
-        fprFile[rd] = ldu(vaddr)
+        val vAddress = gprFile.getdu(rs1) + uimm
+        fprFile[rd] = ldu(vAddress)
     }
 
     fun c_lw(rd: UInt, rs1: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(rs1) + uimm
-        gprFile[rd] = lw(vaddr).toLong()
+        val vAddress = gprFile.getdu(rs1) + uimm
+        gprFile[rd] = lw(vAddress).toLong()
     }
 
     fun c_ld(rd: UInt, rs1: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(rs1) + uimm
-        gprFile[rd] = ld(vaddr)
+        val vAddress = gprFile.getdu(rs1) + uimm
+        gprFile[rd] = ld(vAddress)
     }
 
     fun c_fsd(rs1: UInt, rs2: UInt, uimm: UInt) {
@@ -2298,13 +2294,13 @@ class HartImpl : Hart {
     }
 
     fun c_sw(rs1: UInt, rs2: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(rs1) + uimm
-        sw(vaddr, gprFile.getwu(rs2))
+        val vAddress = gprFile.getdu(rs1) + uimm
+        sw(vAddress, gprFile.getwu(rs2))
     }
 
     fun c_sd(rs1: UInt, rs2: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(rs1) + uimm
-        sd(vaddr, gprFile.getdu(rs2))
+        val vAddress = gprFile.getdu(rs1) + uimm
+        sd(vAddress, gprFile.getdu(rs2))
     }
 
     fun c_nop() {
@@ -2390,18 +2386,18 @@ class HartImpl : Hart {
     }
 
     fun c_fldsp(rd: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(0x2U) + uimm
-        fprFile[rd] = ldu(vaddr)
+        val vAddress = gprFile.getdu(0x2U) + uimm
+        fprFile[rd] = ldu(vAddress)
     }
 
     fun c_lwsp(rd: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(0x2U) + uimm
-        gprFile[rd] = lw(vaddr).toLong()
+        val vAddress = gprFile.getdu(0x2U) + uimm
+        gprFile[rd] = lw(vAddress).toLong()
     }
 
     fun c_ldsp(rd: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(0x2U) + uimm
-        gprFile[rd] = ld(vaddr)
+        val vAddress = gprFile.getdu(0x2U) + uimm
+        gprFile[rd] = ld(vAddress)
     }
 
     fun c_jr(rs1: UInt): ULong {
@@ -2439,8 +2435,8 @@ class HartImpl : Hart {
     }
 
     fun c_sdsp(rs2: UInt, uimm: UInt) {
-        val vaddr = gprFile.getdu(0x2U) + uimm
-        sd(vaddr, gprFile.getdu(rs2))
+        val vAddress = gprFile.getdu(0x2U) + uimm
+        sd(vAddress, gprFile.getdu(rs2))
     }
 
     //endregion

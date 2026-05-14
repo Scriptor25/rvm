@@ -1,27 +1,27 @@
-package io.scriptor.impl
+package io.scriptor.impl.v64
 
+import io.scriptor.impl.CSRMeta
+import io.scriptor.impl.TrapException
 import io.scriptor.isa.CSR
 import io.scriptor.machine.CSRFile
-import io.scriptor.machine.Hart
-import io.scriptor.machine.Machine
 import io.scriptor.util.Log.format
 import java.io.PrintStream
 import java.util.function.Consumer
 import java.util.function.Supplier
 
-class CSRFileImpl : CSRFile {
+class CSRFile64 : CSRFile {
 
-    override val machine: Machine
+    override val machine
         get() = hart.machine
 
-    private val hart: Hart
+    private val hart: Hart64
     private val metadata: MutableMap<UInt, CSRMeta> = HashMap()
 
     @OptIn(ExperimentalUnsignedTypes::class)
     private val values = ULongArray(0x1000)
     private val present = BooleanArray(0x1000)
 
-    constructor(hart: Hart) {
+    constructor(hart: Hart64) {
         this.hart = hart
     }
 

@@ -28,12 +28,12 @@ interface ELF {
 
                 val string = ByteUtil.readString(stream)
                 if (string.isBlank()) {
-                    i += symtab.entsize
+                    i += symtab.entSize
                     continue
                 }
 
                 symbols.put(value + offset, string)
-                i += symtab.entsize
+                i += symtab.entSize
             }
         }
 

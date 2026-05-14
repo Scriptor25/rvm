@@ -1,5 +1,5 @@
-import io.scriptor.impl.HartImpl
-import io.scriptor.impl.MachineImpl
+import io.scriptor.impl.v64.Hart64
+import io.scriptor.impl.v64.Machine64
 import io.scriptor.isa.Registry
 import io.scriptor.util.Log.format
 import io.scriptor.util.Resource
@@ -15,8 +15,8 @@ fun <T : Comparable<T>> requireEqual(a: T, b: T) {
 internal class TestRegistry {
 
     val registry = Registry()
-    val machine: MachineImpl
-    val hart: HartImpl
+    val machine: Machine64
+    val hart: Hart64
 
     init {
         Resource.read(true, "index.list") { stream ->
@@ -29,8 +29,8 @@ internal class TestRegistry {
                 .forEach { line -> Resource.read(true, line, registry::parse) }
         }
 
-        machine = MachineImpl(registry, ByteOrder.nativeOrder(), 1, arrayOf())
-        hart = machine.harts[0] as HartImpl
+        machine = Machine64(registry, ByteOrder.nativeOrder(), 1, arrayOf())
+        hart = machine.harts[0] as Hart64
     }
 
     @Test

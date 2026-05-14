@@ -15,50 +15,53 @@ interface Hart : Device {
     val fprFile: FPRFile
     val csrFile: CSRFile
 
-    fun execute(instruction: UInt, definition: Instruction): ULong
+    val mmu: MMU
 
-    fun sleeping(): Boolean
+    val privilege: UInt
+    val sleeping: Boolean
+
+    fun execute(instruction: UInt, definition: Instruction): ULong
 
     fun wake()
 
-    fun privilege(): UInt
-
-    fun translate(vaddr: ULong, access: MMU.Access, unsafe: Boolean): ULong
-
-    fun lb(vaddr: ULong): Byte {
-        return read(vaddr, 1U, false).toByte()
+    fun translate(vAddress: ULong, access: MMU.Access, unsafe: Boolean): ULong {
+        return mmu.translate(privilege, vAddress, access, unsafe)
     }
 
-    fun lbu(vaddr: ULong): UByte {
-        return read(vaddr, 1U, false).toUByte()
+    fun lb(vAddress: ULong): Byte {
+        return read(vAddress, 1U, false).toByte()
     }
 
-    fun lh(vaddr: ULong): Short {
-        return read(vaddr, 2U, false).toShort()
+    fun lbu(vAddress: ULong): UByte {
+        return read(vAddress, 1U, false).toUByte()
     }
 
-    fun lhu(vaddr: ULong): UShort {
-        return read(vaddr, 2U, false).toUShort()
+    fun lh(vAddress: ULong): Short {
+        return read(vAddress, 2U, false).toShort()
     }
 
-    fun lw(vaddr: ULong): Int {
-        return read(vaddr, 4U, false).toInt()
+    fun lhu(vAddress: ULong): UShort {
+        return read(vAddress, 2U, false).toUShort()
     }
 
-    fun lwu(vaddr: ULong): UInt {
-        return read(vaddr, 4U, false).toUInt()
+    fun lw(vAddress: ULong): Int {
+        return read(vAddress, 4U, false).toInt()
     }
 
-    fun ld(vaddr: ULong): Long {
-        return read(vaddr, 8U, false).toLong()
+    fun lwu(vAddress: ULong): UInt {
+        return read(vAddress, 4U, false).toUInt()
     }
 
-    fun ldu(vaddr: ULong): ULong {
-        return read(vaddr, 8U, false)
+    fun ld(vAddress: ULong): Long {
+        return read(vAddress, 8U, false).toLong()
     }
 
-    fun lstring(vaddr: ULong): String {
-        var ptr = vaddr
+    fun ldu(vAddress: ULong): ULong {
+        return read(vAddress, 8U, false)
+    }
+
+    fun lstring(vAddress: ULong): String {
+        var ptr = vAddress
         val buffer = ByteArrayOutputStream()
         var b: Byte
         while ((lb(ptr++).also { b = it }).toInt() != 0) {
@@ -67,85 +70,89 @@ interface Hart : Device {
         return buffer.toString()
     }
 
-    fun sb(vaddr: ULong, value: Byte) {
-        write(vaddr, 1U, value.toUByte().toULong(), false)
+    fun sb(vAddress: ULong, value: Byte) {
+        write(vAddress, 1U, value.toUByte().toULong(), false)
     }
 
-    fun sb(vaddr: ULong, value: UByte) {
-        write(vaddr, 1U, value.toULong(), false)
+    fun sb(vAddress: ULong, value: UByte) {
+        write(vAddress, 1U, value.toULong(), false)
     }
 
-    fun sh(vaddr: ULong, value: Short) {
-        write(vaddr, 2U, value.toUShort().toULong(), false)
+    fun sh(vAddress: ULong, value: Short) {
+        write(vAddress, 2U, value.toUShort().toULong(), false)
     }
 
-    fun sh(vaddr: ULong, value: UShort) {
-        write(vaddr, 2U, value.toULong(), false)
+    fun sh(vAddress: ULong, value: UShort) {
+        write(vAddress, 2U, value.toULong(), false)
     }
 
-    fun sw(vaddr: ULong, value: Int) {
-        write(vaddr, 4U, value.toUInt().toULong(), false)
+    fun sw(vAddress: ULong, value: Int) {
+        write(vAddress, 4U, value.toUInt().toULong(), false)
     }
 
-    fun sw(vaddr: ULong, value: UInt) {
-        write(vaddr, 4U, value.toULong(), false)
+    fun sw(vAddress: ULong, value: UInt) {
+        write(vAddress, 4U, value.toULong(), false)
     }
 
-    fun sd(vaddr: ULong, value: Long) {
-        write(vaddr, 8U, value.toULong(), false)
+    fun sd(vAddress: ULong, value: Long) {
+        write(vAddress, 8U, value.toULong(), false)
     }
 
-    fun sd(vaddr: ULong, value: ULong) {
-        write(vaddr, 8U, value, false)
+    fun sd(vAddress: ULong, value: ULong) {
+        write(vAddress, 8U, value, false)
     }
 
-    fun fetch(vaddr: ULong, unsafe: Boolean): UInt {
-        val paddr = translate(vaddr, MMU.Access.FETCH, unsafe)
+    fun fetch(vAddress: ULong, unsafe: Boolean): UInt {
+        val pAddress = translate(vAddress, MMU.Access.FETCH, unsafe)
 
-        if (paddr != vaddr) {
-            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr)
+        if (pAddress != vAddress) {
+            Log.info("virtual address %016x -> physical address %016x", vAddress, pAddress)
         }
 
-        val device = machine[IODevice::class, paddr]
+        val value = machine.get(
+            IODevice::class,
+            pAddress,
+            pAddress + 4UL
+        ) { device -> device.read((pAddress - device.begin).toUInt(), 4U)?.toUInt() }
 
-        if (device != null && device.begin <= paddr && paddr + 4U <= device.end) {
-            return device.read((paddr - device.begin).toUInt(), 4U).toUInt()
+        if (value != null) {
+            return value
         }
 
         if (unsafe) {
-            return 0u
+            return 0U
         }
 
-        throw TrapException(id, 0x01UL, paddr, "fetch invalid address: address=%x", paddr)
+        throw TrapException(id, 0x01UL, pAddress, "fetch invalid address: address=%x", pAddress)
     }
 
-    fun read(vaddr: ULong, size: UInt, unsafe: Boolean): ULong {
-        val paddr = translate(vaddr, MMU.Access.READ, unsafe)
+    fun read(vAddress: ULong, size: UInt, unsafe: Boolean): ULong {
+        val pAddress = translate(vAddress, MMU.Access.READ, unsafe)
 
-        if (paddr != vaddr) {
-            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr)
+        if (pAddress != vAddress) {
+            Log.info("virtual address %016x -> physical address %016x", vAddress, pAddress)
         }
 
-        return machine.pRead(paddr, size, unsafe)
+        return machine.pRead(pAddress, size, unsafe)
     }
 
-    fun write(vaddr: ULong, size: UInt, value: ULong, unsafe: Boolean) {
-        val paddr = translate(vaddr, MMU.Access.WRITE, unsafe)
+    fun write(vAddress: ULong, size: UInt, value: ULong, unsafe: Boolean) {
+        val pAddress = translate(vAddress, MMU.Access.WRITE, unsafe)
 
-        if (paddr != vaddr) {
-            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr)
+        if (pAddress != vAddress) {
+            Log.info("virtual address %016x -> physical address %016x", vAddress, pAddress)
         }
 
-        machine.pWrite(paddr, size, value, unsafe)
+        return machine.pWrite(pAddress, size, value, unsafe)
     }
 
-    fun direct(data: ByteArray, vaddr: ULong, write: Boolean) {
-        val paddr = translate(vaddr, if (write) MMU.Access.WRITE else MMU.Access.READ, true)
+    fun direct(data: ByteArray, vAddress: ULong, write: Boolean): Boolean {
+        val pAddress = translate(vAddress, if (write) MMU.Access.WRITE else MMU.Access.READ, true)
 
-        if (paddr != vaddr) {
-            Log.info("virtual address %016x -> physical address %016x", vaddr, paddr)
+        if (pAddress != vAddress) {
+            Log.info("virtual address %016x -> physical address %016x", vAddress, pAddress)
         }
 
-        machine.pDirect(data, paddr, write)
+        return machine.pDirect(data, pAddress, write)
     }
 }

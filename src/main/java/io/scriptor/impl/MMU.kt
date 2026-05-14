@@ -10,14 +10,14 @@ class MMU {
     private data class Key(val vpn: ULong, val asid: ULong)
 
     private class Entry(
-        val pteaddr: ULong,
+        val pteAddress: ULong,
         var pte: ULong,
         val vpn: ULong,
         val asid: ULong,
-        val pgbase: ULong,
-        val pgsize: ULong,
+        val pgBase: ULong,
+        val pgSize: ULong,
     ) {
-        operator fun contains(vpn: ULong): Boolean = this.vpn <= vpn && vpn < this.vpn + (pgsize shr PAGE_SHIFT)
+        operator fun contains(vpn: ULong): Boolean = this.vpn <= vpn && vpn < this.vpn + (pgSize shr PAGE_SHIFT)
     }
 
     enum class Access {
@@ -33,17 +33,17 @@ class MMU {
         this.hart = hart
     }
 
-    fun flush(vaddr: ULong, asid: ULong) {
-        if (vaddr == 0UL && asid == 0UL) {
+    fun flush(vAddress: ULong, asid: ULong) {
+        if (vAddress == 0UL && asid == 0UL) {
             tlb.clear()
             return
         }
 
-        val vpn = vaddr shr PAGE_SHIFT
+        val vpn = vAddress shr PAGE_SHIFT
 
         val remove = ArrayList<Key>()
         for (e in tlb) {
-            val matches = (asid == 0UL || asid == e.key.asid) && (vaddr == 0UL || vpn in e.value)
+            val matches = (asid == 0UL || asid == e.key.asid) && (vAddress == 0UL || vpn in e.value)
             if (matches) {
                 remove.add(e.key)
             }
@@ -55,47 +55,47 @@ class MMU {
     }
 
     fun translate(
-        priv: UInt,
-        vaddr: ULong,
+        privilege: UInt,
+        vAddress: ULong,
         access: Access,
         unsafe: Boolean,
     ): ULong {
-        if (priv == CSR.CSR_M) {
-            return vaddr
+        if (privilege == CSR.CSR_M) {
+            return vAddress
         }
 
-        val reg = hart.csrFile[CSR.satp, priv]
+        val reg = hart.csrFile[CSR.satp, privilege]
         val mode = getMode(reg)
         val asid = getASID(reg)
         val ppn = getPPN(reg)
 
         return when (mode) {
-            0U -> vaddr
-            8U -> sv39(priv, vaddr, access, asid.toULong(), ppn, unsafe)
-            9U -> sv48(priv, vaddr, access, asid.toULong(), ppn, unsafe)
-            10U -> sv57(priv, vaddr, access, asid.toULong(), ppn, unsafe)
+            0U -> vAddress
+            8U -> sv39(privilege, vAddress, access, asid.toULong(), ppn, unsafe)
+            9U -> sv48(privilege, vAddress, access, asid.toULong(), ppn, unsafe)
+            10U -> sv57(privilege, vAddress, access, asid.toULong(), ppn, unsafe)
             else -> {
-                pageFault(priv, vaddr, access, unsafe, format("unsupported mode %d", mode))
+                pageFault(privilege, vAddress, access, unsafe, format("unsupported mode %d", mode))
                 0UL.inv()
             }
         }
     }
 
     private fun touch(
-        priv: UInt,
-        vaddr: ULong,
+        privilege: UInt,
+        vAddress: ULong,
         access: Access,
         unsafe: Boolean,
-        pteaddr: ULong,
+        pteAddress: ULong,
         pte: ULong,
     ): ULong {
         var pte = pte
-        if (inaccessible(priv, access, pte)) {
-            pageFault(priv, vaddr, access, unsafe, "inaccessible")
+        if (inaccessible(privilege, access, pte)) {
+            pageFault(privilege, vAddress, access, unsafe, "inaccessible")
         }
 
-        if (unprivileged(priv, pte)) {
-            pageFault(priv, vaddr, access, unsafe, "unprivileged")
+        if (unprivileged(privilege, pte)) {
+            pageFault(privilege, vAddress, access, unsafe, "unprivileged")
         }
 
         if (!pteA(pte) || (access == Access.WRITE && !pteD(pte))) {
@@ -103,7 +103,7 @@ class MMU {
             if (access == Access.WRITE) {
                 pte = pte or (1UL shl 7)
             }
-            hart.machine.pWrite(pteaddr, 8U, pte, unsafe)
+            hart.machine.pWrite(pteAddress, 8U, pte, unsafe)
         }
 
         return pte
@@ -111,8 +111,8 @@ class MMU {
 
     private fun walk(
         levels: Int,
-        priv: UInt,
-        vaddr: ULong,
+        privilege: UInt,
+        vAddress: ULong,
         access: Access,
         asid: ULong,
         root: ULong,
@@ -121,55 +121,55 @@ class MMU {
         Log.info(
             "walk(levels=%d, priv=%d, vaddr=%016x, access=%s, asid=%x, root=%x)",
             levels,
-            priv,
-            vaddr,
+            privilege,
+            vAddress,
             access,
             asid,
             root,
         )
 
         run {
-            val vpn = vaddr shr PAGE_SHIFT
+            val vpn = vAddress shr PAGE_SHIFT
             var entry = tlb[Key(vpn, asid)]
             if (entry == null) {
                 entry = tlb[Key(vpn, 0UL)]
             }
             if (entry != null && vpn in entry) {
-                entry.pte = touch(priv, vaddr, access, unsafe, entry.pteaddr, entry.pte)
+                entry.pte = touch(privilege, vAddress, access, unsafe, entry.pteAddress, entry.pte)
 
-                val pgsize = entry.pgsize
-                val pgbase = entry.pgbase
-                val pgoffset = vaddr and (pgsize - 1UL)
-                val ptevpn = entry.vpn
-                val paddr = pgbase or pgoffset
+                val pgSize = entry.pgSize
+                val pgBase = entry.pgBase
+                val pgOffset = vAddress and (pgSize - 1UL)
+                val pteVpn = entry.vpn
+                val pAddress = pgBase or pgOffset
 
                 Log.info(
                     "   => found translation cache: pgsize=%x, pgbase=%016x, pgoffset=%03x, ptevpn=%x, paddr=%x",
-                    pgsize,
-                    pgbase,
-                    pgoffset,
-                    ptevpn,
-                    paddr,
+                    pgSize,
+                    pgBase,
+                    pgOffset,
+                    pteVpn,
+                    pAddress,
                 )
 
-                return paddr
+                return pAddress
             }
         }
 
         var a = root shl PAGE_SHIFT
 
         for (i in levels - 1 downTo 0) {
-            val vpn = vpn(vaddr, i)
+            val vpn = vpn(vAddress, i)
 
             Log.info("  i=%d, a=%016x, vpn=%03x", i, a, vpn)
 
-            val pteaddr = a + vpn * 8UL
+            val pteAddress = a + vpn * 8UL
 
-            var pte = hart.machine.pRead(pteaddr, 8U, unsafe)
+            var pte = hart.machine.pRead(pteAddress, 8U, unsafe)
 
             Log.info(
                 "   => pteaddr=%016x, pte=%016x, V=%b, R=%b, W=%b, X=%b, U=%b, G=%b, A=%b, D=%b",
-                pteaddr,
+                pteAddress,
                 pte,
                 pteV(pte),
                 pteR(pte),
@@ -182,117 +182,117 @@ class MMU {
             )
 
             if (!pteV(pte)) {
-                pageFault(priv, vaddr, access, unsafe, "invalid entry")
+                pageFault(privilege, vAddress, access, unsafe, "invalid entry")
                 return 0UL.inv()
             }
 
             if (!pteR(pte) && pteW(pte)) {
-                pageFault(priv, vaddr, access, unsafe, "reserved entry type")
+                pageFault(privilege, vAddress, access, unsafe, "reserved entry type")
                 return 0UL.inv()
             }
 
             if (pteR(pte) || pteX(pte)) {
-                pte = touch(priv, vaddr, access, unsafe, pteaddr, pte)
+                pte = touch(privilege, vAddress, access, unsafe, pteAddress, pte)
 
                 val mask = (1UL shl (i * 9)) - 1UL
-                val vvpn = vaddr shr PAGE_SHIFT
+                val vVpn = vAddress shr PAGE_SHIFT
 
                 var ppn = ppn(pte, i)
                 if (i > 0) {
                     ppn = ppn and mask.inv()
-                    ppn = ppn or (vvpn and mask)
+                    ppn = ppn or (vVpn and mask)
                 }
 
-                val pgsize = 1UL shl (PAGE_SHIFT + i * 9)
-                val pgbase = ppn shl PAGE_SHIFT
-                val pgoffset = vaddr and (pgsize - 1UL)
-                val paddr = pgbase or pgoffset
+                val pgSize = 1UL shl (PAGE_SHIFT + i * 9)
+                val pgBase = ppn shl PAGE_SHIFT
+                val pgOffset = vAddress and (pgSize - 1UL)
+                val pAddress = pgBase or pgOffset
 
-                val ptevpn = vvpn and mask.inv()
+                val pteVpn = vVpn and mask.inv()
 
-                add(Entry(pteaddr, pte, ptevpn, asid, pgbase, pgsize))
+                add(Entry(pteAddress, pte, pteVpn, asid, pgBase, pgSize))
 
                 Log.info(
                     "   => ppn=%x, pgsize=%x, pgbase=%016x, pgoffset=%03x, ptevpn=%x, paddr=%016x",
                     ppn,
-                    pgsize,
-                    pgbase,
-                    pgoffset,
-                    ptevpn,
-                    paddr,
+                    pgSize,
+                    pgBase,
+                    pgOffset,
+                    pteVpn,
+                    pAddress,
                 )
 
-                return paddr
+                return pAddress
             }
 
             a = ppn(pte) shl PAGE_SHIFT
         }
 
-        pageFault(priv, vaddr, access, unsafe, "missing entry")
+        pageFault(privilege, vAddress, access, unsafe, "missing entry")
         return 0UL.inv()
     }
 
     private fun sv39(
-        priv: UInt,
-        vaddr: ULong,
+        privilege: UInt,
+        vAddress: ULong,
         access: Access,
         asid: ULong,
         root: ULong,
         unsafe: Boolean,
-    ): ULong = walk(3, priv, vaddr, access, asid, root, unsafe)
+    ): ULong = walk(3, privilege, vAddress, access, asid, root, unsafe)
 
     private fun sv48(
-        priv: UInt,
-        vaddr: ULong,
+        privilege: UInt,
+        vAddress: ULong,
         access: Access,
         asid: ULong,
         root: ULong,
         unsafe: Boolean,
-    ): ULong = walk(4, priv, vaddr, access, asid, root, unsafe)
+    ): ULong = walk(4, privilege, vAddress, access, asid, root, unsafe)
 
     private fun sv57(
-        priv: UInt,
-        vaddr: ULong,
+        privilege: UInt,
+        vAddress: ULong,
         access: Access,
         asid: ULong,
         root: ULong,
         unsafe: Boolean,
-    ): ULong = walk(5, priv, vaddr, access, asid, root, unsafe)
+    ): ULong = walk(5, privilege, vAddress, access, asid, root, unsafe)
 
     private fun add(entry: Entry) {
         val asid = if (pteG(entry.pte)) 0UL else entry.asid
 
-        val pgcount = entry.pgsize shr PAGE_SHIFT
-        for (i in 0UL..<pgcount) {
+        val pgCount = entry.pgSize shr PAGE_SHIFT
+        for (i in 0UL..<pgCount) {
             val key = Key(entry.vpn + i, asid)
-            tlb.put(key, entry)
+            tlb[key] = entry
         }
     }
 
-    private fun unprivileged(priv: UInt, pte: ULong): Boolean {
-        val status = hart.csrFile[CSR.sstatus, priv]
+    private fun unprivileged(privilege: UInt, pte: ULong): Boolean {
+        val status = hart.csrFile[CSR.sstatus, privilege]
         val sum = (status and CSR.STATUS_SUM) != 0UL
         val u: Boolean = pteU(pte)
 
-        return (!sum && u && priv != CSR.CSR_U) || (!u && priv == CSR.CSR_U)
+        return (!sum && u && privilege != CSR.CSR_U) || (!u && privilege == CSR.CSR_U)
     }
 
-    private fun inaccessible(priv: UInt, access: Access, pte: ULong): Boolean {
+    private fun inaccessible(privilege: UInt, access: Access, pte: ULong): Boolean {
         val u: Boolean = pteU(pte)
         val x: Boolean = pteX(pte)
         val w: Boolean = pteW(pte)
         val r: Boolean = pteR(pte)
 
         return when (access) {
-            Access.FETCH -> !x || (u && priv != CSR.CSR_U)
+            Access.FETCH -> !x || (u && privilege != CSR.CSR_U)
             Access.READ -> !r
             Access.WRITE -> !w
         }
     }
 
     private fun pageFault(
-        priv: UInt,
-        vaddr: ULong,
+        privilege: UInt,
+        vAddress: ULong,
         access: Access,
         unsafe: Boolean,
         message: String,
@@ -300,8 +300,8 @@ class MMU {
         if (unsafe) {
             Log.warn(
                 "page fault (priv=%d, vaddr=%016x, access=%s): %s",
-                priv,
-                vaddr,
+                privilege,
+                vAddress,
                 access,
                 message,
             )
@@ -310,10 +310,10 @@ class MMU {
         throw TrapException(
             hart.id,
             toCause(access),
-            vaddr,
+            vAddress,
             "page fault (priv=%d, vaddr=%016x, access=%s): %s",
-            priv,
-            vaddr,
+            privilege,
+            vAddress,
             access,
             message,
         )
@@ -354,7 +354,7 @@ class MMU {
 
         private fun pteD(pte: ULong): Boolean = ((pte shr 7) and 1UL) != 0UL
 
-        private fun vpn(vaddr: ULong, i: Int): ULong = (vaddr shr (PAGE_SHIFT + i * 9)) and 0x1FFUL
+        private fun vpn(vAddress: ULong, i: Int): ULong = (vAddress shr (PAGE_SHIFT + i * 9)) and 0x1FFUL
 
         private fun ppn(pte: ULong, i: Int): ULong = ((pte shr 10) and 0xFFFFFFFFFFFUL) shr (i * 9)
 

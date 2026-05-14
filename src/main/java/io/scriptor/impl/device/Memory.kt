@@ -60,10 +60,10 @@ class Memory : IODevice {
         }
     }
 
-    override fun read(offset: UInt, size: UInt): ULong {
+    override fun read(offset: UInt, size: UInt): ULong? {
         if (offset + size > capacity) {
             Log.error("invalid memory read offset=%x, size=%d", offset, size)
-            return 0UL
+            return null
         }
 
         return when (size) {
@@ -73,20 +73,20 @@ class Memory : IODevice {
             8U -> buffer.getLong(offset.toInt()).toULong()
             else -> {
                 Log.error("invalid memory read offset=%x, size=%d", offset, size)
-                0UL
+                null
             }
         }
     }
 
-    override fun write(offset: UInt, size: UInt, value: ULong) {
+    override fun write(offset: UInt, size: UInt, value: ULong): Boolean {
         if (readonly) {
             Log.error("invalid memory write offset=%x, size=%d, value=%x, marked as read-only", offset, size, value)
-            return
+            return false
         }
 
         if (offset + size > capacity) {
             Log.error("invalid memory write offset=%x, size=%d, value=%x", offset, size, value)
-            return
+            return false
         }
 
         when (size) {
@@ -94,18 +94,23 @@ class Memory : IODevice {
             2U -> buffer.putShort(offset.toInt(), value.toShort())
             4U -> buffer.putInt(offset.toInt(), value.toInt())
             8U -> buffer.putLong(offset.toInt(), value.toLong())
-            else -> Log.error("invalid memory write offset=%x, size=%d, value=%x", offset, size, value)
+            else -> {
+                Log.error("invalid memory write offset=%x, size=%d, value=%x", offset, size, value)
+                return false
+            }
         }
+
+        return true
     }
 
     override fun toString(): String {
         return if (readonly) format("rom@%x", begin) else format("memory@%x", begin)
     }
 
-    fun direct(data: ByteArray, offset: UInt, write: Boolean) {
+    fun direct(data: ByteArray, offset: UInt, write: Boolean): Boolean {
         if (offset > capacity || offset + data.size.toUInt() > capacity) {
             Log.warn("direct read/write out of bounds: offset=%x, length=%d", offset, data.size)
-            return
+            return false
         }
 
         if (write) {
@@ -113,6 +118,8 @@ class Memory : IODevice {
         } else {
             buffer.get(offset.toInt(), data, 0, data.size)
         }
+
+        return true
     }
 
     fun buffer(): ByteBuffer {

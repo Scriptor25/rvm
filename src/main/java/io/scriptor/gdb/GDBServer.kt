@@ -32,7 +32,7 @@ class GDBServer : Closeable {
     constructor(machine: Machine, port: UInt) {
         this.machine = machine
 
-        this.machine.setBreakpointHandler { id ->
+        this.machine.breakpointHandler = { id ->
             this.machine.pause()
             stop(client!!, id, 0x05u)
         }
