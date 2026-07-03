@@ -8,6 +8,4 @@ data class CSRMeta(
     val base: Int,
     val get: Supplier<ULong>?,
     val set: Consumer<ULong>?,
-    val getHooks: MutableList<Consumer<ULong>>,
-    val putHooks: MutableList<Consumer<ULong>>,
 )

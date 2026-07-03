@@ -26,7 +26,9 @@ application {
     applicationName = "rvm"
 }
 
-val generateResourceDescriptor by tasks.registering {
+val generateResourceDescriptor = tasks.register("generate resource descriptor") {
+    description = ""
+
     val source = layout.buildDirectory.dir("resources/main")
     val index = source.map { it.file("index.list") }
 

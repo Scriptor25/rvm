@@ -94,6 +94,90 @@ void fdt_walk(void* fdt)
     }
 }
 
+void fdt_list_nodes(void* fdt, int node)
+{
+    for (int offset = node;; offset = ALIGN32(offset))
+    {
+        uint32_t token = FDT_TOKEN(fdt, offset);
+        switch (token)
+        {
+        case FDT_TOKEN_BEGIN_NODE:
+        {
+            const char* nname = FDT_NODE_NAME(fdt, offset);
+
+            if (offset != node)
+            {
+                kprintf(" - %s\r\n", nname);
+            }
+
+            offset += sizeof(uint32_t);
+            offset += kstrlen(nname) + 1;
+            break;
+        }
+
+        case FDT_TOKEN_PROP:
+        {
+            uint32_t plen = FDT_PROP_LEN(fdt, offset);
+
+            offset += sizeof(uint32_t);
+            offset += sizeof(uint32_t);
+            offset += sizeof(uint32_t);
+            offset += (int) plen;
+            break;
+        }
+
+        case FDT_TOKEN_END_NODE:
+        case FDT_TOKEN_NOP:
+            offset += sizeof(uint32_t);
+            break;
+
+        default:
+            return;
+        }
+    }
+}
+
+void fdt_list_props(void* fdt, int node)
+{
+    for (int offset = node;; offset = ALIGN32(offset))
+    {
+        uint32_t token = FDT_TOKEN(fdt, offset);
+        switch (token)
+        {
+        case FDT_TOKEN_BEGIN_NODE:
+        {
+            const char* nname = FDT_NODE_NAME(fdt, offset);
+
+            offset += sizeof(uint32_t);
+            offset += kstrlen(nname) + 1;
+            break;
+        }
+
+        case FDT_TOKEN_PROP:
+        {
+            const char* pname = FDT_PROP_NAME(fdt, offset);
+
+            kprintf(" - %s\r\n", pname);
+
+            uint32_t plen = FDT_PROP_LEN(fdt, offset);
+
+            offset += sizeof(uint32_t);
+            offset += sizeof(uint32_t);
+            offset += sizeof(uint32_t);
+            offset += (int) plen;
+            break;
+        }
+
+        case FDT_TOKEN_NOP:
+            offset += sizeof(uint32_t);
+            break;
+
+        default:
+            return;
+        }
+    }
+}
+
 static int fdt_find_subnode(void* fdt, int root, const char* name, int namelen)
 {
     for (int offset = root;; offset = ALIGN32(offset))

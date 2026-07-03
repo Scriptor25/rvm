@@ -1,9 +1,11 @@
 package io.scriptor.impl.v32
 
+import io.scriptor.fdt.BuilderContext
+import io.scriptor.fdt.NodeBuilder
 import io.scriptor.impl.MMU
-import io.scriptor.impl.device.CLINT
 import io.scriptor.isa.CSR
 import io.scriptor.isa.Instruction
+import io.scriptor.machine.Device
 import io.scriptor.machine.Hart
 import java.io.PrintStream
 
@@ -33,24 +35,12 @@ class Hart32 : Hart {
         this.id = id
     }
 
-    override fun execute(instruction: UInt, definition: Instruction): ULong {
-        TODO("Not yet implemented")
-    }
-
-    override fun wake() {
-        TODO("Not yet implemented")
-    }
-
-    override fun translate(
-        vAddress: ULong,
-        access: MMU.Access,
-        unsafe: Boolean
-    ): ULong {
-        TODO("Not yet implemented")
+    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
+        TODO()
     }
 
     override fun dump(out: PrintStream) {
-        TODO("Not yet implemented")
+        TODO()
     }
 
     override fun reset() {
@@ -61,5 +51,21 @@ class Hart32 : Hart {
         pc = 0UL
         priv = CSR.CSR_M
         wfi = false
+    }
+
+    override fun execute(instruction: UInt, definition: Instruction): ULong {
+        TODO()
+    }
+
+    override fun wake() {
+        TODO()
+    }
+
+    override fun translate(
+        vAddress: ULong,
+        access: MMU.Access,
+        unsafe: Boolean
+    ): ULong {
+        TODO()
     }
 }

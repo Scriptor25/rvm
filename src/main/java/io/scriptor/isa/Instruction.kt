@@ -12,24 +12,31 @@ data class Instruction(
 ) {
 
     fun test(mode: UInt, value: Int): Boolean {
-        when {
-            restriction != 0U && restriction != mode -> {
-                return false
-            }
+        if (restriction != 0U && restriction != mode) {
+            return false
+        }
 
-            bits != (value and mask) -> {
-                return false
-            }
+        if (bits != (value and mask)) {
+            return false
+        }
 
-            else -> {
-                for (operand in operands.values) {
-                    if (operand.excludes(value)) {
-                        return false
-                    }
-                }
-                return true
+        for (operand in operands.values) {
+            if (operand.excludes(value)) {
+                return false
             }
         }
+
+        return true
+    }
+
+    fun score(value: Int): UInt {
+        if (bits == value) {
+            return 0U.inv()
+        }
+
+        val filter = mask.inv()
+
+        return filter.countOneBits().toUInt()
     }
 
     fun decode(instruction: Int, label: String): Int = when (label) {
@@ -44,7 +51,7 @@ data class Instruction(
 
     @OptIn(ExperimentalUnsignedTypes::class)
     fun decode(instruction: UInt, values: UIntArray, label0: String) {
-        require(values.size >= 1)
+        require(values.isNotEmpty())
 
         values[0] = decode(instruction.toInt(), label0).toUInt()
     }

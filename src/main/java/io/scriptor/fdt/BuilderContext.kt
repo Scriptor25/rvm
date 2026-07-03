@@ -8,7 +8,7 @@ class BuilderContext<T> {
         if (key in handles)
             return handles[key]!!
 
-        val handle = handles.size.toUInt() + 1u
+        val handle = handles.size.toUInt() + 1U
         handles[key] = handle
         return handle
     }

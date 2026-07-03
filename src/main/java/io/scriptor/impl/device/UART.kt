@@ -48,12 +48,6 @@ class UART : IODevice {
         this.end = begin + 0x100UL
     }
 
-    override fun dump(out: PrintStream) {
-    }
-
-    override fun reset() {
-    }
-
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
@@ -71,6 +65,15 @@ class UART : IODevice {
             .prop { it.name("reg-io-width").data(0x01) }
             .prop { it.name("interrupts").data(0x01) }
             .prop { it.name("interrupt-parent").data(plic0) }
+    }
+
+    override fun dump(out: PrintStream) {
+        TODO()
+    }
+
+    override fun close() {
+        if (closeInput) inputStream.close()
+        if (closeOutput) outputStream.close()
     }
 
     override fun read(offset: UInt, size: UInt): ULong? {
@@ -122,11 +125,6 @@ class UART : IODevice {
 
     override fun toString(): String {
         return format("serial@%x", begin)
-    }
-
-    override fun close() {
-        if (closeInput) inputStream.close()
-        if (closeOutput) outputStream.close()
     }
 
     companion object {

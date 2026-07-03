@@ -33,13 +33,6 @@ class Memory : IODevice {
         this.buffer = ByteBuffer.allocateDirect(capacity.toInt()).order(machine.order)
     }
 
-    override fun dump(out: PrintStream) {
-        // ByteUtil.dump(out, buffer);
-    }
-
-    override fun reset() {
-    }
-
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
@@ -58,6 +51,10 @@ class Memory : IODevice {
                 .prop { it.name("device_type").data("memory") }
                 .prop { it.name("reg").data(begin, end - begin) }
         }
+    }
+
+    override fun dump(out: PrintStream) {
+        TODO()
     }
 
     override fun read(offset: UInt, size: UInt): ULong? {

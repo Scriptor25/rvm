@@ -7,7 +7,9 @@ import io.scriptor.impl.TrapException
 import io.scriptor.impl.device.CLINT
 import io.scriptor.isa.CSR
 import io.scriptor.isa.Instruction
-import io.scriptor.machine.*
+import io.scriptor.machine.Device
+import io.scriptor.machine.Hart
+import io.scriptor.machine.Semihosting
 import io.scriptor.util.ByteUtil.signExtend
 import io.scriptor.util.ByteUtil.signExtendLong
 import io.scriptor.util.Log
@@ -70,6 +72,28 @@ class Hart64 : Hart {
             fp = prev_fp
             ra = prev_ra
         }
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
+        val phandle = context.get(this)
+
+        builder
+            .name(format("cpu@%d", id))
+            .prop { it.name("device_type").data("cpu") }
+            .prop { it.name("reg").data(id) }
+            .prop { it.name("status").data("okay") }
+            .prop { it.name("compatible").data("riscv") }
+            .prop { it.name("riscv,isa").data("rv64imafdqc_zifencei_zicsr") }
+            .prop { it.name("riscv,mmu-type").data("riscv,sv39,sv48,sv57") }
+            .node {
+                it
+                    .name("interrupt-controller")
+                    .prop { it.name("phandle").data(phandle) }
+                    .prop { it.name("#interrupt-cells").data(0x01) }
+                    .prop { it.name("compatible").data("riscv,cpu-intc") }
+                    .node { it.name("interrupt-controller") }
+            }
     }
 
     override fun dump(out: PrintStream) {
@@ -296,28 +320,6 @@ class Hart64 : Hart {
                 throw e
             }
         }
-    }
-
-    @OptIn(ExperimentalUnsignedTypes::class)
-    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
-        val phandle = context.get(this)
-
-        builder
-            .name(format("cpu@%d", id))
-            .prop { it.name("device_type").data("cpu") }
-            .prop { it.name("reg").data(id) }
-            .prop { it.name("status").data("okay") }
-            .prop { it.name("compatible").data("riscv") }
-            .prop { it.name("riscv,isa").data("rv64imafdqc_zifencei_zicsr") }
-            .prop { it.name("riscv,mmu-type").data("riscv,sv39,sv48,sv57") }
-            .node {
-                it
-                    .name("interrupt-controller")
-                    .prop { it.name("phandle").data(phandle) }
-                    .prop { it.name("#interrupt-cells").data(0x01) }
-                    .prop { it.name("compatible").data("riscv,cpu-intc") }
-                    .node { it.name("interrupt-controller") }
-            }
     }
 
     private fun handle(cause: ULong, tval: ULong): Boolean {
@@ -1259,7 +1261,7 @@ class Hart64 : Hart {
                 c_mv(values[0], values[1])
             }
 
-            "c.ebreak" -> next = c_ebreak()
+            "c.ebreak" -> next = ebreak(next)
             "c.jalr" -> {
                 definition.decode(instruction, values, "rs1")
                 next = c_jalr(next, values[0])
@@ -1942,6 +1944,11 @@ class Hart64 : Hart {
                     gprFile[0x0AU] = 0UL
                 }
 
+                Semihosting.SEMIHOSTING_SYSEXIT -> {
+                    // stop machine
+                    machine.pause()
+                }
+
                 else -> Log.warn("undefined semihosting call sysnum=%x, params=%x", sysnum, params)
             }
             return next
@@ -2408,14 +2415,6 @@ class Hart64 : Hart {
         gprFile[rd] = gprFile.getdu(rs2)
     }
 
-    fun c_ebreak(): ULong {
-        if (machine.handleBreakpoint(id)) {
-            return pc
-        }
-
-        throw TrapException(id, 0x03UL, pc, "breakpoint instruction")
-    }
-
     fun c_jalr(next: ULong, rs1: UInt): ULong {
         val pnext = gprFile.getdu(rs1) and 1UL.inv()
         gprFile[0x1U] = next
@@ -2532,7 +2531,7 @@ class Hart64 : Hart {
             val ux = if (x < 0) -x else x
             val uy = if (y < 0) -y else y
 
-            val high: Long = mulhu64(ux, uy)
+            val high = mulhu64(ux, uy)
 
             return if (neg) high.inv() + (if (ux * uy != 0L) 1 else 0) else high
         }
@@ -2543,7 +2542,7 @@ class Hart64 : Hart {
             val ux = if (x < 0) -x else x
             val uy = y // already unsigned
 
-            val high: Long = mulhu64(ux, uy)
+            val high = mulhu64(ux, uy)
 
             return if (neg) high.inv() + (if (ux * uy != 0L) 1 else 0) else high
         }

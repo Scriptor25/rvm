@@ -107,9 +107,7 @@ fun init(args: ArgContext): Machine {
         if ("devices" in root) {
             val devices = root[ArrayNode::class, "devices"]
             for (node in devices) {
-                val type = node[StringNode::class, "type"].value
-
-                val generator: Function<Machine, Device> = when (type) {
+                val generator: Function<Machine, Device> = when (val type = node[StringNode::class, "type"].value) {
                     "clint" -> {
                         val begin = node[IntegerNode::class, "begin"].value
                         Function { CLINT(it, begin) }
@@ -255,7 +253,7 @@ fun run(args: ArgContext, machine: Machine) {
                     Log.error("machine exception: %s", e)
 
                     if (e is TrapException) {
-                        gdb.stop(e.id, 0x05u)
+                        gdb.stop(e.id, 0x05U)
                     }
                 }
             }
@@ -267,7 +265,9 @@ fun run(args: ArgContext, machine: Machine) {
 
     try {
         machine.spin()
-        while (true) machine.step()
+        while (machine.active) {
+            machine.step()
+        }
     } catch (e: Exception) {
         machine.pause()
         Log.inject { out -> machine.dump(out) }
@@ -286,7 +286,7 @@ fun load(
     filename: String,
     offset: ULong,
 ) {
-    val stream = ChannelInputStream(filename);
+    val stream = ChannelInputStream(filename)
 
     val buffer = ByteBuffer.allocateDirect(0x10)
     stream.read(buffer)
@@ -360,16 +360,13 @@ fun load(
     stream.seek(0L)
 
     val capacity = stream.size().toUInt()
-    val memory = machine[Memory::class, offset, capacity]
-    if (memory == null) {
-        throw NoSuchElementException(
-            format(
-                "no memory at address %016x with minimum capacity %d",
-                offset,
-                capacity,
-            ),
-        )
-    }
+    val memory = machine[Memory::class, offset, capacity] ?: throw NoSuchElementException(
+        format(
+            "no memory at address %016x with minimum capacity %d",
+            offset,
+            capacity,
+        ),
+    )
 
     val data = ByteArray(stream.size().toInt())
     val read: Int = stream.read(data)

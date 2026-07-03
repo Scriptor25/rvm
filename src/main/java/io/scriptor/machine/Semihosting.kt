@@ -24,6 +24,7 @@ interface Semihosting {
         const val SEMIHOSTING_SYSREAD = 0x06UL
         const val SEMIHOSTING_SYSREADC = 0x07UL
         const val SEMIHOSTING_SYSERRNO = 0x13UL
+        const val SEMIHOSTING_SYSEXIT = 0xFFUL
 
         const val SEMIHOSTING_SYSOPEN_MODE_READ = 0x0
         const val SEMIHOSTING_SYSOPEN_MODE_BINARY = 0x1

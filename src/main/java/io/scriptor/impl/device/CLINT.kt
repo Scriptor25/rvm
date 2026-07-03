@@ -43,6 +43,27 @@ class CLINT : IODevice {
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
+    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
+        val phandle = context.get(this)
+
+        val ie = UIntArray(4 * machine.harts.size)
+        for (id in machine.harts.indices) {
+            val cpu = context.get(machine.harts[id])
+            ie[id * 4] = cpu
+            ie[id * 4 + 1] = 0x03U
+            ie[id * 4 + 2] = cpu
+            ie[id * 4 + 3] = 0x07U
+        }
+
+        builder
+            .name(format("clint@%x", begin))
+            .prop { it.name("phandle").data(phandle) }
+            .prop { it.name("compatible").data("riscv,clint0") }
+            .prop { it.name("reg").data(begin, end - begin) }
+            .prop { it.name("interrupts-extended").data(*ie) }
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun dump(out: PrintStream) {
         out.println(format("clint: mtime=%x", mtime))
         for (id in machine.harts.indices) {
@@ -68,27 +89,6 @@ class CLINT : IODevice {
 
     override fun step() {
         ++mtime
-    }
-
-    @OptIn(ExperimentalUnsignedTypes::class)
-    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
-        val phandle = context.get(this)
-
-        val ie = UIntArray(4 * machine.harts.size)
-        for (id in machine.harts.indices) {
-            val cpu = context.get(machine.harts[id])
-            ie[id * 4] = cpu
-            ie[id * 4 + 1] = 0x03U
-            ie[id * 4 + 2] = cpu
-            ie[id * 4 + 3] = 0x07U
-        }
-
-        builder
-            .name(format("clint@%x", begin))
-            .prop { it.name("phandle").data(phandle) }
-            .prop { it.name("compatible").data("riscv,clint0") }
-            .prop { it.name("reg").data(begin, end - begin) }
-            .prop { it.name("interrupts-extended").data(*ie) }
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)

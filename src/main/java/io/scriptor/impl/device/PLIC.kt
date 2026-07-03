@@ -41,21 +41,6 @@ class PLIC : IODevice {
         this.end = begin + 0x4000000UL
     }
 
-    override fun dump(out: PrintStream) {
-    }
-
-    @OptIn(ExperimentalUnsignedTypes::class)
-    override fun reset() {
-        priority.fill(0U)
-        pending.fill(0U)
-
-        for (context in contexts) {
-            context.enable.fill(0U)
-            context.threshold = 0U
-            context.claim = 0U
-        }
-    }
-
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
@@ -76,6 +61,22 @@ class PLIC : IODevice {
             .prop { it.name("#interrupt-cells").data(0x01U) }
             .prop { it.name("riscv,ndev").data(ndev) }
             .prop { it.name("interrupts-extended").data(*ie) }
+    }
+
+    override fun dump(out: PrintStream) {
+        TODO()
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    override fun reset() {
+        priority.fill(0U)
+        pending.fill(0U)
+
+        for (context in contexts) {
+            context.enable.fill(0U)
+            context.threshold = 0U
+            context.claim = 0U
+        }
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)

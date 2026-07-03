@@ -1,9 +1,12 @@
 package io.scriptor.impl.v64
 
+import io.scriptor.fdt.BuilderContext
+import io.scriptor.fdt.NodeBuilder
 import io.scriptor.impl.CSRMeta
 import io.scriptor.impl.TrapException
 import io.scriptor.isa.CSR
 import io.scriptor.machine.CSRFile
+import io.scriptor.machine.Device
 import io.scriptor.util.Log.format
 import java.io.PrintStream
 import java.util.function.Consumer
@@ -23,6 +26,10 @@ class CSRFile64 : CSRFile {
 
     constructor(hart: Hart64) {
         this.hart = hart
+    }
+
+    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
+        TODO()
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -59,7 +66,7 @@ class CSRFile64 : CSRFile {
 
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun define(addr: UInt, mask: ULong, base: Int, value: ULong) {
-        metadata[addr] = CSRMeta(mask, base, null, null, ArrayList(), ArrayList())
+        metadata[addr] = CSRMeta(mask, base, null, null)
         present[addr.toInt()] = true
         values[addr.toInt()] = value and mask
     }
@@ -70,24 +77,16 @@ class CSRFile64 : CSRFile {
 
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun define(addr: UInt, mask: ULong, get: Supplier<ULong>) {
-        metadata[addr] = CSRMeta(mask, -1, get, null, ArrayList(), ArrayList())
+        metadata[addr] = CSRMeta(mask, -1, get, null)
         present[addr.toInt()] = true
         values[addr.toInt()] = 0UL
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun define(addr: UInt, mask: ULong, get: Supplier<ULong>, set: Consumer<ULong>) {
-        metadata[addr] = CSRMeta(mask, -1, get, set, ArrayList(), ArrayList())
+        metadata[addr] = CSRMeta(mask, -1, get, set)
         present[addr.toInt()] = true
         values[addr.toInt()] = 0UL
-    }
-
-    override fun hookGet(addr: UInt, hook: Consumer<ULong>) {
-        metadata[addr]!!.getHooks.add(hook)
-    }
-
-    override fun hookPut(addr: UInt, hook: Consumer<ULong>) {
-        metadata[addr]!!.putHooks.add(hook)
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -105,9 +104,7 @@ class CSRFile64 : CSRFile {
         val mask = meta.mask
 
         if (meta.get != null) {
-            val value = meta.get.get() and mask
-            for (hook in meta.getHooks) hook.accept(value)
-            return value
+            return meta.get.get() and mask
         }
 
         var base = 0
@@ -116,10 +113,8 @@ class CSRFile64 : CSRFile {
         }
 
         if (!present[addr.toInt()]) error(addr.toULong(), "subsequent read csr addr=%03x: not present", addr)
-        val value = values[addr.toInt()] and mask
-        for (hook in meta.getHooks) hook.accept(value)
 
-        return value
+        return values[addr.toInt()] and mask
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -171,12 +166,7 @@ class CSRFile64 : CSRFile {
                 )
             }
 
-            val value = value and mask
-            for (hook in meta.putHooks) {
-                hook.accept(value)
-            }
-
-            meta.set.accept(value)
+            meta.set.accept(value and mask)
             return
         }
 
@@ -194,12 +184,7 @@ class CSRFile64 : CSRFile {
             )
         }
 
-        val value = (values[addr.toInt()] and mask.inv()) or (value and mask)
-        for (hook in meta.putHooks) {
-            hook.accept(value)
-        }
-
-        values[addr.toInt()] = value
+        values[addr.toInt()] = (values[addr.toInt()] and mask.inv()) or (value and mask)
     }
 
     private fun error(addr: ULong, format: String, vararg args: Any?) {

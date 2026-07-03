@@ -34,7 +34,7 @@ class GDBServer : Closeable {
 
         this.machine.breakpointHandler = { id ->
             this.machine.pause()
-            stop(client!!, id, 0x05u)
+            stop(client!!, id, 0x05U)
         }
 
         channel = ServerSocketChannel.open()
@@ -126,7 +126,7 @@ class GDBServer : Closeable {
     private fun process(b: Int, client: SocketChannel, state: ClientState) {
         if (state.append) {
             if (b == '#'.code) {
-                state.checksum = state.checksum and 0xFFu
+                state.checksum = state.checksum and 0xFFU
                 state.append = false
                 state.end = true
                 state.packetChecksum.setLength(0)
@@ -372,31 +372,31 @@ class GDBServer : Closeable {
                     toHexStringLE(fprFile.getdr(n - 33U))
                 }
 
-                if (n == 65u) {
+                if (n == 65U) {
                     toHexStringLE(csrFile[CSR.fcsr, CSR.CSR_M])
                 }
 
                 return when (n) {
-                    66u -> toHexStringLE(csrFile[CSR.mstatus, CSR.CSR_M])
-                    67u -> toHexStringLE(csrFile[CSR.misa, CSR.CSR_M])
-                    68u -> toHexStringLE(csrFile[CSR.mie, CSR.CSR_M])
-                    69u -> toHexStringLE(csrFile[CSR.mtvec, CSR.CSR_M])
+                    66U -> toHexStringLE(csrFile[CSR.mstatus, CSR.CSR_M])
+                    67U -> toHexStringLE(csrFile[CSR.misa, CSR.CSR_M])
+                    68U -> toHexStringLE(csrFile[CSR.mie, CSR.CSR_M])
+                    69U -> toHexStringLE(csrFile[CSR.mtvec, CSR.CSR_M])
                     70U -> toHexStringLE(csrFile[CSR.mscratch, CSR.CSR_M])
                     71U -> toHexStringLE(csrFile[CSR.mepc, CSR.CSR_M])
                     72U -> toHexStringLE(csrFile[CSR.mcause, CSR.CSR_M])
                     73U -> toHexStringLE(csrFile[CSR.mtval, CSR.CSR_M])
                     74U -> toHexStringLE(csrFile[CSR.mip, CSR.CSR_M])
-                    75u -> toHexStringLE(csrFile[CSR.cycle, CSR.CSR_M])
-                    76u -> toHexStringLE(csrFile[CSR.time, CSR.CSR_M])
-                    77u -> toHexStringLE(csrFile[CSR.instret, CSR.CSR_M])
-                    78u -> toHexStringLE(csrFile[CSR.sstatus, CSR.CSR_M])
-                    79u -> toHexStringLE(csrFile[CSR.sie, CSR.CSR_M])
+                    75U -> toHexStringLE(csrFile[CSR.cycle, CSR.CSR_M])
+                    76U -> toHexStringLE(csrFile[CSR.time, CSR.CSR_M])
+                    77U -> toHexStringLE(csrFile[CSR.instret, CSR.CSR_M])
+                    78U -> toHexStringLE(csrFile[CSR.sstatus, CSR.CSR_M])
+                    79U -> toHexStringLE(csrFile[CSR.sie, CSR.CSR_M])
                     80U -> toHexStringLE(csrFile[CSR.stvec, CSR.CSR_M])
                     81U -> toHexStringLE(csrFile[CSR.sscratch, CSR.CSR_M])
                     82U -> toHexStringLE(csrFile[CSR.sepc, CSR.CSR_M])
                     83U -> toHexStringLE(csrFile[CSR.scause, CSR.CSR_M])
                     84U -> toHexStringLE(csrFile[CSR.stval, CSR.CSR_M])
-                    85u -> toHexStringLE(csrFile[CSR.sip, CSR.CSR_M])
+                    85U -> toHexStringLE(csrFile[CSR.sip, CSR.CSR_M])
                     else -> ""
                 }
             }
@@ -436,28 +436,28 @@ class GDBServer : Closeable {
                     return "OK"
                 }
 
-                if (n == 65u) {
+                if (n == 65U) {
                     csrFile[CSR.fcsr, CSR.CSR_M] = parseLongLE(value)
                     return "OK"
                 }
 
                 return when (n) {
-                    66u -> {
+                    66U -> {
                         csrFile[CSR.mstatus, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
-                    67u -> {
+                    67U -> {
                         csrFile[CSR.misa, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
-                    68u -> {
+                    68U -> {
                         csrFile[CSR.mie, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
-                    69u -> {
+                    69U -> {
                         csrFile[CSR.mtvec, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
@@ -487,27 +487,27 @@ class GDBServer : Closeable {
                         "OK"
                     }
 
-                    75u -> {
+                    75U -> {
                         csrFile[CSR.cycle, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
-                    76u -> {
+                    76U -> {
                         csrFile[CSR.time, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
-                    77u -> {
+                    77U -> {
                         csrFile[CSR.instret, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
-                    78u -> {
+                    78U -> {
                         csrFile[CSR.sstatus, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
 
-                    79u -> {
+                    79U -> {
                         csrFile[CSR.sie, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }
@@ -537,7 +537,7 @@ class GDBServer : Closeable {
                         "OK"
                     }
 
-                    85u -> {
+                    85U -> {
                         csrFile[CSR.sip, CSR.CSR_M] = parseLongLE(value)
                         "OK"
                     }

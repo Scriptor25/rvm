@@ -65,9 +65,41 @@ void kmain(long boot_hart_id, void* fdt)
         {
             line = kstrnext(line, &token, &token_length);
 
+            if (kstrcmpn("nodes", 5, token, token_length) == 0)
+            {
+                if (node < 0)
+                {
+                    kputs("no node selected\r\n");
+                    continue;
+                }
+
+                fdt_list_nodes(fdt, node);
+                continue;
+            }
+
+            if (kstrcmpn("props", 5, token, token_length) == 0)
+            {
+                if (node < 0)
+                {
+                    kputs("no node selected\r\n");
+                    continue;
+                }
+
+                fdt_list_props(fdt, node);
+                continue;
+            }
+
             if (kstrcmpn("node", 4, token, token_length) == 0)
             {
                 line = kstrnext(line, &token, &token_length);
+
+                if (!token_length)
+                {
+                    node = -1;
+
+                    kprintf("reverted node selection.\r\n");
+                    continue;
+                }
 
                 int nextnode = fdt_find_node(fdt, token, token_length);
                 if (nextnode < 0)

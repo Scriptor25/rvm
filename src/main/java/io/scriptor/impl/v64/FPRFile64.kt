@@ -1,5 +1,8 @@
 package io.scriptor.impl.v64
 
+import io.scriptor.fdt.BuilderContext
+import io.scriptor.fdt.NodeBuilder
+import io.scriptor.machine.Device
 import io.scriptor.machine.FPRFile
 import io.scriptor.util.Log.format
 import java.io.PrintStream
@@ -16,6 +19,10 @@ class FPRFile64 : FPRFile {
 
     constructor(hart: Hart64) {
         this.hart = hart
+    }
+
+    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
+        TODO()
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)

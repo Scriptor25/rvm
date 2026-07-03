@@ -56,13 +56,20 @@ class Registry {
 
     operator fun get(mode: UInt, value: Int): Instruction {
         var candidate: Instruction? = null
+        var score: UInt = 0U.inv()
 
         for (instruction in instructions.values) {
             if (instruction.test(mode, value)) {
-                check(candidate == null) {
-                    format("ambiguous candidates for instruction %08x: %s and %s", value, candidate, instruction)
+                val local = instruction.score(value)
+
+                if (score >= local) {
+                    check(candidate == null || score > local) {
+                        format("ambiguous candidates for instruction %08x: %s and %s", value, candidate, instruction)
+                    }
+
+                    candidate = instruction
+                    score = local
                 }
-                candidate = instruction
             }
         }
 
@@ -153,7 +160,7 @@ class Registry {
 
             var mask = 0
             var bits = 0
-            for (i in 0..<value.length) {
+            for (i in value.indices) {
                 val c = value[(value.length - 1) - i]
                 if (c == '0' || c == '1') {
                     mask = mask or (1 shl i)

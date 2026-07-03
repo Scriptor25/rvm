@@ -1,20 +1,15 @@
 package io.scriptor.impl.v32
 
 import io.scriptor.elf.SymbolTable
-import io.scriptor.impl.device.Memory
 import io.scriptor.isa.Registry
 import io.scriptor.machine.Device
 import io.scriptor.machine.Hart
-import io.scriptor.machine.IODevice
 import io.scriptor.machine.Machine
-import io.scriptor.util.Log
-import java.io.PrintStream
+import io.scriptor.util.checkDeviceOverlap
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.function.Function
 import java.util.function.IntConsumer
-import java.util.function.Predicate
-import kotlin.reflect.KClass
 
 class Machine32 : Machine {
 
@@ -38,25 +33,7 @@ class Machine32 : Machine {
         this.harts = Array(harts) { Hart32(this, it) }
         this.devices = devices.map { it.apply(this) }.toTypedArray()
 
-        for (j in this.devices.indices) {
-            val b = this.devices[j]
-            if (b is IODevice) for (i in j + 1..<this.devices.size) {
-                val a = this.devices[i]
-                if (a is IODevice) {
-                    if (a.begin < b.end && b.begin < a.end) {
-                        Log.warn(
-                            "device map overlap: %s [%08x;%08x] and %s [%08x;%08x]",
-                            b,
-                            b.begin,
-                            b.end,
-                            a,
-                            a.begin,
-                            a.end,
-                        )
-                    }
-                }
-            }
-        }
+        checkDeviceOverlap(this.devices)
     }
 
     override fun generateDeviceTree(buffer: ByteBuffer) {
