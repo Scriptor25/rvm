@@ -125,6 +125,7 @@ uint64_t* sv39_build(void)
 }
 
 static uint64_t registers[16];
+static uint64_t mtvec;
 
 void save_registers(void* context);
 void restore_registers(void* context);
@@ -138,6 +139,7 @@ void sv39_test(void)
 
     uint64_t* root = sv39_build();
 
+    CSR_READ(mtvec, mtvec);
     CSR_WRITE(mtvec, __trap_handler);
     __resume_address = &&resume;
 
@@ -165,6 +167,8 @@ void sv39_test(void)
     asm volatile("mret" ::: "memory");
 
 resume:
+
+    CSR_WRITE(mtvec, mtvec);
 
     restore_registers(registers);
 

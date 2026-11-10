@@ -1,6 +1,7 @@
 package io.scriptor.machine
 
-import io.scriptor.impl.MachineImpl
+import io.scriptor.impl.v32.Machine32
+import io.scriptor.impl.v64.Machine64
 import io.scriptor.isa.Registry
 import io.scriptor.util.Log.format
 import java.nio.ByteOrder
@@ -35,7 +36,8 @@ class MachineConfig {
 
     fun configure(registry: Registry): Machine {
         return when (mode) {
-            64U -> MachineImpl(registry, order, harts.toInt(), devices.toTypedArray())
+            32U -> Machine32(registry, order, harts.toInt(), devices.toTypedArray())
+            64U -> Machine64(registry, order, harts.toInt(), devices.toTypedArray())
             else -> throw NoSuchElementException(format("mode=%d", mode))
         }
     }

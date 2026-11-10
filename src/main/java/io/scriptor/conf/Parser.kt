@@ -19,10 +19,10 @@ class Parser {
     fun parse(): Node<*> = when {
         at(TokenType.OTHER, "{") -> parseObject()
         at(TokenType.OTHER, "[") -> parseArray()
-        at(TokenType.STRING, TokenType.SYMBOL) -> StringNode(skip().string)
+        at("true", "false") -> BooleanNode(skip().string.toBoolean())
         at(TokenType.INTEGER) -> IntegerNode(skip().integer)
         at(TokenType.FLOATING) -> FloatingNode(skip().floating)
-        at("true", "false") -> BooleanNode(skip().string.toBoolean())
+        at(TokenType.STRING, TokenType.SYMBOL) -> StringNode(skip().string)
         else -> throw NoSuchElementException()
     }
 
@@ -169,7 +169,7 @@ class Parser {
                         state = State.NUMBER
                     }
 
-                    buffer.toChar().isLetter() -> {
+                    (buffer == '_'.code) || buffer.toChar().isLetter() -> {
                         state = State.SYMBOL
                     }
 
@@ -189,7 +189,8 @@ class Parser {
             }
 
             State.SYMBOL -> when {
-                buffer.toChar().isLetterOrDigit() -> {
+                (buffer == '_'.code) || (buffer == '-'.code) || (buffer == '.'.code)
+                        || buffer.toChar().isLetterOrDigit() -> {
                     value.appendCodePoint(buffer)
                     read()
                 }

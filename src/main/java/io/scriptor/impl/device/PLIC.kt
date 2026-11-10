@@ -27,6 +27,7 @@ class PLIC : IODevice {
 
     @OptIn(ExperimentalUnsignedTypes::class)
     private val priority: UIntArray = UIntArray(SOURCE_COUNT)
+
     @OptIn(ExperimentalUnsignedTypes::class)
     private val pending: UIntArray = UIntArray(SOURCE_COUNT ushr 2)
 
@@ -38,21 +39,6 @@ class PLIC : IODevice {
         this.ndev = ndev
 
         this.end = begin + 0x4000000UL
-    }
-
-    override fun dump(out: PrintStream) {
-    }
-
-    @OptIn(ExperimentalUnsignedTypes::class)
-    override fun reset() {
-        priority.fill(0U)
-        pending.fill(0U)
-
-        for (context in contexts) {
-            context.enable.fill(0U)
-            context.threshold = 0U
-            context.claim = 0U
-        }
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -77,8 +63,24 @@ class PLIC : IODevice {
             .prop { it.name("interrupts-extended").data(*ie) }
     }
 
+    override fun dump(out: PrintStream) {
+        TODO()
+    }
+
     @OptIn(ExperimentalUnsignedTypes::class)
-    override fun read(offset: UInt, size: UInt): ULong {
+    override fun reset() {
+        priority.fill(0U)
+        pending.fill(0U)
+
+        for (context in contexts) {
+            context.enable.fill(0U)
+            context.threshold = 0U
+            context.claim = 0U
+        }
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    override fun read(offset: UInt, size: UInt): ULong? {
         if (offset in PRIORITY_BASE..<PENDING_BASE && size == 4U) {
             val index = (offset - PRIORITY_BASE) / 4U
 
@@ -123,17 +125,17 @@ class PLIC : IODevice {
         }
 
         Log.error("invalid plic read offset=%x, size=%d", offset, size)
-        return 0UL
+        return null
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
-    override fun write(offset: UInt, size: UInt, value: ULong) {
+    override fun write(offset: UInt, size: UInt, value: ULong): Boolean {
         if (offset in PRIORITY_BASE..<PENDING_BASE && size == 4U) {
             val index = (offset - PRIORITY_BASE) / 4U
 
             if (index < priority.size.toUInt()) {
                 priority[index.toInt()] = value.toUInt()
-                return
+                return true
             }
         }
 
@@ -144,7 +146,7 @@ class PLIC : IODevice {
 
             if (context < contexts.size.toUInt() && index >= 0U && index < contexts[context.toInt()].enable.size.toUInt()) {
                 contexts[context.toInt()].enable[index.toInt()] = value.toUInt()
-                return
+                return true
             }
         }
 
@@ -157,22 +159,23 @@ class PLIC : IODevice {
                 when (index) {
                     CONTEXT_OFFSET_THRESHOLD -> {
                         contexts[context.toInt()].threshold = value.toUInt()
-                        return
+                        return true
                     }
 
                     CONTEXT_OFFSET_CLAIM -> {
                         contexts[context.toInt()].claim = value.toUInt()
-                        return
+                        return true
                     }
 
                     CONTEXT_OFFSET_RESERVED -> {
-                        return
+                        return true
                     }
                 }
             }
         }
 
         Log.error("invalid plic write offset=%x, size=%d, value=%x", offset, size, value)
+        return false
     }
 
     override fun toString(): String {

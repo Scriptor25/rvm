@@ -21,9 +21,6 @@ interface CSRFile : Device {
     fun define(addr: UInt, mask: ULong, get: Supplier<ULong>)
     fun define(addr: UInt, mask: ULong, get: Supplier<ULong>, set: Consumer<ULong>)
 
-    fun hookGet(addr: UInt, hook: Consumer<ULong>)
-    fun hookPut(addr: UInt, hook: Consumer<ULong>)
-
     /**
      * read an 8-byte value from a control/status register.
      * 

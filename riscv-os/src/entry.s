@@ -1,7 +1,5 @@
 .section .init
 
-.option norvc
-
 /* do not touch a0 and a1, contain boot hart id and pointer to fdt! */
 
 .type _start, @function
@@ -38,6 +36,12 @@ bss_clear:
 
 	/* Jump to kernel! */
 	call kmain
+
+	/* Try to kill virtual machine */
+	slli zero, zero, 0x1F
+	li a0, 0xFF
+	ebreak
+	srai zero, zero, 0x07
 
     /* infinite loop */
 trap:

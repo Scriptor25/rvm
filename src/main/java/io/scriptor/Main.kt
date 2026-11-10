@@ -4,10 +4,7 @@ import io.scriptor.conf.*
 import io.scriptor.elf.*
 import io.scriptor.gdb.GDBServer
 import io.scriptor.impl.TrapException
-import io.scriptor.impl.device.CLINT
-import io.scriptor.impl.device.Memory
-import io.scriptor.impl.device.PLIC
-import io.scriptor.impl.device.UART
+import io.scriptor.impl.device.*
 import io.scriptor.isa.Registry
 import io.scriptor.machine.Device
 import io.scriptor.machine.Machine
@@ -53,7 +50,9 @@ fun main(args: Array<String>) {
                 val filename = parts[0]
                 val offset = if (parts.size == 2) parts[1].toULong(0x10) else 0UL
 
-                load(machine, filename, offset)
+                val entryPoint = load(machine, filename, offset)
+
+                machine.entryPoint = entryPoint
             },
         ]
 
@@ -78,8 +77,8 @@ fun init(args: ArgContext): Machine {
             .forEach { line -> Resource.read(true, line, registry::parse) }
     }
 
-    val isResource = "--config" !in args
-    val filename = if (isResource) "config/default.conf" else args["--config"]
+    val isResource = "--config" !in args || "--config-file" !in args
+    val filename = if ("--config" in args) args["--config"] else "config/default.conf"
 
     return Resource.read<Machine>(isResource, filename) { stream ->
         val machineConfig = MachineConfig()
@@ -110,9 +109,7 @@ fun init(args: ArgContext): Machine {
         if ("devices" in root) {
             val devices = root[ArrayNode::class, "devices"]
             for (node in devices) {
-                val type = node[StringNode::class, "type"].value
-
-                val generator: Function<Machine, Device> = when (type) {
+                val generator: Function<Machine, Device> = when (val type = node[StringNode::class, "type"].value) {
                     "clint" -> {
                         val begin = node[IntegerNode::class, "begin"].value
                         Function { CLINT(it, begin) }
@@ -183,6 +180,38 @@ fun init(args: ArgContext): Machine {
                         Function { Memory(it, begin, capacity.toUInt(), readonly) }
                     }
 
+                    "tree" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { DeviceTree(it, begin) }
+                    }
+
+                    "gpio" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { GPIO(it, begin) }
+                    }
+
+                    "efuse" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { EFuse(it, begin) }
+                    }
+
+                    "rng" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+
+                        Function { RNG(it, begin) }
+                    }
+
+                    "timer_group" -> {
+                        val begin = node[IntegerNode::class, "begin"].value
+                        val timers = if ("timers" in node) node[IntegerNode::class, "timers"].value else 0UL
+                        val watchdogs = if ("watchdogs" in node) node[IntegerNode::class, "watchdogs"].value else 0UL
+
+                        Function { TimerGroup(it, begin, timers.toInt(), watchdogs.toInt()) }
+                    }
+
                     else -> throw NoSuchElementException(format("type=%s", type))
                 }
 
@@ -210,7 +239,7 @@ fun run(args: ArgContext, machine: Machine) {
                     Log.error("machine exception: %s", e)
 
                     if (e is TrapException) {
-                        gdb.stop(e.id, 0x05u)
+                        gdb.stop(e.id, 0x05U)
                     }
                 }
             }
@@ -222,7 +251,9 @@ fun run(args: ArgContext, machine: Machine) {
 
     try {
         machine.spin()
-        while (true) machine.step()
+        while (machine.active) {
+            machine.step()
+        }
     } catch (e: Exception) {
         machine.pause()
         Log.inject { out -> machine.dump(out) }
@@ -240,8 +271,8 @@ fun load(
     machine: Machine,
     filename: String,
     offset: ULong,
-) {
-    val stream = ChannelInputStream(filename);
+): ULong {
+    val stream = ChannelInputStream(filename)
 
     val buffer = ByteBuffer.allocateDirect(0x10)
     stream.read(buffer)
@@ -284,66 +315,52 @@ fun load(
             ELF.readSymbols(identity, stream, dynsym, dynstr, machine.symbols, offset)
         }
 
-        var begin = 0UL.inv()
-        var end = 0UL
-
-        for (ph in phtab) {
-            if (ph.type != 0x01U) continue
-
-            if (begin > ph.paddr) begin = ph.paddr
-            if (end < ph.paddr + ph.memsz) end = ph.paddr + ph.memsz
-        }
-
-        val capacity = (end - begin).toUInt()
-        val memory = machine[Memory::class, begin + offset, capacity]
-        if (memory == null) {
-            throw NoSuchElementException(
-                format(
-                    "no memory at address %016x with minimum capacity %d",
-                    begin + offset,
-                    capacity,
-                ),
-            )
-        }
-
         for (ph in phtab) {
             if (ph.type != 0x01U) continue
 
             stream.seek(ph.offset.toLong())
 
-            val data = ByteArray(ph.filesz.toInt())
+            val data = ByteArray(ph.fileSize.toInt())
             val read = stream.read(data)
             if (read != data.size) {
                 Log.warn("stream read %d, requested %d", read, data.size)
             }
 
-            memory.direct(data, ((ph.paddr + offset) - memory.begin).toUInt(), true)
+            val address = ph.pAddress + offset
+            val capacity = ph.memSize.toUInt()
+
+            val memory = machine[Memory::class, address, capacity] ?: throw NoSuchElementException(
+                format(
+                    "no memory at address %016x with minimum capacity %d",
+                    address,
+                    capacity,
+                ),
+            )
+
+            memory.direct(data, (address - memory.begin).toUInt(), true)
         }
 
-        return
+        return header.entry + offset
     }
 
     stream.seek(0L)
 
     val capacity = stream.size().toUInt()
-    val memory = machine[Memory::class, offset, capacity]
-    if (memory == null) {
-        throw NoSuchElementException(
-            format(
-                "no memory at address %016x with minimum capacity %d",
-                offset,
-                capacity,
-            ),
-        )
-    }
+    val memory = machine[Memory::class, offset, capacity] ?: throw NoSuchElementException(
+        format(
+            "no memory at address %016x with minimum capacity %d",
+            offset,
+            capacity,
+        ),
+    )
 
     val data = ByteArray(stream.size().toInt())
-    val read: Int = stream.read(data)
+    val read = stream.read(data)
     if (read != data.size) {
         Log.warn("stream read %d, requested %d", read, data.size)
     }
 
     memory.direct(data, (offset - memory.begin).toUInt(), true)
 
-    return
+    return offset
 }

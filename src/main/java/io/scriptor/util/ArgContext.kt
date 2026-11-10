@@ -56,7 +56,7 @@ class ArgContext {
     }
 
     companion object {
-        private val flags = mutableSetOf("--debug")
+        private val flags = mutableSetOf("--debug", "--config-file")
         private val options = mutableSetOf("--config", "--load", "--port", "--level")
     }
 }

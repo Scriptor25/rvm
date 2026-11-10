@@ -47,5 +47,8 @@ uint32_t htobe32(const void* p);
 
 void fdt_walk(void* fdt);
 
+void fdt_list_nodes(void* fdt, int node);
+void fdt_list_props(void* fdt, int node);
+
 int fdt_find_node(void* fdt, const char* path, int pathlen);
 int fdt_find_prop(void* fdt, int node, const char* name, int namelen);

@@ -8,7 +8,7 @@ import java.nio.ByteOrder
 
 /**
  * @param magic      0x7F followed by ELF (45 4c 46) in ASCII; these four bytes constitute the magic number.
- * @param `class`    This byte is set to either 1 or 2 to signify 32- or 64-bit format, respectively.
+ * @param format    This byte is set to either 1 or 2 to signify 32- or 64-bit format, respectively.
  * @param data       This byte is set to either 1 or 2 to signify little or big endianness, respectively. This affects interpretation of multibyte fields starting with offset 0x10.
  * @param version    Set to 1 for the original and current version of ELF.
  * @param osabi      Identifies the target operating system ABI.
@@ -16,7 +16,7 @@ import java.nio.ByteOrder
  */
 data class Identity(
     val magic: ByteArray,
-    val `class`: UByte,
+    val format: UByte,
     val data: UByte,
     val version: UByte,
     val osabi: UByte,
@@ -47,7 +47,7 @@ data class Identity(
     }
 
     fun readOffset(stream: InputStream): ULong {
-        return when (`class`) {
+        return when (format) {
             ELF.ELF32 -> readInt(stream).toULong()
             ELF.ELF64 -> readLong(stream)
             else -> throw IllegalStateException()
@@ -64,12 +64,12 @@ data class Identity(
 
     override fun toString(): String {
         return format(
-            "magic=[%x, %x, %x, %x], class=%x, data=%x, version=%x, osabi=%x, abiversion=%x",
+            "magic=[%x, %x, %x, %x], format=%x, data=%x, version=%x, osabi=%x, abiversion=%x",
             magic[0],
             magic[1],
             magic[2],
             magic[3],
-            `class`,
+            format,
             data,
             version,
             osabi,
@@ -82,14 +82,14 @@ data class Identity(
             val magic = ByteArray(4)
             buffer.get(magic)
 
-            val `class` = buffer.get().toUByte()
+            val format = buffer.get().toUByte()
             val data = buffer.get().toUByte()
             val version = buffer.get().toUByte()
             val osabi = buffer.get().toUByte()
             val abiversion = buffer.get().toUByte()
 
             // 7 bytes padding
-            return Identity(magic, `class`, data, version, osabi, abiversion)
+            return Identity(magic, format, data, version, osabi, abiversion)
         }
     }
 }

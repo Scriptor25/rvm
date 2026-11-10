@@ -2,16 +2,16 @@ package io.scriptor.fdt
 
 class HeaderBuilder : Buildable<Header> {
 
-    private var magic = 0u
-    private var totalsize = 0u
-    private var off_dt_struct = 0u
-    private var off_dt_strings = 0u
-    private var off_mem_rsvmap = 0u
-    private var version = 0u
-    private var last_comp_version = 0u
-    private var boot_cpuid_phys = 0u
-    private var size_dt_strings = 0u
-    private var size_dt_struct = 0u
+    private var magic = 0U
+    private var totalsize = 0U
+    private var off_dt_struct = 0U
+    private var off_dt_strings = 0U
+    private var off_mem_rsvmap = 0U
+    private var version = 0U
+    private var last_comp_version = 0U
+    private var boot_cpuid_phys = 0U
+    private var size_dt_strings = 0U
+    private var size_dt_struct = 0U
 
     fun magic(magic: UInt): HeaderBuilder {
         this.magic = magic

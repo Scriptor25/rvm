@@ -1,23 +1,28 @@
-package io.scriptor.impl
+package io.scriptor.impl.v64
 
+import io.scriptor.fdt.BuilderContext
+import io.scriptor.fdt.NodeBuilder
+import io.scriptor.machine.Device
 import io.scriptor.machine.FPRFile
-import io.scriptor.machine.Hart
-import io.scriptor.machine.Machine
 import io.scriptor.util.Log.format
 import java.io.PrintStream
 
-class FPRFileImpl : FPRFile {
+class FPRFile64 : FPRFile {
 
-    override val machine: Machine
+    override val machine
         get() = hart.machine
 
-    private val hart: Hart
+    private val hart: Hart64
 
     @OptIn(ExperimentalUnsignedTypes::class)
     private val values = ULongArray(32)
 
-    constructor(hart: Hart) {
+    constructor(hart: Hart64) {
         this.hart = hart
+    }
+
+    override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
+        TODO()
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)

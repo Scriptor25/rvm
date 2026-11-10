@@ -11,10 +11,10 @@ class ClientState {
     var append: Boolean = false
     var end: Boolean = false
 
-    var checksum: UInt = 0u
+    var checksum: UInt = 0U
 
     var noack: Boolean = false
 
     var stopId: Int = -1
-    var stopCode: UInt = 0x00u
+    var stopCode: UInt = 0x00U
 }

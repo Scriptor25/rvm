@@ -8,16 +8,13 @@ interface Device {
 
     val machine: Machine
 
+    fun build(context: BuilderContext<Device>, builder: NodeBuilder);
+
     fun dump(out: PrintStream)
 
-    fun reset()
+    fun reset() {}
 
-    fun step() {
-    }
+    fun step() {}
 
-    fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
-    }
-
-    fun close() {
-    }
+    fun close() {}
 }

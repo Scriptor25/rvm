@@ -48,12 +48,6 @@ class UART : IODevice {
         this.end = begin + 0x100UL
     }
 
-    override fun dump(out: PrintStream) {
-    }
-
-    override fun reset() {
-    }
-
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
@@ -73,7 +67,16 @@ class UART : IODevice {
             .prop { it.name("interrupt-parent").data(plic0) }
     }
 
-    override fun read(offset: UInt, size: UInt): ULong {
+    override fun dump(out: PrintStream) {
+        TODO()
+    }
+
+    override fun close() {
+        if (closeInput) inputStream.close()
+        if (closeOutput) outputStream.close()
+    }
+
+    override fun read(offset: UInt, size: UInt): ULong? {
         try {
             return when (offset) {
                 UART_RBR -> (if (inputStream.available() > 0) (inputStream.read() and 0xFF) else -1).toULong()
@@ -86,16 +89,16 @@ class UART : IODevice {
                 UART_SCR -> scr
                 else -> {
                     Log.error("invalid uart read offset=%x, size=%d", offset, size)
-                    0UL
+                    null
                 }
             }
         } catch (e: IOException) {
             Log.error("uart: %s", e)
-            return 0UL
+            return null
         }
     }
 
-    override fun write(offset: UInt, size: UInt, value: ULong) {
+    override fun write(offset: UInt, size: UInt, value: ULong): Boolean {
         try {
             when (offset) {
                 UART_THR -> {
@@ -108,20 +111,20 @@ class UART : IODevice {
                 UART_LCR -> lcr = value
                 UART_MCR -> mcr = value
                 UART_SCR -> scr = value
-                else -> Log.error("invalid uart write offset=%x, size=%d, value=%x", offset, size, value)
+                else -> {
+                    Log.error("invalid uart write offset=%x, size=%d, value=%x", offset, size, value)
+                    return false
+                }
             }
+            return true
         } catch (e: IOException) {
             Log.error("uart: %s", e)
+            return false
         }
     }
 
     override fun toString(): String {
         return format("serial@%x", begin)
-    }
-
-    override fun close() {
-        if (closeInput) inputStream.close()
-        if (closeOutput) outputStream.close()
     }
 
     companion object {
