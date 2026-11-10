@@ -1,8 +1,8 @@
-import io.scriptor.impl.v64.Hart64
-import io.scriptor.impl.v64.Machine64
-import io.scriptor.isa.Registry
-import io.scriptor.util.Log.format
-import io.scriptor.util.Resource
+import dev.scriptor.impl.v64.Hart64
+import dev.scriptor.impl.v64.Machine64
+import dev.scriptor.isa.Registry
+import dev.scriptor.util.Log.format
+import dev.scriptor.util.Resource
 import java.nio.ByteOrder
 import kotlin.test.BeforeTest
 import kotlin.test.Test
