@@ -44,3 +44,5 @@ bin/
 .DS_Store
 
 *.dt[b,s]
+
+/repository/

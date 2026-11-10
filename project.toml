@@ -1,0 +1,21 @@
+name = "rvm"
+
+[artifact]
+group = "dev.scriptor"
+name = "rvm"
+version = "1.0.0"
+
+[modules]
+include = ["."]
+
+[repositories]
+maven = [
+    "local",
+    "https://repo1.maven.org/maven2/",
+]
+
+[dependencies]
+maven = [
+    "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+    "org.jetbrains.kotlin:kotlin-reflect:2.4.21",
+]
