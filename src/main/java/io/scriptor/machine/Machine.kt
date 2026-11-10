@@ -35,6 +35,8 @@ interface Machine {
     var breakpointHandler: IntConsumer?
     val locks: MutableMap<ULong, Any>
 
+    var entryPoint: ULong
+
     operator fun <T : Device> get(
         type: KClass<T>
     ): T {

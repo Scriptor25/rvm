@@ -169,7 +169,7 @@ class Parser {
                         state = State.NUMBER
                     }
 
-                    buffer.toChar().isLetter() -> {
+                    (buffer == '_'.code) || buffer.toChar().isLetter() -> {
                         state = State.SYMBOL
                     }
 
@@ -189,7 +189,8 @@ class Parser {
             }
 
             State.SYMBOL -> when {
-                buffer.toChar().isLetterOrDigit() -> {
+                (buffer == '_'.code) || (buffer == '-'.code) || (buffer == '.'.code)
+                        || buffer.toChar().isLetterOrDigit() -> {
                     value.appendCodePoint(buffer)
                     read()
                 }

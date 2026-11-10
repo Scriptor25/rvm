@@ -154,7 +154,7 @@ class Hart64 : Hart {
         fprFile.reset()
         csrFile.reset()
 
-        pc = 0UL
+        pc = machine.entryPoint
         priv = CSR.CSR_M
         wfi = false
         semihosting = false
@@ -1336,10 +1336,6 @@ class Hart64 : Hart {
         gprFile.close()
         fprFile.close()
         csrFile.close()
-    }
-
-    private fun unsupported(name: String) {
-        throw TrapException(id, 0x02UL, 0x00UL, "unsupported instruction %s", name)
     }
 
     //region PRIVILEGED

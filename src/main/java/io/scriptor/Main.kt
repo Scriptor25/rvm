@@ -50,7 +50,9 @@ fun main(args: Array<String>) {
                 val filename = parts[0]
                 val offset = if (parts.size == 2) parts[1].toULong(0x10) else 0UL
 
-                load(machine, filename, offset)
+                val entryPoint = load(machine, filename, offset)
+
+                machine.entryPoint = entryPoint
             },
         ]
 
@@ -202,28 +204,12 @@ fun init(args: ArgContext): Machine {
                         Function { RNG(it, begin) }
                     }
 
-                    "systimer" -> {
+                    "timer_group" -> {
                         val begin = node[IntegerNode::class, "begin"].value
+                        val timers = if ("timers" in node) node[IntegerNode::class, "timers"].value else 0UL
+                        val watchdogs = if ("watchdogs" in node) node[IntegerNode::class, "watchdogs"].value else 0UL
 
-                        Function { SysTimer(it, begin) }
-                    }
-
-                    "intc" -> {
-                        val begin = node[IntegerNode::class, "begin"].value
-
-                        Function { IntC(it, begin) }
-                    }
-
-                    "watchdog" -> {
-                        val begin = node[IntegerNode::class, "begin"].value
-
-                        Function { WatchDog(it, begin) }
-                    }
-
-                    "clkctrl" -> {
-                        val begin = node[IntegerNode::class, "begin"].value
-
-                        Function { ClkCtrl(it, begin) }
+                        Function { TimerGroup(it, begin, timers.toInt(), watchdogs.toInt()) }
                     }
 
                     else -> throw NoSuchElementException(format("type=%s", type))
@@ -285,7 +271,7 @@ fun load(
     machine: Machine,
     filename: String,
     offset: ULong,
-) {
+): ULong {
     val stream = ChannelInputStream(filename)
 
     val buffer = ByteBuffer.allocateDirect(0x10)
@@ -354,7 +340,7 @@ fun load(
             memory.direct(data, (address - memory.begin).toUInt(), true)
         }
 
-        return
+        return header.entry + offset
     }
 
     stream.seek(0L)
@@ -369,12 +355,12 @@ fun load(
     )
 
     val data = ByteArray(stream.size().toInt())
-    val read: Int = stream.read(data)
+    val read = stream.read(data)
     if (read != data.size) {
         Log.warn("stream read %d, requested %d", read, data.size)
     }
 
     memory.direct(data, (offset - memory.begin).toUInt(), true)
 
-    return
+    return offset
 }

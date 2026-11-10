@@ -24,6 +24,10 @@ interface Hart : Device {
 
     fun wake()
 
+    fun unsupported(name: String) {
+        throw TrapException(id, 0x02UL, 0x00UL, "unsupported instruction %s", name)
+    }
+
     fun translate(vAddress: ULong, access: MMU.Access, unsafe: Boolean): ULong {
         return mmu.translate(privilege, vAddress, access, unsafe)
     }

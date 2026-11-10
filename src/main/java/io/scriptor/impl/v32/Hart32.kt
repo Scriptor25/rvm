@@ -3,6 +3,7 @@ package io.scriptor.impl.v32
 import io.scriptor.fdt.BuilderContext
 import io.scriptor.fdt.NodeBuilder
 import io.scriptor.impl.MMU
+import io.scriptor.impl.TrapException
 import io.scriptor.isa.CSR
 import io.scriptor.isa.Instruction
 import io.scriptor.machine.Device
@@ -27,8 +28,12 @@ class Hart32 : Hart {
     override val sleeping
         get() = wfi
 
+    private var ppc = 0UL
     private var priv = CSR.CSR_M
     private var wfi = false
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    private val values = UIntArray(5)
 
     constructor(machine: Machine32, id: Int) {
         this.machine = machine
@@ -48,24 +53,57 @@ class Hart32 : Hart {
         fprFile.reset()
         csrFile.reset()
 
-        pc = 0UL
+        pc = machine.entryPoint
         priv = CSR.CSR_M
         wfi = false
     }
 
+    override fun step() {
+        try {
+            // TODO: interrupt()
+
+            val instruction = fetch(pc, false)
+            if (!machine.registry.contains(64U, instruction))
+                unsupported(instruction.toHexString())
+
+            val definition = machine.registry[64U, instruction]
+
+            ppc = pc
+            pc = execute(instruction, definition)
+        } catch (e: TrapException) {
+            TODO()
+            // if (handle(e.trapCause, e.trapValue)) {
+            //     if (e.id < 0) throw TrapException(id, e)
+            //     throw e
+            // }
+        }
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun execute(instruction: UInt, definition: Instruction): ULong {
-        TODO()
+        if (wfi) {
+            return pc
+        }
+
+        var next = pc + definition.ilen
+
+        when (definition.mnemonic) {
+            "c.mv" -> {
+                definition.decode(instruction, values, "rd", "rs2")
+                c_mv(values[0], values[1])
+            }
+
+            else -> throw TrapException(id, 0x02UL, instruction.toULong(), "unsupported instruction %s", definition)
+        }
+
+        return next
     }
 
     override fun wake() {
         TODO()
     }
 
-    override fun translate(
-        vAddress: ULong,
-        access: MMU.Access,
-        unsafe: Boolean
-    ): ULong {
-        TODO()
+    fun c_mv(rd: UInt, rs2: UInt) {
+        gprFile[rd] = gprFile.getwu(rs2)
     }
 }

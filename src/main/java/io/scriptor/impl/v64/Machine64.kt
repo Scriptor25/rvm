@@ -31,6 +31,8 @@ class Machine64 : Machine {
     override var breakpointHandler: IntConsumer? = null
     override val locks: MutableMap<ULong, Any> = HashMap()
 
+    override var entryPoint: ULong = 0UL
+
     constructor(registry: Registry, order: ByteOrder, harts: Int, devices: Array<Function<Machine, Device>>) {
         this.registry = registry
         this.order = order
