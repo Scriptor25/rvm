@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 /**
  * The layout of the header for the devicetree is defined by the following C structure. All the header fields are
  * 32-bit integers, stored in big-endian format.
- * 
+ *
  * @param magic             This field shall contain the value 0xd00dfeed (big-endian).
  * @param totalsize         This field shall contain the total size in bytes of the devicetree data structure.
  * This size shall encompass all sections of the structure: the header, the memory reservation

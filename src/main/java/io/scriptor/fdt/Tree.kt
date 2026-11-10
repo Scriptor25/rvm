@@ -15,3 +15,8 @@ data class Tree(val root: Node) {
         return size
     }
 }
+
+fun tree(block: NodeBuilder.() -> Unit): Tree {
+    val root = NodeBuilder("").apply(block).build()
+    return Tree(root)
+}

@@ -37,19 +37,21 @@ class Memory : IODevice {
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
-        if (readonly) {
-            builder
-                .name(format("rom@%x", begin))
-                .prop { it.name("phandle").data(phandle) }
-                .prop { it.name("reg").data(begin, end - begin) }
-                .prop { it.name("no-map").data() }
-                .prop { it.name("readonly").data() }
-        } else {
-            builder
-                .name(format("memory@%x", begin))
-                .prop { it.name("phandle").data(phandle) }
-                .prop { it.name("device_type").data("memory") }
-                .prop { it.name("reg").data(begin, end - begin) }
+        builder.apply {
+            if (readonly) {
+                name(format("rom@%x", begin))
+
+                prop("phandle") { data(phandle) }
+                prop("reg") { data(begin, end - begin) }
+                prop("no-map") { data() }
+                prop("readonly") { data() }
+            } else {
+                name(format("memory@%x", begin))
+
+                prop("phandle") { data(phandle) }
+                prop("device_type") { data("memory") }
+                prop("reg") { data(begin, end - begin) }
+            }
         }
     }
 

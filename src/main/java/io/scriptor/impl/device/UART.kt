@@ -54,17 +54,19 @@ class UART : IODevice {
 
         val plic0 = context.get(machine[PLIC::class])
 
-        builder
-            .name(format("serial@%x", begin))
-            .prop { it.name("phandle").data(phandle) }
-            .prop { it.name("compatible").data("ns16550a") }
-            .prop { it.name("reg").data(begin, end - begin) }
-            .prop { it.name("clock-frequency").data(0x384000) }
-            .prop { it.name("current-speed").data(0x1c200) }
-            .prop { it.name("reg-shift").data(0x00) }
-            .prop { it.name("reg-io-width").data(0x01) }
-            .prop { it.name("interrupts").data(0x01) }
-            .prop { it.name("interrupt-parent").data(plic0) }
+        builder.apply {
+            name(format("serial@%x", begin))
+
+            prop("phandle") { data(phandle) }
+            prop("compatible") { data("ns16550a") }
+            prop("reg") { data(begin, end - begin) }
+            prop("clock-frequency") { data(0x384000) }
+            prop("current-speed") { data(0x1c200) }
+            prop("reg-shift") { data(0x00) }
+            prop("reg-io-width") { data(0x01) }
+            prop("interrupts") { data(0x01) }
+            prop("interrupt-parent") { data(plic0) }
+        }
     }
 
     override fun dump(out: PrintStream) {
@@ -244,12 +246,12 @@ class UART : IODevice {
         private const val UART_LCR_WORD_LENGTH = 3U
 
         /**
-         * 
+         *
          */
         private const val UART_LCR_STOP_BITS = 4U
 
         /**
-         * 
+         *
          */
         private const val UART_LCR_PARITY = 56U
 

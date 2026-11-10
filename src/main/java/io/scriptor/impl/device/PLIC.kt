@@ -52,15 +52,17 @@ class PLIC : IODevice {
             ie[id * 2 + 1] = 0x0BU
         }
 
-        builder
-            .name(format("plic@%x", begin))
-            .prop { it.name("phandle").data(phandle) }
-            .prop { it.name("compatible").data("riscv,plic0") }
-            .prop { it.name("reg").data(begin, end - begin) }
-            .prop { it.name("interrupt-controller").data() }
-            .prop { it.name("#interrupt-cells").data(0x01U) }
-            .prop { it.name("riscv,ndev").data(ndev) }
-            .prop { it.name("interrupts-extended").data(*ie) }
+        builder.apply {
+            name(format("plic@%x", begin))
+
+            prop("phandle") { data(phandle) }
+            prop("compatible") { data("riscv,plic0") }
+            prop("reg") { data(begin, end - begin) }
+            prop("interrupt-controller") { data() }
+            prop("#interrupt-cells") { data(0x01U) }
+            prop("riscv,ndev") { data(ndev) }
+            prop("interrupts-extended") { data(*ie) }
+        }
     }
 
     override fun dump(out: PrintStream) {

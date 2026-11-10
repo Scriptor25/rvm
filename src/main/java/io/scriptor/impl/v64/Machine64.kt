@@ -3,7 +3,7 @@ package io.scriptor.impl.v64
 import io.scriptor.elf.SymbolTable
 import io.scriptor.fdt.BuilderContext
 import io.scriptor.fdt.FDT
-import io.scriptor.fdt.TreeBuilder
+import io.scriptor.fdt.tree
 import io.scriptor.impl.device.UART
 import io.scriptor.isa.Registry
 import io.scriptor.machine.Device
@@ -46,106 +46,84 @@ class Machine64 : Machine {
     override fun generateDeviceTree(buffer: ByteBuffer) {
         val context = BuilderContext<Device>()
 
-        TreeBuilder()
-            .root {
-                it
-                    .name("")
-                    .prop { it.name("#address-cells").data(0x02) }
-                    .prop { it.name("#size-cells").data(0x02) }
-                    .prop { it.name("compatible").data("rvm,riscv-virt") }
-                    .prop { it.name("model").data("RVM") }
-                    .node {
-                        it
-                            .name("chosen")
-                            .prop(UART::class in this) {
-                                it.name("stdout-path").data("/soc/${this[UART::class]}")
-                            }
-                            .node {
-                                it
-                                    .name("opensbi-domains")
-                                    .prop { it.name("compatible").data("opensbi,domain,config") }
-                                    .node {
-                                        it
-                                            .name("tmemory")
-                                            .prop { it.name("phandle").data(-0x2) }
-                                            .prop { it.name("compatible").data("opensbi,domain,memregion") }
-                                            .prop { it.name("base").data(0x80000000L) }
-                                            .prop { it.name("order").data(20) }
-                                    }
-                                    .node {
-                                        it
-                                            .name("umemory")
-                                            .prop { it.name("phandle").data(-0x3) }
-                                            .prop { it.name("compatible").data("opensbi,domain,memregion") }
-                                            .prop { it.name("base").data(0x0L) }
-                                            .prop { it.name("order").data(64) }
-                                    }
-                                    .node {
-                                        it
-                                            .name("tuart")
-                                            .prop { it.name("phandle").data(-0x4) }
-                                            .prop { it.name("compatible").data("opensbi,domain,memregion") }
-                                            .prop { it.name("base").data(0x20000000L) }
-                                            .prop { it.name("order").data(12) }
-                                            .prop { it.name("mmio").data() }
-                                            .prop(UART::class in this) {
-                                                it.name("devices").data(context.get(this[UART::class]))
-                                            }
-                                    }
-                                    .node {
-                                        it
-                                            .name("tdomain")
-                                            .prop { it.name("phandle").data(-0x5) }
-                                            .prop { it.name("compatible").data("opensbi,domain,instance") }
-                                            .prop { it.name("possible-harts").data(context.get(harts[0])) }
-                                            .prop { it.name("regions").data(-0x2, 0x3F, -0x4, 0x3F) }
-                                            .prop { it.name("boot-hart").data(context.get(harts[0])) }
-                                            .prop { it.name("next-arg1").data(0L) }
-                                            .prop { it.name("next-addr").data(0x80000000L) }
-                                            .prop { it.name("next-mode").data(1) }
-                                            .prop { it.name("system-reset-allowed").data() }
-                                            .prop { it.name("system-suspend-allowed").data() }
-                                    }
-                                    .node {
-                                        it
-                                            .name("udomain")
-                                            .prop { pb -> pb.name("phandle").data(-0x6) }
-                                            .prop { pb -> pb.name("compatible").data("opensbi,domain,instance") }
-                                            .prop { pb -> pb.name("possible-harts").data(context.get(harts[0])) }
-                                            .prop { pb -> pb.name("regions").data(-0x2, 0x00, -0x4, 0x00, -0x3, 0x3F) }
-                                    }
-                            }
+        val tree = tree {
+            prop("#address-cells") { data(0x02) }
+            prop("#size-cells") { data(0x02) }
+            prop("compatible") { data("rvm,riscv-virt") }
+            prop("model") { data("RVM") }
+            node("chosen") {
+                prop(UART::class in this@Machine64, "stdout-path") {
+                    data("/soc/${this@Machine64[UART::class]}")
+                }
+                node("opensbi-domains") {
+                    prop("compatible") { data("opensbi,domain,config") }
+                    node("tmemory") {
+                        prop("phandle") { data(-0x2) }
+                        prop("compatible") { data("opensbi,domain,memregion") }
+                        prop("base") { data(0x80000000L) }
+                        prop("order") { data(20) }
                     }
-                    .node {
-                        it.name("cpus")
-                            .prop { it.name("#address-cells").data(0x01) }
-                            .prop { it.name("#size-cells").data(0x00) }
-                            .prop { it.name("timebase-frequency").data(0x989680) }
-
-                        for (hart in harts) {
-                            it.node { builder ->
-                                hart.build(
-                                    context,
-                                    builder.prop { it.name("opensbi-domain").data(-0x5) },
-                                )
-                            }
+                    node("umemory") {
+                        prop("phandle") { data(-0x3) }
+                        prop("compatible") { data("opensbi,domain,memregion") }
+                        prop("base") { data(0x0L) }
+                        prop("order") { data(64) }
+                    }
+                    node("tuart") {
+                        prop("phandle") { data(-0x4) }
+                        prop("compatible") { data("opensbi,domain,memregion") }
+                        prop("base") { data(0x20000000L) }
+                        prop("order") { data(12) }
+                        prop("mmio") { data() }
+                        prop(UART::class in this@Machine64, "devices") {
+                            data(context.get(this@Machine64[UART::class]))
                         }
                     }
-                    .node {
-                        it
-                            .name("soc")
-                            .prop { it.name("#address-cells").data(0x02) }
-                            .prop { it.name("#size-cells").data(0x02) }
-                            .prop { it.name("compatible").data("simple-bus") }
-                            .prop { it.name("ranges").data() }
-
-                        for (device in devices) {
-                            it.node { builder ->
-                                device.build(context, builder)
-                            }
-                        }
+                    node("tdomain") {
+                        prop("phandle") { data(-0x5) }
+                        prop("compatible") { data("opensbi,domain,instance") }
+                        prop("possible-harts") { data(context.get(harts[0])) }
+                        prop("regions") { data(-0x2, 0x3F, -0x4, 0x3F) }
+                        prop("boot-hart") { data(context.get(harts[0])) }
+                        prop("next-arg1") { data(0L) }
+                        prop("next-addr") { data(0x80000000L) }
+                        prop("next-mode") { data(1) }
+                        prop("system-reset-allowed") { data() }
+                        prop("system-suspend-allowed") { data() }
                     }
+                    node("udomain") {
+                        prop("phandle") { data(-0x6) }
+                        prop("compatible") { data("opensbi,domain,instance") }
+                        prop("possible-harts") { data(context.get(harts[0])) }
+                        prop("regions") { data(-0x2, 0x00, -0x4, 0x00, -0x3, 0x3F) }
+                    }
+                }
             }
-            .build { tree -> FDT.write(tree, buffer) }
+            node("cpus") {
+                prop("#address-cells") { data(0x01) }
+                prop("#size-cells") { data(0x00) }
+                prop("timebase-frequency") { data(0x989680) }
+
+                for (hart in harts) {
+                    node {
+                        prop("opensbi-domain") { data(-0x5) }
+
+                        hart.build(context, this)
+                    }
+                }
+            }
+            node("soc") {
+                prop("#address-cells") { data(0x02) }
+                prop("#size-cells") { data(0x02) }
+                prop("compatible") { data("simple-bus") }
+                prop("ranges") { data() }
+
+                for (device in devices) {
+                    node { device.build(context, this) }
+                }
+            }
+        }
+
+        FDT.write(tree, buffer)
     }
 }

@@ -55,12 +55,14 @@ class CLINT : IODevice {
             ie[id * 4 + 3] = 0x07U
         }
 
-        builder
-            .name(format("clint@%x", begin))
-            .prop { it.name("phandle").data(phandle) }
-            .prop { it.name("compatible").data("riscv,clint0") }
-            .prop { it.name("reg").data(begin, end - begin) }
-            .prop { it.name("interrupts-extended").data(*ie) }
+        builder.apply {
+            name(format("clint@%x", begin))
+
+            prop("phandle") { data(phandle) }
+            prop("compatible") { data("riscv,clint0") }
+            prop("reg") { data(begin, end - begin) }
+            prop("interrupts-extended") { data(*ie) }
+        }
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)

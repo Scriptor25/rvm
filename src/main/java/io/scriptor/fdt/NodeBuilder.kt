@@ -1,53 +1,41 @@
 package io.scriptor.fdt
 
-import java.util.function.Consumer
+class NodeBuilder(var name: String? = null) : Buildable<Node> {
 
-class NodeBuilder : Buildable<Node> {
+    private val props = mutableListOf<Prop>()
+    private val nodes = mutableListOf<Node>()
 
-    private var name: String? = null
-    private val props: MutableList<Prop> = ArrayList()
-    private val nodes: MutableList<Node> = ArrayList()
-
-    fun name(name: String): NodeBuilder {
-        this.name = name
-        return this
+    fun name(str: String) {
+        name = str
     }
 
-    fun prop(prop: Prop): NodeBuilder {
-        this.props.add(prop)
-        return this
+    fun prop(prop: Prop) {
+        props.add(prop)
     }
 
-    fun prop(consumer: Consumer<PropBuilder>): NodeBuilder {
-        val builder = PropBuilder()
-        consumer.accept(builder)
-        this.props.add(builder.build())
-        return this
+    fun prop(name: String, block: PropBuilder.() -> Unit) {
+        props.add(PropBuilder(name).apply(block).build())
     }
 
-    fun prop(condition: Boolean, consumer: Consumer<PropBuilder>): NodeBuilder {
-        if (!condition)
-            return this
+    fun prop(condition: Boolean, name: String, block: PropBuilder.() -> Unit) {
+        if (!condition) return
 
-        val builder = PropBuilder()
-        consumer.accept(builder)
-        this.props.add(builder.build())
-        return this
+        props.add(PropBuilder(name).apply(block).build())
     }
 
-    fun node(node: Node): NodeBuilder {
-        this.nodes.add(node)
-        return this
+    fun node(node: Node) {
+        nodes.add(node)
     }
 
-    fun node(consumer: Consumer<NodeBuilder>): NodeBuilder {
-        val builder = NodeBuilder()
-        consumer.accept(builder)
-        this.nodes.add(builder.build())
-        return this
+    fun node(block: NodeBuilder.() -> Unit) {
+        nodes.add(NodeBuilder().apply(block).build())
+    }
+
+    fun node(name: String, block: NodeBuilder.() -> Unit) {
+        nodes.add(NodeBuilder(name).apply(block).build())
     }
 
     override fun build(): Node {
-        return Node(checkNotNull(name) { "missing node name" }, props.toTypedArray(), nodes.toTypedArray())
+        return Node(requireNotNull(name), props.toTypedArray(), nodes.toTypedArray())
     }
 }

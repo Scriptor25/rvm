@@ -78,22 +78,24 @@ class Hart64 : Hart {
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
 
-        builder
-            .name(format("cpu@%d", id))
-            .prop { it.name("device_type").data("cpu") }
-            .prop { it.name("reg").data(id) }
-            .prop { it.name("status").data("okay") }
-            .prop { it.name("compatible").data("riscv") }
-            .prop { it.name("riscv,isa").data("rv64imafdqc_zifencei_zicsr") }
-            .prop { it.name("riscv,mmu-type").data("riscv,sv39,sv48,sv57") }
-            .node {
-                it
-                    .name("interrupt-controller")
-                    .prop { it.name("phandle").data(phandle) }
-                    .prop { it.name("#interrupt-cells").data(0x01) }
-                    .prop { it.name("compatible").data("riscv,cpu-intc") }
-                    .node { it.name("interrupt-controller") }
+        builder.apply {
+            name(format("cpu@%d", id))
+
+            prop("device_type") { data("cpu") }
+            prop("reg") { data(id) }
+            prop("status") { data("okay") }
+            prop("compatible") { data("riscv") }
+            prop("riscv,isa") { data("rv64imafdqc_zifencei_zicsr") }
+            prop("riscv,mmu-type") { data("riscv,sv39,sv48,sv57") }
+
+            node("interrupt-controller") {
+                prop("phandle") { data(phandle) }
+                prop("#interrupt-cells") { data(0x01) }
+                prop("compatible") { data("riscv,cpu-intc") }
+
+                node("interrupt-controller") { }
             }
+        }
     }
 
     override fun dump(out: PrintStream) {
