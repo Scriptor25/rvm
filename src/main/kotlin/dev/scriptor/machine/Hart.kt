@@ -16,6 +16,7 @@ interface Hart : Device {
     val csrFile: CSRFile
 
     val mmu: MMU
+    val ic: Device
 
     val privilege: UInt
     val sleeping: Boolean

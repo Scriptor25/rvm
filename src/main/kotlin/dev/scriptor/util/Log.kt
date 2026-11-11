@@ -8,17 +8,16 @@ import java.util.function.Consumer
 
 object Log {
 
-    private val queue: BlockingQueue<Consumer<PrintStream>> = LinkedBlockingQueue<Consumer<PrintStream>>()
     private val SHUTDOWN = Consumer<PrintStream> { it.println("LOG SHUTDOWN") }
+
+    private val queue: BlockingQueue<Consumer<PrintStream>> = LinkedBlockingQueue()
 
     fun handle() {
         try {
             while (true) {
                 val consumer = queue.take()
                 consumer.accept(System.err)
-                if (consumer === SHUTDOWN) {
-                    break
-                }
+                if (consumer === SHUTDOWN) break
             }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -29,7 +28,7 @@ object Log {
         queue.add(SHUTDOWN)
     }
 
-    var level = 2U
+    var level = 1U
 
     fun info(message: String) {
         if (level >= 2U) {

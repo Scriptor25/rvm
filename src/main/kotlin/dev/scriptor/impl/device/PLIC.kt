@@ -46,9 +46,9 @@ class PLIC : IODevice {
         val phandle = context.get(this)
 
         val ie = UIntArray(2 * machine.harts.size)
-        for (id in 0..<machine.harts.size) {
-            val cpu = context.get(machine.harts[id])
-            ie[id * 2] = cpu
+        for ((id, hart) in machine.harts.withIndex()) {
+            val icPHandle = context.get(hart.ic)
+            ie[id * 2] = icPHandle
             ie[id * 2 + 1] = 0x0BU
         }
 

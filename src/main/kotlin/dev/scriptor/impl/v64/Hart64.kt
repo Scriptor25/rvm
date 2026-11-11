@@ -9,6 +9,7 @@ import dev.scriptor.isa.CSR
 import dev.scriptor.isa.Instruction
 import dev.scriptor.machine.Device
 import dev.scriptor.machine.Hart
+import dev.scriptor.machine.Machine
 import dev.scriptor.machine.Semihosting
 import dev.scriptor.util.ByteUtil.signExtend
 import dev.scriptor.util.ByteUtil.signExtendLong
@@ -31,6 +32,16 @@ class Hart64 : Hart {
     override val csrFile = CSRFile64(this)
 
     override val mmu = MMU(this)
+    override val ic = object : Device {
+        override val machine: Machine
+            get() = kotlin.error("stub")
+
+        override fun build(context: BuilderContext<Device>, builder: NodeBuilder) =
+            kotlin.error("stub")
+
+        override fun dump(out: PrintStream) =
+            kotlin.error("stub")
+    }
 
     override val privilege
         get() = priv
@@ -77,10 +88,12 @@ class Hart64 : Hart {
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun build(context: BuilderContext<Device>, builder: NodeBuilder) {
         val phandle = context.get(this)
+        val icPHandle = context.get(ic)
 
         builder.apply {
             name(format("cpu@%d", id))
 
+            prop("phandle") { data(phandle) }
             prop("device_type") { data("cpu") }
             prop("reg") { data(id) }
             prop("status") { data("okay") }
@@ -89,11 +102,10 @@ class Hart64 : Hart {
             prop("riscv,mmu-type") { data("riscv,sv39,sv48,sv57") }
 
             node("interrupt-controller") {
-                prop("phandle") { data(phandle) }
                 prop("#interrupt-cells") { data(0x01) }
+                prop("phandle") { data(icPHandle) }
                 prop("compatible") { data("riscv,cpu-intc") }
-
-                node("interrupt-controller") { }
+                prop("interrupt-controller") { data() }
             }
         }
     }

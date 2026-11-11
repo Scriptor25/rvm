@@ -7,7 +7,11 @@ import dev.scriptor.util.Log.format
 
 class MMU {
 
-    private data class Key(val vpn: ULong, val asid: ULong)
+    private data class Key(
+        val vpn: ULong,
+        val asid: ULong,
+        val global: Boolean,
+    )
 
     private class Entry(
         val pteAddress: ULong,
@@ -128,12 +132,14 @@ class MMU {
             root,
         )
 
+        if (!isCanonical(vAddress, levels)) {
+            pageFault(privilege, vAddress, access, unsafe, "encountered non-canonical virtual address")
+            return 0UL.inv()
+        }
+
         run {
             val vpn = vAddress shr PAGE_SHIFT
-            var entry = tlb[Key(vpn, asid)]
-            if (entry == null) {
-                entry = tlb[Key(vpn, 0UL)]
-            }
+            val entry = tlb[Key(vpn, asid, false)] ?: tlb[Key(vpn, 0UL, true)]
             if (entry != null && vpn in entry) {
                 entry.pte = touch(privilege, vAddress, access, unsafe, entry.pteAddress, entry.pte)
 
@@ -157,6 +163,8 @@ class MMU {
         }
 
         var a = root shl PAGE_SHIFT
+
+        var global = false
 
         for (i in levels - 1 downTo 0) {
             val vpn = vpn(vAddress, i)
@@ -191,17 +199,22 @@ class MMU {
                 return 0UL.inv()
             }
 
+            global = global || pteG(pte)
+
             if (pteR(pte) || pteX(pte)) {
                 pte = touch(privilege, vAddress, access, unsafe, pteAddress, pte)
 
                 val mask = (1UL shl (i * 9)) - 1UL
                 val vVpn = vAddress shr PAGE_SHIFT
 
-                var ppn = ppn(pte, i)
-                if (i > 0) {
-                    ppn = ppn and mask.inv()
-                    ppn = ppn or (vVpn and mask)
+                val ptePpn = ppn(pte)
+
+                if (i > 0 && (ptePpn and mask) != 0UL) {
+                    pageFault(privilege, vAddress, access, unsafe, "misaligned superpage")
+                    return 0UL.inv()
                 }
+
+                val ppn = (ptePpn and mask.inv()) or (vVpn and mask)
 
                 val pgSize = 1UL shl (PAGE_SHIFT + i * 9)
                 val pgBase = ppn shl PAGE_SHIFT
@@ -210,7 +223,7 @@ class MMU {
 
                 val pteVpn = vVpn and mask.inv()
 
-                add(Entry(pteAddress, pte, pteVpn, asid, pgBase, pgSize))
+                add(Entry(pteAddress, pte, pteVpn, asid, pgBase, pgSize), global)
 
                 Log.info(
                     "   => ppn=%x, pgsize=%x, pgbase=%016x, pgoffset=%03x, ptevpn=%x, paddr=%016x",
@@ -259,12 +272,14 @@ class MMU {
         unsafe: Boolean,
     ): ULong = walk(5, privilege, vAddress, access, asid, root, unsafe)
 
-    private fun add(entry: Entry) {
-        val asid = if (pteG(entry.pte)) 0UL else entry.asid
-
+    private fun add(entry: Entry, global: Boolean) {
         val pgCount = entry.pgSize shr PAGE_SHIFT
         for (i in 0UL..<pgCount) {
-            val key = Key(entry.vpn + i, asid)
+            val key = Key(
+                entry.vpn + i,
+                if (global) 0UL else entry.asid,
+                global,
+            )
             tlb[key] = entry
         }
     }
@@ -285,7 +300,7 @@ class MMU {
 
         return when (access) {
             Access.FETCH -> !x || (u && privilege != CSR.CSR_U)
-            Access.READ -> !r
+            Access.READ -> !r // TODO: mxr
             Access.WRITE -> !w
         }
     }
@@ -338,6 +353,23 @@ class MMU {
             Access.WRITE -> WRITE_PAGE_FAULT
         }
 
+        private fun isCanonical(vAddress: ULong, levels: Int): Boolean {
+            val signBit = when (levels) {
+                3 -> 38
+                4 -> 47
+                5 -> 56
+                else -> null
+            } ?: return true
+
+            val sign = (vAddress shr signBit) and 1UL
+            val upper = vAddress shr (signBit + 1)
+
+            return upper == when (sign) {
+                0UL -> 0UL
+                else -> (ULong.MAX_VALUE shr (signBit + 1))
+            }
+        }
+
         private fun pteV(pte: ULong): Boolean = (pte and 1UL) != 0UL
 
         private fun pteR(pte: ULong): Boolean = ((pte shr 1) and 1UL) != 0UL
@@ -355,8 +387,6 @@ class MMU {
         private fun pteD(pte: ULong): Boolean = ((pte shr 7) and 1UL) != 0UL
 
         private fun vpn(vAddress: ULong, i: Int): ULong = (vAddress shr (PAGE_SHIFT + i * 9)) and 0x1FFUL
-
-        private fun ppn(pte: ULong, i: Int): ULong = ((pte shr 10) and 0xFFFFFFFFFFFUL) shr (i * 9)
 
         private fun ppn(pte: ULong): ULong = (pte shr 10) and 0xFFFFFFFFFFFUL
     }

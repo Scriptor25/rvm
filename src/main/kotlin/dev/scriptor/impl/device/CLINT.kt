@@ -47,11 +47,11 @@ class CLINT : IODevice {
         val phandle = context.get(this)
 
         val ie = UIntArray(4 * machine.harts.size)
-        for (id in machine.harts.indices) {
-            val cpu = context.get(machine.harts[id])
-            ie[id * 4] = cpu
+        for ((id, hart) in machine.harts.withIndex()) {
+            val icPHandle = context.get(hart.ic)
+            ie[id * 4] = icPHandle
             ie[id * 4 + 1] = 0x03U
-            ie[id * 4 + 2] = cpu
+            ie[id * 4 + 2] = icPHandle
             ie[id * 4 + 3] = 0x07U
         }
 

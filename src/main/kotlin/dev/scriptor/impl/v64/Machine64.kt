@@ -61,7 +61,7 @@ class Machine64 : Machine {
                         prop("phandle") { data(-0x2) }
                         prop("compatible") { data("opensbi,domain,memregion") }
                         prop("base") { data(0x80000000L) }
-                        prop("order") { data(20) }
+                        prop("order") { data(28) }
                     }
                     node("umemory") {
                         prop("phandle") { data(-0x3) }
@@ -84,7 +84,7 @@ class Machine64 : Machine {
                         prop("compatible") { data("opensbi,domain,instance") }
                         prop("possible-harts") { data(context.get(harts[0])) }
                         prop("regions") { data(-0x2, 0x3F, -0x4, 0x3F) }
-                        prop("boot-hart") { data(context.get(harts[0])) }
+                        prop("boot-hart") { data(0) }
                         prop("next-arg1") { data(0L) }
                         prop("next-addr") { data(0x80000000L) }
                         prop("next-mode") { data(1) }

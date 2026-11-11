@@ -8,6 +8,7 @@ import dev.scriptor.isa.CSR
 import dev.scriptor.isa.Instruction
 import dev.scriptor.machine.Device
 import dev.scriptor.machine.Hart
+import dev.scriptor.machine.Machine
 import java.io.PrintStream
 
 class Hart32 : Hart {
@@ -22,6 +23,16 @@ class Hart32 : Hart {
     override val csrFile = CSRFile32(this)
 
     override val mmu = MMU(this)
+    override val ic = object : Device {
+        override val machine: Machine
+            get() = kotlin.error("stub")
+
+        override fun build(context: BuilderContext<Device>, builder: NodeBuilder) =
+            kotlin.error("stub")
+
+        override fun dump(out: PrintStream) =
+            kotlin.error("stub")
+    }
 
     override val privilege
         get() = priv
