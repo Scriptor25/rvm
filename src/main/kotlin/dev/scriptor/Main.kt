@@ -67,15 +67,10 @@ fun main(args: Array<String>) {
 
 fun init(args: ArgContext): Machine {
     val registry = Registry()
-    Resource.read(true, "index.list") { stream ->
-        stream
-            .bufferedReader()
-            .lines()
-            .map { line -> line.trim { it <= ' ' } }
-            .filter { line -> !line.isEmpty() }
-            .filter { line -> line.endsWith(".isa") }
-            .forEach { line -> Resource.read(true, line, registry::parse) }
-    }
+
+    Resource.names
+        .filter { it.endsWith(".isa") }
+        .forEach { Resource.read(true, it, registry::parse) }
 
     val isResource = "--config" !in args || "--config-file" !in args
     val filename = if ("--config" in args) args["--config"] else "config/default.conf"

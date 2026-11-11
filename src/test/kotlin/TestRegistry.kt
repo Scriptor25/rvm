@@ -19,15 +19,9 @@ internal class TestRegistry {
     val hart: Hart64
 
     init {
-        Resource.read(true, "index.list") { stream ->
-            stream
-                .bufferedReader()
-                .lines()
-                .map { line -> line.trim { it <= ' ' } }
-                .filter { line -> !line.isEmpty() }
-                .filter { line -> line.endsWith(".isa") }
-                .forEach { line -> Resource.read(true, line, registry::parse) }
-        }
+        Resource.names
+            .filter { it.endsWith(".isa") }
+            .forEach { Resource.read(true, it, registry::parse) }
 
         machine = Machine64(registry, ByteOrder.nativeOrder(), 1, arrayOf())
         hart = machine.harts[0] as Hart64
