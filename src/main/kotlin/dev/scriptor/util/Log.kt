@@ -28,7 +28,7 @@ object Log {
         queue.add(SHUTDOWN)
     }
 
-    var level = 1U
+    var level = 2U
 
     fun info(message: String) {
         if (level >= 2U) {

@@ -66,7 +66,7 @@ class PLIC : IODevice {
     }
 
     override fun dump(out: PrintStream) {
-        TODO()
+        out.println(format("plic: begin=%016x, end=%016x, ndev=%d", begin, end, ndev))
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)

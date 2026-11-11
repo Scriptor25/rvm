@@ -119,6 +119,9 @@ class CSRFile64 : CSRFile {
 
     @OptIn(ExperimentalUnsignedTypes::class)
     override fun put(addr: UInt, priv: UInt, value: ULong) {
+        if (addr == CSR.satp)
+            machine.dump(System.err)
+
         var addr = addr
         if (!present[addr.toInt()]) {
             error(

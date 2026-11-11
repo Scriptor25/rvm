@@ -21,7 +21,8 @@ class MMU {
         val pgBase: ULong,
         val pgSize: ULong,
     ) {
-        operator fun contains(vpn: ULong): Boolean = this.vpn <= vpn && vpn < this.vpn + (pgSize shr PAGE_SHIFT)
+        operator fun contains(vpn: ULong): Boolean =
+            this.vpn <= vpn && vpn < this.vpn + (pgSize shr PAGE_SHIFT)
     }
 
     enum class Access {
@@ -37,19 +38,21 @@ class MMU {
         this.hart = hart
     }
 
-    fun flush(vAddress: ULong, asid: ULong) {
-        if (vAddress == 0UL && asid == 0UL) {
+    fun flush(vAddress: ULong?, asid: ULong?) {
+        if (vAddress == null && asid == null) {
             tlb.clear()
             return
         }
 
-        val vpn = vAddress shr PAGE_SHIFT
+        val vpn = vAddress?.shr(PAGE_SHIFT)
 
         val remove = ArrayList<Key>()
-        for (e in tlb) {
-            val matches = (asid == 0UL || asid == e.key.asid) && (vAddress == 0UL || vpn in e.value)
-            if (matches) {
-                remove.add(e.key)
+
+        for ((key, entry) in tlb) {
+            val addressMatches = vpn == null || vpn in entry
+            val asidMatches = asid == null || (!key.global && key.asid == asid)
+            if (addressMatches && asidMatches) {
+                remove.add(key)
             }
         }
 
@@ -139,7 +142,11 @@ class MMU {
 
         run {
             val vpn = vAddress shr PAGE_SHIFT
-            val entry = tlb[Key(vpn, asid, false)] ?: tlb[Key(vpn, 0UL, true)]
+
+            val entry =
+                tlb[Key(vpn, asid, false)]
+                    ?: tlb[Key(vpn, 0UL, true)]
+
             if (entry != null && vpn in entry) {
                 entry.pte = touch(privilege, vAddress, access, unsafe, entry.pteAddress, entry.pte)
 
@@ -312,16 +319,14 @@ class MMU {
         unsafe: Boolean,
         message: String,
     ) {
-        if (unsafe) {
-            Log.warn(
-                "page fault (priv=%d, vaddr=%016x, access=%s): %s",
-                privilege,
-                vAddress,
-                access,
-                message,
-            )
-            return
-        }
+        Log.warn(
+            "page fault (priv=%d, vaddr=%016x, access=%s): %s",
+            privilege,
+            vAddress,
+            access,
+            message,
+        )
+        if (unsafe) return
         throw TrapException(
             hart.id,
             toCause(access),

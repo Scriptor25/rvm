@@ -370,9 +370,6 @@ class Hart64 : Hart {
             csrFile[CSR.mtvec, CSR.CSR_M]
         else
             csrFile[CSR.stvec, CSR.CSR_S]
-        if (tvec == 0UL) {
-            return true
-        }
 
         val base = tvec and 3UL.inv()
         val mode = tvec and 3UL
@@ -386,7 +383,7 @@ class Hart64 : Hart {
             priv,
             csrFile[CSR.satp, CSR.CSR_M],
             csrFile[CSR.mtvec, CSR.CSR_M],
-            csrFile[CSR.stvec, CSR.CSR_M],
+            csrFile[CSR.stvec, CSR.CSR_S],
             pc,
             pcp,
         )
@@ -1382,7 +1379,8 @@ class Hart64 : Hart {
 
         status = status and (1UL shl 3).inv()
         status = status or (if (mpie) (1UL shl 3) else 0UL)
-        status = status or (3UL shl 11)
+
+        status = status and (3UL shl 11).inv()
         status = status or (1UL shl 7)
 
         csrFile[CSR.mstatus, CSR.CSR_M] = status
@@ -1403,8 +1401,8 @@ class Hart64 : Hart {
     }
 
     fun sfence_vma(rs1: UInt, rs2: UInt) {
-        val vAddress = gprFile.getdu(rs1)
-        val asid = gprFile.getdu(rs2)
+        val vAddress = if (rs1 == 0U) null else gprFile.getdu(rs1)
+        val asid = if (rs2 == 0U) null else gprFile.getdu(rs2)
 
         mmu.flush(vAddress, asid)
     }

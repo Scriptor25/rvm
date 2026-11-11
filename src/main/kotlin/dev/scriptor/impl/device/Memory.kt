@@ -56,7 +56,7 @@ class Memory : IODevice {
     }
 
     override fun dump(out: PrintStream) {
-        TODO()
+        out.println(format("memory: begin=%016x, end=%016x, capacity=%08x, readonly=%b", begin, end, capacity, readonly))
     }
 
     override fun read(offset: UInt, size: UInt): ULong? {
