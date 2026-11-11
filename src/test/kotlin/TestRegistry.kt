@@ -1,3 +1,4 @@
+import dev.scriptor.impl.TrapException
 import dev.scriptor.impl.v64.Hart64
 import dev.scriptor.impl.v64.Machine64
 import dev.scriptor.isa.Registry
@@ -359,11 +360,21 @@ internal class TestRegistry {
 
     @Test
     fun test_ecall() {
-        hart.ecall()
+        try {
+            hart.ecall()
+        } catch (e: TrapException) {
+            requireEqual(e.trapCause, 0x0BUL)
+            requireEqual(e.trapValue, 0x00UL)
+        }
     }
 
     @Test
     fun test_ebreak() {
-        hart.ebreak(0U)
+        try {
+            hart.ebreak(0U)
+        } catch (e: TrapException) {
+            requireEqual(e.trapCause, 0x03UL)
+            requireEqual(e.trapValue, 0x00UL)
+        }
     }
 }
